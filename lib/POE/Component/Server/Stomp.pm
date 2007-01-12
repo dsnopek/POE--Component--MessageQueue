@@ -160,7 +160,7 @@ synopsis basically covers everything you are capable to do.
 
 =head1 BUGS
 
-Probably.  I don't know.
+Probably.
 
 =head1 AUTHORS
 
