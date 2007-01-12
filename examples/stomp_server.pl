@@ -33,7 +33,7 @@ sub handle_frame
 
 	if ( $response )
 	{
-		$heap->{client}->put( $frame->as_string . "\n" );
+		$heap->{client}->put( $response->as_string . "\n" );
 	}
 }
 

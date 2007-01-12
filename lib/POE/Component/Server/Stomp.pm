@@ -12,8 +12,6 @@ use strict;
 
 my $VERSION = '0.1';
 
-use Data::Dumper;
-
 sub new
 {
 	my $class = shift;
@@ -100,4 +98,73 @@ sub new
 }
 
 1;
+
+__END__
+
+=pod
+
+=head1 NAME
+
+POE::Component::Server::Stomp - A generic Stomp server for POE
+
+=head1 SYNOPSIS
+
+	use POE qw(Component::Server::Stomp);
+	use Net::Stomp::Frame;
+	use strict;
+
+	POE::Component::Server::Stomp->new(
+		HandleFrame        => \&handle_frame,
+		ClientDisconnected => \&client_disconnected,
+		ClientErrorr       => \&client_error
+	);
+
+	POE::Kernel->run();
+	exit;
+
+	sub handle_frame
+	{
+		my ($kernel, $heap, $frame) = @_[ KERNEL, HEAP, ARG0 ];
+
+		print "Recieved frame:\n";
+		print $frame->as_string() . "\n";
+
+		# allow Stomp clients to connect by playing along.
+		if ( $frame->command eq 'CONNECT' )
+		{
+			my $response = Net::Stomp::Frame->new({
+				command => 'CONNECTED'
+			});
+			$heap->{client}->put( $response->as_string . "\n" );
+		}
+	}
+
+	sub client_disconnected
+	{
+		my ($kernel, $heap) = @_[ KERNEL, HEAP ];
+
+		print "Client disconnected\n";
+	}
+
+	sub client_error
+	{
+		my ($kernel, $name, $number, $message) = @_[ KERNEL, ARG0, ARG1, ARG2 ];
+
+		print "ERROR: $name $number $message\n";
+	}
+
+=head1 DESCRIPTION
+
+A thin layer over L<POE::Component::Server::TCP> that parses out Net::Stomp::Frames.  The
+synopsis basically covers everything you are capable to do.
+
+=head1 BUGS
+
+Probably.  I don't know.
+
+=head1 AUTHORS
+
+Copyright 2007 David Snopek.
+
+=cut
 
