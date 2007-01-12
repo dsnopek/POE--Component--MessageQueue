@@ -32,5 +32,25 @@ sub new
 	return $self;
 }
 
+sub get_next_message_id
+{
+	my $self = shift;
+}
+
+sub store
+{
+	my ($self, $message) = @_;
+}
+
+sub remove
+{
+	my ($self, $message_id) = @_;
+}
+
+sub claim_and_retrieve
+{
+	my ($self, $destination, $client_id) = @_;
+}
+
 1;
 
