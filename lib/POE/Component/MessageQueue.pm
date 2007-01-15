@@ -84,6 +84,26 @@ sub _handle_frame
 	}
 }
 
+sub route_frame
+{
+	my $self = shift;
+	my $args = shift;
+
+	my $client;
+	my $frame;
+
+	if ( ref($args) eq 'HASH' )
+	{
+		$client = $args->{client};
+		$frame  = $args->{frame};
+	}
+	else
+	{
+		$client = $args;
+		$frame  = shift;
+	}
+}
+
 sub _client_disconnected
 {
 	my $self = shift;
