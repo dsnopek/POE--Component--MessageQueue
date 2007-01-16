@@ -155,8 +155,16 @@ POE::Component::Server::Stomp - A generic Stomp server for POE
 
 =head1 DESCRIPTION
 
-A thin layer over L<POE::Component::Server::TCP> that parses out Net::Stomp::Frames.  The
+A thin layer over L<POE::Component::Server::TCP> that parses out L<Net::Stomp::Frame>s.  The
 synopsis basically covers everything you are capable to do.
+
+For information on the STOMP protocol:
+
+L<http://stomp.codehaus.org/Protocol>
+
+For a full-fledged message queue that uses this module:
+
+L<POE::Component::MessageQueue>
 
 =head1 BUGS
 
