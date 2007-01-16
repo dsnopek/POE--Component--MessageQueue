@@ -4,6 +4,8 @@ package POE::Component::MessageQueue::Queue;
 use POE::Component::MessageQueue::Subscription;
 use strict;
 
+use Data::Dumper;
+
 sub new
 {
 	my $class = shift;
@@ -152,16 +154,21 @@ sub pump
 	if ( $self->{has_pending_messages} )
 	{
 		my $sub = $self->get_available_subscriber();
+		print Dumper $sub;
 		if ( $sub )
 		{
-			# makes sure that this subscription isn't double picked
-			$sub->set_handling_message();
-
 			# get a message out of the backing store
-			$self->get_parent()->get_storage()->claim_and_retrieve({
+			my $ret = $self->get_parent()->get_storage()->claim_and_retrieve({
 				destination => "/queue/$self->{queue_name}",
 				client_id   => $sub->{client}->{client_id}
 			});
+
+			# if a message was actually claimed!
+			if ( $ret )
+			{
+				# makes sure that this subscription isn't double picked
+				$sub->set_handling_message();
+			}
 		}
 	}
 }

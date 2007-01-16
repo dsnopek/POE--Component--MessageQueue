@@ -170,21 +170,32 @@ sub _client_error
 sub _dispatch_from_store
 {
 	my $self = shift;
-	my ($kernel, $message) = @_[ KERNEL, ARG0 ];
-
+	my ($kernel, $message, $destination, $client_id) = @_[ KERNEL, ARG0, ARG1, ARG2 ];
+	
 	my $queue;
-	if ( $message->{destination} =~ /\/queue\/(.*)/ )
+	if ( $destination =~ /\/queue\/(.*)/ )
 	{
 		my $queue_name = $1;
 
 		$queue = $self->get_queue( $queue_name );
 	}
 
-	my $client = $self->get_client( $message->{in_use_by} );
-	print "MESSAGE FROM STORE\n";
-	print Dumper $message;
+	my $client = $self->get_client( $client_id );
 
-	$queue->dispatch_message_to( $message, $client );
+	if ( defined $message )
+	{
+		#print "MESSAGE FROM STORE\n";
+		#print Dumper $message;
+
+		$queue->dispatch_message_to( $message, $client );
+	}
+	else
+	{
+		print "No message in backstore on $destination for $client_id\n";
+
+		# We need to free up the subscription.
+		$queue->get_subscription($client)->set_done_with_message();
+	}
 }
 
 sub _destination_store_ready

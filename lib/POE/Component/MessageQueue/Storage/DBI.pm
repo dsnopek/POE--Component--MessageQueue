@@ -267,7 +267,7 @@ sub _message_from_store
 	}
 
 	# sneak the message into the arguments
-	splice(@_, ARG0, 1, $message);
+	splice(@_, ARG0, 3, $message, $destination, $client_id);
 
 	# call the handler
 	$self->{dispatch_message}->( @_ );
@@ -288,7 +288,6 @@ sub _store_claim_message
 	# a message.
 	if ( defined $self->{destination_ready} )
 	{
-		print "destination: $destination\n";
 		splice(@_, ARG0, 1, $destination);
 
 		$self->{destination_ready}->(@_);
