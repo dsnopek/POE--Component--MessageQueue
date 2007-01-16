@@ -182,6 +182,21 @@ sub claim_and_retrieve
 	return 1;
 }
 
+# unmark all messages owned by this client
+sub disown
+{
+	my ($self, $client_id) = @_;
+
+	$poe_kernel->post( $self->{easydbi},
+		do => {
+			sql          => 'UPDATE messages SET in_use_by = NULL WHERE in_use_by = ?',
+			placeholders => [ $client_id ],
+			session      => $self->{session},
+			event        => 'easydbi_handler',
+		}
+	);
+}
+
 sub _init_message_id
 {
 	my ($self, $kernel, $value) = @_[ OBJECT, KERNEL, ARG0 ];
@@ -228,7 +243,7 @@ sub _message_from_store
 			destination => $result->{destination},
 			persistent  => $result->{persistent},
 			body        => $result->{body},
-			in_use_by   => $result->{in_use_by}
+			in_use_by   => $client_id
 		});
 
 		# claim this message

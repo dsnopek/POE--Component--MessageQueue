@@ -44,6 +44,12 @@ sub new
 	return $self;
 }
 
+sub get_message_id  { return shift->{message_id}; }
+sub get_destination { return shift->{destination}; }
+sub get_body        { return shift->{body}; }
+sub get_persistent  { return shift->{persistent}; }
+sub get_in_use_by   { return shift->{in_use_by}; }
+
 sub is_in_queue
 {
 	return shift->{destination} =~ /^\/queue\//;
