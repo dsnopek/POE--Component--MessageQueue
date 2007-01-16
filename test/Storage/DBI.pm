@@ -261,7 +261,7 @@ sub testClaim_0
 	is( $message->{destination}, '/queue/something' );
 	is( $message->{body},        'A message' );
 	is( $message->{persistent},  'Y' );
-	is( $message->{in_use_by},   undef );
+	is( $message->{in_use_by},   10 );
 }
 
 sub testClaim_1
