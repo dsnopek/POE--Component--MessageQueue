@@ -203,6 +203,8 @@ sub _destination_store_ready
 	my $self = shift;
 	my ($kernel, $destination) = @_[ KERNEL, ARG0 ];
 
+	#print "Queue is ready: $destination\n";
+
 	if ( $destination =~ /\/queue\/(.*)/ )
 	{
 		my $queue_name = $1;

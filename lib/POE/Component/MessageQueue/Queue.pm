@@ -151,12 +151,14 @@ sub pump
 
 	# attempt to get a pending message and pass it the the 'send_queue' action.
 
+	#print " -- PUMP --\n";
 	if ( $self->{has_pending_messages} )
 	{
 		my $sub = $self->get_available_subscriber();
-		print Dumper $sub;
+		#print Dumper $sub;
 		if ( $sub )
 		{
+			#print "attempt to claim_and_retrieve\n";
 			# get a message out of the backing store
 			my $ret = $self->get_parent()->get_storage()->claim_and_retrieve({
 				destination => "/queue/$self->{queue_name}",
@@ -166,6 +168,7 @@ sub pump
 			# if a message was actually claimed!
 			if ( $ret )
 			{
+				#print "claimed!\n";
 				# makes sure that this subscription isn't double picked
 				$sub->set_handling_message();
 			}

@@ -261,9 +261,15 @@ sub _message_from_store
 		);
 
 	}
-	elsif ( scalar @$rows > 1 )
+	else
 	{
-		die "ERROR!  Somehow two messages got attached to the same client!\n";
+		# unlock claiming from this destination
+		delete $self->{claiming}->{$destination};
+
+		if ( scalar @$rows > 1 )
+		{
+			die "ERROR!  Somehow two messages got attached to the same client!\n";
+		}
 	}
 
 	# sneak the message into the arguments
