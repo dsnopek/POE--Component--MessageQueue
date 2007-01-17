@@ -5,7 +5,7 @@ CREATE TABLE messages
 	destination varchar(255) not null,
 	persistent  char(1) default 'Y' not null,
 	in_use_by   int,
-	body        text not null
+	body        text
 );
 
 -- Improves performance some bit:

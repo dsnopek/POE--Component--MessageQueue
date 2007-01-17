@@ -5,6 +5,6 @@ CREATE TABLE messages
 	destination varchar(255) not null,
 	persistent  enum('Y', 'N') default 'Y' not null,
 	in_use_by   int,
-	body        text not null
+	body        text
 );
 

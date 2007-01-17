@@ -4,6 +4,8 @@ package POE::Component::MessageQueue::Storage::DBI;
 use POE::Kernel;
 use POE::Session;
 use POE::Component::EasyDBI;
+use POE::Filter::Stream;
+use IO::File;
 use strict;
 
 use Data::Dumper;
@@ -18,12 +20,19 @@ sub new
 	my $password;
 	my $options;
 
+	my $use_files;
+	my $data_dir;
+
 	if ( ref($args) eq 'HASH' )
 	{
 		$dsn      = $args->{dsn};
 		$username = $args->{username};
 		$password = $args->{password};
 		$options  = $args->{options};
+
+		# not "straight DBI" options.
+		$use_files = $args->{use_files};
+		$data_dir  = $args->{data_dir};
 	}
 
 	my $self = {
@@ -31,6 +40,12 @@ sub new
 		claiming          => { },
 		dispatch_message  => undef,
 		destination_ready => undef,
+
+		# for keeping messages on the FS
+		use_files   => $use_files,
+		data_dir    => $data_dir,
+		file_wheels => { },
+		wheel_to_message_map => { }
 	};
 	bless $self, $class;
 
@@ -52,7 +67,13 @@ sub new
 				'_init_message_id',
 				'_easydbi_handler',
 				'_message_from_store',
-				'_store_claim_message'
+				'_store_claim_message',
+
+				'_write_message_to_disk',
+				'_read_message_from_disk',
+				'_read_input',
+				'_read_error',
+				'_write_flushed_event'
 			]
 		]
 	);
@@ -106,6 +127,25 @@ sub store
 {
 	my ($self, $message) = @_;
 
+	if ( $self->{use_files} )
+	{
+		# grab the masseg body
+		my $body = $message->{body};
+		
+		# remake the message, but without the body
+		my $temp = POE::Component::MessageQueue::Message->new({
+			message_id  => $message->{message_id},
+			destination => $message->{destination},
+			persistent  => $message->{persistent},
+			in_use_by   => $message->{in_use_by},
+			body        => undef
+		});
+		$message = $temp;
+
+		# initiate the process
+		$poe_kernel->post( $self->{session}, '_write_message_to_disk', $message, $body );
+	}
+
 	# push the message into our persistent store
 	$poe_kernel->post( $self->{easydbi},
 		insert => {
@@ -123,6 +163,31 @@ sub store
 sub remove
 {
 	my ($self, $message_id) = @_;
+
+	# remove from file system
+	if ( $self->{use_files} )
+	{
+		if ( exists $self->{file_wheels}->{$message_id} )
+		{
+			my $infos    = $self->{file_wheels}->{$message_id};
+			my $wheel    = $infos->{write_wheel} || $infos->{read_wheel};
+			my $wheel_id = $wheel->ID();
+
+			# stop the wheel
+			if ( $wheel )
+			{
+				$wheel->shutdown_input();
+				$wheel->shutdown_output();
+			}
+
+			# clear our state
+			delete $self->{file_wheels}->{$message_id};
+			delete $self->{wheel_to_message_map}->{$wheel_id};
+		}
+
+		my $fn = "$self->{data_dir}/msg-$message_id.txt";
+		unlink $fn || print "Unable to remove $fn: $!\n";
+	}
 
 	# remove the message from the backing store
 	$poe_kernel->post( $self->{easydbi},
@@ -196,6 +261,10 @@ sub disown
 		}
 	);
 }
+
+#
+# For handling responses from database:
+#
 
 sub _init_message_id
 {
@@ -272,8 +341,36 @@ sub _message_from_store
 		}
 	}
 
-	# call the handler
-	$self->{dispatch_message}->( $message, $destination, $client_id );
+	if ( defined $message and $self->{use_files} )
+	{
+		# check to see if we even finished writting to disk
+		if ( defined $self->{file_wheels}->{$message->{message_id}}->{write_wheel} )
+		{
+			print "STORE: RETURNING MESSAGE BEFORE COMPLETELY IN STORE: $message->{message_id}\n";
+
+			# first, stop the wheel
+			my $wheel = $self->{file_wheels}->{$message->{message_id}}->{write_wheel};
+			$wheel->shutdown_input();
+			$wheel->shutdown_output();
+
+			# second, put the body on the message
+			$message->{body} = delete $self->{file_wheels}->{$message->{message_id}}->{body};
+
+			# finally, distribute the message
+			$self->{dispatch_message}->( $message, $destination, $client_id );
+		}
+		else
+		{
+			# pull the message body from disk
+			$kernel->post( $self->{session}, '_read_message_from_disk',
+				$message, $destination, $client_id );
+		}
+	}
+	else
+	{
+		# call the handler because the message is complete
+		$self->{dispatch_message}->( $message, $destination, $client_id );
+	}
 }
 
 sub _store_claim_message
@@ -293,6 +390,110 @@ sub _store_claim_message
 	{
 		$self->{destination_ready}->( $destination );
 	}
+}
+
+#
+# For handling disk access
+#
+
+sub _write_message_to_disk
+{
+	my ($self, $kernel, $message, $body) = @_[ OBJECT, KERNEL, ARG0, ARG1 ];
+
+	# setup the wheel
+	my $fn = "$self->{data_dir}/msg-$message->{message_id}.txt";
+	my $fh = IO::File->new( ">$fn" )
+		|| die "Unable to save message in $fn: $!";
+	my $wheel = POE::Wheel::ReadWrite->new(
+		Handle       => $fh,
+		Filter       => POE::Filter::Stream->new(),
+		FlushedEvent => '_write_flushed_event'
+	);
+
+	# initiate the write to disk
+	$wheel->put( $body );
+
+	# stash the wheel in our maps
+	$self->{file_wheels}->{$message->{message_id}} = {
+		write_wheel => $wheel,
+		body        => $body
+	};
+	$self->{wheel_to_message_map}->{$wheel->ID()} = $message->{message_id};
+}
+
+sub _read_message_from_disk
+{
+	my ($self, $kernel, $message, $destination, $client_id) = @_[ OBJECT, KERNEL, ARG0..ARG2 ];
+
+	# setup the wheel
+	my $fn = "$self->{data_dir}/msg-$message->{message_id}.txt";
+	my $fh = IO::File->new( $fn )
+		|| die "Unable to read message from $fn: $!";
+	my $wheel = POE::Wheel::ReadWrite->new(
+		Handle       => $fh,
+		Filter       => POE::Filter::Stream->new(),
+		InputEvent   => '_read_input',
+		ErrorEvent   => '_read_error'
+	);
+
+	# stash the wheel in our maps
+	$self->{file_wheels}->{$message->{message_id}} = {
+		read_wheel  => $wheel,
+		message     => $message,
+		destination => $destination,
+		client_id   => $client_id
+	};
+	$self->{wheel_to_message_map}->{$wheel->ID()} = $message->{message_id};
+}
+
+sub _read_input
+{
+	my ($self, $kernel, $input, $wheel_id) = @_[ OBJECT, KERNEL, ARG0, ARG1 ];
+
+	my $message_id = $self->{wheel_to_message_map}->{$wheel_id};
+	my $message    = $self->{file_wheels}->{$message_id}->{message};
+
+	$message->{body} .= $input;
+}
+
+sub _read_error
+{
+	my ($self, $op, $errnum, $errstr, $wheel_id) = @_[ OBJECT, ARG0..ARG3 ];
+
+	if ( $errnum == 0 )
+	{
+		# EOF!  Our message is now totally assembled.  Hurray!
+
+		my $message_id  = $self->{wheel_to_message_map}->{$wheel_id};
+		my $infos       = $self->{file_wheels}->{$message_id};
+		my $message     = $infos->{message};
+		my $destination = $infos->{destination};
+		my $client_id   = $infos->{client_id};
+
+		#print "STORE: READ COMPLETE! For $client_id on $destination: $message->{body}\n";
+
+		# send the message out!
+		$self->{dispatch_message}->( $message, $destination, $client_id );
+
+		# clear our state
+		delete $self->{wheel_to_message_map}->{$wheel_id};
+		delete $self->{file_wheels}->{$message_id};
+	}
+	else
+	{
+		print "STORE: $op: Error $errnum $errstr\n";
+	}
+}
+
+sub _write_flushed_event
+{
+	my ($self, $kernel, $wheel_id) = @_[ OBJECT, KERNEL, ARG0 ];
+
+	# remove from the first map
+	my $message_id = delete $self->{wheel_to_message_map}->{$wheel_id};
+
+	# remove from the second map
+	delete $self->{file_wheels}->{$message_id};
 }
 
 1;

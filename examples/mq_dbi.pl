@@ -24,7 +24,7 @@ CREATE TABLE messages
 	destination varchar(255) not null,
 	persistent  char(1) default 'Y' not null,
 	in_use_by   int,
-	body        text not null
+	body        text
 );
 
 CREATE INDEX destination_index ON messages ( destination );
@@ -42,7 +42,11 @@ POE::Component::MessageQueue->new({
 	storage => POE::Component::MessageQueue::Storage::DBI->new({
 		dsn      => $DB_DSN,
 		username => $DB_USERNAME,
-		password => $DB_PASSWORD
+		password => $DB_PASSWORD,
+
+		# configure to keep the body not in the database but in a file
+		data_dir  => 'test-data',
+		use_files => 1
 	})
 });
 
