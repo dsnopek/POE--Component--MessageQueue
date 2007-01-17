@@ -136,7 +136,6 @@ sub remove_client
 
 	# mark all messages owned by this client to be owned by nobody.
 	$self->{storage}->disown( $client_id );
-
 }
 
 sub _handle_frame

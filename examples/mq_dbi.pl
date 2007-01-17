@@ -4,13 +4,15 @@ use POE::Component::MessageQueue;
 use POE::Component::MessageQueue::Storage::DBI;
 use strict;
 
+my $DATA_DIR = '/tmp/perl_mq';
+
 # For mysql:
 #my $DB_DSN      = 'DBI:mysql:database=perl_mq';
 #my $DB_USERNAME = 'perl_mq';
 #my $DB_PASSWORD = 'glupiludzie';
 
 # For sqlite:
-my $DB_FILE     = "mq.db";
+my $DB_FILE     = "$DATA_DIR/mq.db";
 my $DB_DSN      = "DBI:SQLite2:dbname=$DB_FILE";
 my $DB_USERNAME = "";
 my $DB_PASSWORD = "";
@@ -36,7 +38,8 @@ EOF
 	$dbh->do( $DB_CREATE );
 	$dbh->disconnect();
 }
-_init_sqlite unless ( -f $DB_FILE );
+mkdir $DATA_DIR unless ( -d $DATA_DIR );
+_init_sqlite    unless ( -f $DB_FILE );
 
 POE::Component::MessageQueue->new({
 	storage => POE::Component::MessageQueue::Storage::DBI->new({
@@ -45,7 +48,7 @@ POE::Component::MessageQueue->new({
 		password => $DB_PASSWORD,
 
 		# configure to keep the body not in the database but in a file
-		data_dir  => 'test-data',
+		data_dir  => $DATA_DIR,
 		use_files => 1
 	})
 });
