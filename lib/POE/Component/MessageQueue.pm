@@ -169,8 +169,7 @@ sub _client_error
 
 sub _dispatch_from_store
 {
-	my $self = shift;
-	my ($kernel, $message, $destination, $client_id) = @_[ KERNEL, ARG0, ARG1, ARG2 ];
+	my ($self, $message, $destination, $client_id) = @_;
 	
 	my $queue;
 	if ( $destination =~ /\/queue\/(.*)/ )
@@ -200,8 +199,7 @@ sub _dispatch_from_store
 
 sub _destination_store_ready
 {
-	my $self = shift;
-	my ($kernel, $destination) = @_[ KERNEL, ARG0 ];
+	my ($self, $destination) = @_;
 
 	#print "Queue is ready: $destination\n";
 
