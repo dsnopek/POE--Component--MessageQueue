@@ -179,20 +179,30 @@ sub remove
 	{
 		if ( exists $self->{file_wheels}->{$message_id} )
 		{
-			my $infos    = $self->{file_wheels}->{$message_id};
-			my $wheel    = $infos->{write_wheel} || $infos->{read_wheel};
-			my $wheel_id = $wheel->ID();
+			my $infos = $self->{file_wheels}->{$message_id};
+			my $wheel = $infos->{write_wheel} || $infos->{read_wheel};
 
-			# stop the wheel
-			if ( $wheel )
+			if ( defined $wheel )
 			{
-				$wheel->shutdown_input();
-				$wheel->shutdown_output();
-			}
+				my $wheel_id = $wheel->ID();
 
-			# clear our state
-			delete $self->{file_wheels}->{$message_id};
-			delete $self->{wheel_to_message_map}->{$wheel_id};
+				# stop the wheel
+				if ( $wheel )
+				{
+					$wheel->shutdown_input();
+					$wheel->shutdown_output();
+				}
+
+				# clear our state
+				delete $self->{file_wheels}->{$message_id};
+				delete $self->{wheel_to_message_map}->{$wheel_id};
+			}
+			else
+			{
+				# This can happen if we had to abort before wheel
+				# creation.  Somehow.  I'm not quite sure.
+				delete $self->{file_wheels}->{$message_id};
+			}
 		}
 
 		my $fn = "$self->{data_dir}/msg-$message_id.txt";
@@ -448,8 +458,20 @@ sub _read_message_from_disk
 
 	# setup the wheel
 	my $fn = "$self->{data_dir}/msg-$message->{message_id}.txt";
-	my $fh = IO::File->new( $fn )
-		|| die "Unable to read message from $fn: $!";
+	my $fh = IO::File->new( $fn );
+	
+	# if we can't find the message body.  This usually happens as a result
+	# of crash recovery.
+	if ( not defined $fh )
+	{
+		print "STORE: Can't find $fn on disk!  Discarding message.\n";
+
+		# we simply discard the message
+		$self->remove( $message->{message_id} );
+
+		return;
+	}
+	
 	my $wheel = POE::Wheel::ReadWrite->new(
 		Handle       => $fh,
 		Filter       => POE::Filter::Stream->new(),
