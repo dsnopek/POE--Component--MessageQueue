@@ -38,6 +38,7 @@ sub new
 	my $self = {
 		message_id        => 0,
 		claiming          => { },
+		message_stored    => undef,
 		dispatch_message  => undef,
 		destination_ready => undef,
 
@@ -66,6 +67,7 @@ sub new
 			$self => [
 				'_init_message_id',
 				'_easydbi_handler',
+				'_message_to_store',
 				'_message_from_store',
 				'_store_claim_message',
 
@@ -101,6 +103,13 @@ sub new
 	);
 
 	return $self;
+}
+
+sub set_message_stored_handler
+{
+	my ($self, $handler) = @_;
+
+	$self->{message_stored} = $handler;
 }
 
 sub set_dispatch_message_handler
@@ -152,10 +161,11 @@ sub store
 			table   => 'messages',
 			hash    => { %$message },
 			session => $self->{session},
-			event   => '_easydbi_handler',
+			event   => '_message_to_store',
 
 			# baggage:
-			_message_id => $message->{message_id}
+			_message_id  => $message->{message_id},
+			_destination => $message->{destination},
 		}
 	);
 }
@@ -277,14 +287,25 @@ sub _easydbi_handler
 {
 	my ($self, $kernel, $event) = @_[ OBJECT, KERNEL, ARG0 ];
 
-	if ( $event->{action} eq 'insert' )
-	{
-		print "STORE: DBI: Added message $event->{_message_id} to backing store\n";
-	}
-	elsif ( $event->{action} eq 'do' )
+	if ( $event->{action} eq 'do' )
 	{
 		my $pretty = join ', ', @{$event->{placeholders}};
 		print "STORE: DBI: $event->{sql} [ $pretty ]\n";
+	}
+}
+
+sub _message_to_store
+{
+	my ($self, $kernel, $value) = @_[ OBJECT, KERNEL, ARG0 ];
+
+	my $message_id  = $value->{_message_id};
+	my $destination = $value->{_destination};
+
+	print "STORE: DBI: Added message $message_id to backing store\n";
+
+	if ( defined $self->{message_stored} )
+	{
+		$self->{message_stored}->( $destination );
 	}
 }
 

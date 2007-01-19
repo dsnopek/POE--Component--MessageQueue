@@ -50,6 +50,7 @@ sub new
 	bless $self, $class;
 
 	# setup the storage callbacks
+	$self->{storage}->set_message_stored_handler(  $self->__closure('_message_stored') );
 	$self->{storage}->set_dispatch_message_handler(  $self->__closure('_dispatch_from_store') );
 	$self->{storage}->set_destination_ready_handler( $self->__closure('_destination_store_ready') );
 
@@ -166,6 +167,22 @@ sub _client_error
 	print "ERROR: $name $number $message\n";
 }
 
+sub _message_stored
+{
+	my ($self, $destination) = @_;
+	
+	my $queue;
+	if ( $destination =~ /\/queue\/(.*)/ )
+	{
+		my $queue_name = $1;
+
+		$queue = $self->get_queue( $queue_name );
+	}
+
+	# pump the queue for good luck!
+	$queue->pump();
+}
+
 sub _dispatch_from_store
 {
 	my ($self, $message, $destination, $client_id) = @_;
@@ -192,7 +209,13 @@ sub _dispatch_from_store
 		print "No message in backstore on $destination for $client_id\n";
 
 		# We need to free up the subscription.
-		$queue->get_subscription($client)->set_done_with_message();
+		my $sub = $queue->get_subscription($client);
+		if ( defined $sub )
+		{
+			# We have to test if it exists, because the client could have
+			# disconnected already.
+			$sub->set_done_with_message();
+		}
 	}
 }
 
