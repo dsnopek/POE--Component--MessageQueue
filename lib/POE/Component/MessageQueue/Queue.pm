@@ -208,6 +208,17 @@ sub dispatch_message_to
 		$sub = $receiver;
 	}
 
+	if ( not defined $sub )
+	{
+		# This can happen when a client disconnects before the server
+		# can give them the message intended for them.
+
+		# pump the queue to get the message to another suscriber.
+		$self->pump();
+
+		return;
+	}
+
 	print "QUEUE: Sending message $message->{message_id} to client $sub->{client}->{client_id}\n";
 
 	# mark as needing ack, or remove message.
