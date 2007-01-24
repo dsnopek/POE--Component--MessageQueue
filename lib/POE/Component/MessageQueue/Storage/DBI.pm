@@ -5,6 +5,7 @@ use POE::Kernel;
 use POE::Session;
 use POE::Component::EasyDBI;
 use POE::Filter::Stream;
+use POE::Wheel::ReadWrite;
 use IO::File;
 use strict;
 
@@ -375,17 +376,20 @@ sub _message_from_store
 	if ( defined $message and $self->{use_files} )
 	{
 		# check to see if we even finished writting to disk
-		if ( defined $self->{file_wheels}->{$message->{message_id}}->{write_wheel} )
+		if ( defined $self->{file_wheels}->{$message->{message_id}} )
 		{
 			print "STORE: RETURNING MESSAGE BEFORE COMPLETELY IN STORE: $message->{message_id}\n";
 
+			# get (and remove) the wheel infos
+			my $info = delete $self->{file_wheels}->{$message->{message_id}};
+
 			# first, stop the wheel
-			my $wheel = $self->{file_wheels}->{$message->{message_id}}->{write_wheel};
+			my $wheel = $info->{write_wheel};
 			$wheel->shutdown_input();
 			$wheel->shutdown_output();
 
 			# second, put the body on the message
-			$message->{body} = delete $self->{file_wheels}->{$message->{message_id}}->{body};
+			$message->{body} = $info->{body};
 
 			# finally, distribute the message
 			$self->{dispatch_message}->( $message, $destination, $client_id );
@@ -431,6 +435,12 @@ sub _write_message_to_disk
 {
 	my ($self, $kernel, $message, $body) = @_[ OBJECT, KERNEL, ARG0, ARG1 ];
 
+	if ( defined $self->{file_wheels}->{$message->{messages_id}} )
+	{
+		print "_write_message_to_disk: A wheel already exists for this messages $message->{messages_id}!  This should never happen!\n";
+		exit 1;
+	}
+
 	# setup the wheel
 	my $fn = "$self->{data_dir}/msg-$message->{message_id}.txt";
 	my $fh = IO::File->new( ">$fn" )
@@ -455,6 +465,12 @@ sub _write_message_to_disk
 sub _read_message_from_disk
 {
 	my ($self, $kernel, $message, $destination, $client_id) = @_[ OBJECT, KERNEL, ARG0..ARG2 ];
+
+	if ( defined $self->{file_wheels}->{$message->{messages_id}} )
+	{
+		print "_read_message_from_disk: A wheel already exists for this messages $message->{messages_id}!  This should never happen!\n";
+		exit 1;
+	}
 
 	# setup the wheel
 	my $fn = "$self->{data_dir}/msg-$message->{message_id}.txt";

@@ -25,9 +25,11 @@ CREATE TABLE messages
 	destination varchar(255) not null,
 	persistent  char(1) default 'Y' not null,
 	in_use_by   int,
-	body        text not null
+	body        text
 );
 EOF
+
+my $USE_FILES = 0;
 
 my $TESTS = [
 	'testStore', 'testRemove', 'testClaim'
@@ -71,6 +73,10 @@ sub _start
 		dsn      => $dsn,
 		username => '',
 		password => '',
+
+		# TODO: make a real temp dir for real unit-test-ability.
+		data_dir  => '/tmp/blah',
+		use_files => $USE_FILES
 	});
 
 	# list here all the 
@@ -169,9 +175,19 @@ sub testStore_post
 
 	is( $result->{message_id},  27 );
 	is( $result->{destination}, '/queue/something' );
-	is( $result->{body},        'A message' );
 	is( $result->{persistent},  'Y' );
 	is( $result->{in_use_by},   undef );
+
+	if ( $USE_FILES )
+	{
+		# TODO: Should be undef!
+		#is( $result->{body}, undef );
+		is( $result->{body}, '' );
+	}
+	else
+	{
+		is( $result->{body}, 'A message' );
+	}
 
 	# advance the testing, yo!
 	nextTest();
@@ -206,9 +222,19 @@ sub testRemove_0
 
 	is( $result->{message_id},  27 );
 	is( $result->{destination}, '/queue/something' );
-	is( $result->{body},        'A message' );
 	is( $result->{persistent},  'Y' );
 	is( $result->{in_use_by},   undef );
+
+	if ( $USE_FILES )
+	{
+		# TODO: Should be undef!
+		#is( $result->{body}, undef );
+		is( $result->{body}, '' );
+	}
+	else
+	{
+		is( $result->{body}, 'A message' );
+	}
 
 	$heap->{storage}->remove( 27 );
 
@@ -255,7 +281,7 @@ sub testClaim
 
 sub testClaim_0
 {
-	my ($kernel, $heap, $message) = @_[ KERNEL, HEAP, ARG0 ];
+	my $message = shift;
 
 	is( $message->{message_id},  27 );
 	is( $message->{destination}, '/queue/something' );
@@ -266,7 +292,7 @@ sub testClaim_0
 
 sub testClaim_1
 {
-	my ($kernel, $heap, $destination) = @_[ KERNEL, HEAP, ARG0 ];
+	my $destination = shift;
 
 	is ( $destination, '/queue/something' );
 
