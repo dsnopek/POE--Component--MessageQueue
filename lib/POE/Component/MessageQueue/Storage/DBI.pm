@@ -1,5 +1,6 @@
 
 package POE::Component::MessageQueue::Storage::DBI;
+use base qw(POE::Component::MessageQueue::Storage);
 
 use POE::Kernel;
 use POE::Session;
@@ -36,20 +37,16 @@ sub new
 		$data_dir  = $args->{data_dir};
 	}
 
-	my $self = {
-		message_id        => 0,
-		claiming          => { },
-		message_stored    => undef,
-		dispatch_message  => undef,
-		destination_ready => undef,
+	my $self = $class->SUPER::new( $args );
 
-		# for keeping messages on the FS
-		use_files   => $use_files,
-		data_dir    => $data_dir,
-		file_wheels => { },
-		wheel_to_message_map => { }
-	};
-	bless $self, $class;
+	$self->{message_id} = 0;
+	$self->{claiming}   = { };
+
+	# for keeping messages on the FS
+	$self->{use_files}   = $use_files;
+	$self->{data_dir}    = $data_dir;
+	$self->{file_wheels} = { };
+	$self->{wheel_to_message_map} = { };
 
 	my $easydbi = POE::Component::EasyDBI->spawn(
 		alias    => 'MQ-DBI',
@@ -104,27 +101,6 @@ sub new
 	);
 
 	return $self;
-}
-
-sub set_message_stored_handler
-{
-	my ($self, $handler) = @_;
-
-	$self->{message_stored} = $handler;
-}
-
-sub set_dispatch_message_handler
-{
-	my ($self, $handler) = @_;
-	
-	$self->{dispatch_message} = $handler;
-}
-
-sub set_destination_ready_handler
-{
-	my ($self, $handler) = @_;
-
-	$self->{destination_ready} = $handler;
 }
 
 sub get_next_message_id
@@ -207,7 +183,7 @@ sub remove
 		}
 
 		my $fn = "$self->{data_dir}/msg-$message_id.txt";
-		unlink $fn || print "Unable to remove $fn: $!\n";
+		unlink $fn || $self->_log( "Unable to remove $fn: $!" );
 	}
 
 	# remove the message from the backing store
@@ -301,7 +277,7 @@ sub _easydbi_handler
 	if ( $event->{action} eq 'do' )
 	{
 		my $pretty = join ', ', @{$event->{placeholders}};
-		print "STORE: DBI: $event->{sql} [ $pretty ]\n";
+		$self->_log( "STORE: DBI: $event->{sql} [ $pretty ]" );
 	}
 }
 
@@ -312,7 +288,7 @@ sub _message_to_store
 	my $message_id  = $value->{_message_id};
 	my $destination = $value->{_destination};
 
-	print "STORE: DBI: Added message $message_id to backing store\n";
+	$self->_log( "STORE: DBI: Added message $message_id to backing store" );
 
 	if ( defined $self->{message_stored} )
 	{
@@ -378,7 +354,7 @@ sub _message_from_store
 		# check to see if we even finished writting to disk
 		if ( defined $self->{file_wheels}->{$message->{message_id}} )
 		{
-			print "STORE: RETURNING MESSAGE BEFORE COMPLETELY IN STORE: $message->{message_id}\n";
+			$self->_log( "STORE: RETURNING MESSAGE BEFORE COMPLETELY IN STORE: $message->{message_id}" );
 
 			# get (and remove) the wheel infos
 			my $info = delete $self->{file_wheels}->{$message->{message_id}};
@@ -437,7 +413,7 @@ sub _write_message_to_disk
 
 	if ( defined $self->{file_wheels}->{$message->{messages_id}} )
 	{
-		print "_write_message_to_disk: A wheel already exists for this messages $message->{messages_id}!  This should never happen!\n";
+		$self->_log( 'emergency', "_write_message_to_disk: A wheel already exists for this messages $message->{messages_id}!  This should never happen!" );
 		exit 1;
 	}
 
@@ -468,7 +444,7 @@ sub _read_message_from_disk
 
 	if ( defined $self->{file_wheels}->{$message->{messages_id}} )
 	{
-		print "_read_message_from_disk: A wheel already exists for this messages $message->{messages_id}!  This should never happen!\n";
+		$self->_log( 'emergency', "_read_message_from_disk: A wheel already exists for this messages $message->{messages_id}!  This should never happen!" );
 		exit 1;
 	}
 
@@ -480,7 +456,7 @@ sub _read_message_from_disk
 	# of crash recovery.
 	if ( not defined $fh )
 	{
-		print "STORE: Can't find $fn on disk!  Discarding message.\n";
+		$self->_log( 'warning', "STORE: Can't find $fn on disk!  Discarding message." );
 
 		# we simply discard the message
 		$self->remove( $message->{message_id} );
@@ -540,7 +516,7 @@ sub _read_error
 	}
 	else
 	{
-		print "STORE: $op: Error $errnum $errstr\n";
+		$self->_log( 'error', "STORE: $op: Error $errnum $errstr" );
 	}
 }
 

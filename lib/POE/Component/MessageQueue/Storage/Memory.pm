@@ -1,5 +1,6 @@
 
 package POE::Component::MessageQueue::Storage::Memory;
+use base qw(POE::Component::MessageQueue::Storage);
 
 use strict;
 
@@ -23,30 +24,13 @@ sub new
 		$options  = $args->{options};
 	}
 
-	my $self = {
-		message_id        => 0,
-		claiming          => { },
-		dispatch_message  => undef,
-		destination_ready => undef,
-		messages          => [ ],
-	};
+	my $self = $class->SUPER::new( $args );
 
-	bless  $self, $class;
+	$self->{message_id} = 0;
+	$self->{claiming}   = { };
+	$self->{mesasges}   = [ ];
+
 	return $self;
-}
-
-sub set_dispatch_message_handler
-{
-	my ($self, $handler) = @_;
-	
-	$self->{dispatch_message} = $handler;
-}
-
-sub set_destination_ready_handler
-{
-	my ($self, $handler) = @_;
-
-	$self->{destination_ready} = $handler;
 }
 
 sub get_next_message_id

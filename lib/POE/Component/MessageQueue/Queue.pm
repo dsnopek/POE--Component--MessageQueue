@@ -41,6 +41,12 @@ sub new
 
 sub get_parent { return shift->{parent}; }
 
+sub _log
+{
+	my $self = shift;
+	$self->get_parent()->_log(@_);
+}
+
 sub add_subscription
 {
 	my $self = shift;
@@ -149,16 +155,14 @@ sub pump
 {
 	my $self = shift;
 
-	# attempt to get a pending message and pass it the the 'send_queue' action.
+	$self->_log( 'debug', " -- PUMP QUEUE: $self->{queue_name} -- " );
 
-	#print " -- PUMP --\n";
+	# attempt to get a pending message and pass it the the 'send_queue' action.
 	if ( $self->{has_pending_messages} )
 	{
 		my $sub = $self->get_available_subscriber();
-		#print Dumper $sub;
 		if ( $sub )
 		{
-			#print "attempt to claim_and_retrieve\n";
 			# get a message out of the backing store
 			my $ret = $self->get_parent()->get_storage()->claim_and_retrieve({
 				destination => "/queue/$self->{queue_name}",
@@ -168,7 +172,6 @@ sub pump
 			# if a message was actually claimed!
 			if ( $ret )
 			{
-				#print "claimed!\n";
 				# makes sure that this subscription isn't double picked
 				$sub->set_handling_message();
 			}
@@ -219,7 +222,7 @@ sub dispatch_message_to
 		return;
 	}
 
-	print "QUEUE: Sending message $message->{message_id} to client $sub->{client}->{client_id}\n";
+	$self->_log( "QUEUE: Sending message $message->{message_id} to client $sub->{client}->{client_id}" );
 
 	# mark as needing ack, or remove message.
 	if ( $sub->{ack_type} eq 'client' )

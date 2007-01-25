@@ -23,6 +23,7 @@ sub new
 	my $domain;
 
 	my $storage;
+	my $logger_alias;
 
 	if ( ref($args) eq 'HASH' )
 	{
@@ -31,7 +32,8 @@ sub new
 		$port     = $args->{port};
 		$domain   = $args->{domain};
 		
-		$storage  = $args->{storage};
+		$storage      = $args->{storage};
+		$logger_alias = $args->{logger_alias};
 	}
 
 	if ( not defined $storage )
@@ -41,11 +43,15 @@ sub new
 		croak "$class->new(): Must pass a storage object for the message queue to operate on."
 	}
 
+	# create our logger object
+	my $logger = POE::Component::MessageQueue::Logger->new({ logger_alias => $logger_alias });
+
 	my $self = {
 		storage   => $storage,
+		logger    => $logger,
 		clients   => { },
 		queues    => { },
-		needs_ack => { }
+		needs_ack => { },
 	};
 	bless $self, $class;
 
@@ -53,6 +59,9 @@ sub new
 	$self->{storage}->set_message_stored_handler(  $self->__closure('_message_stored') );
 	$self->{storage}->set_dispatch_message_handler(  $self->__closure('_dispatch_from_store') );
 	$self->{storage}->set_destination_ready_handler( $self->__closure('_destination_store_ready') );
+
+	# get the storage object using our logger
+	$self->{storage}->set_logger( $self->{logger} );
 
 	# setup our stomp server
 	POE::Component::Server::Stomp->new(
@@ -80,6 +89,12 @@ sub __closure
 		return $self->$method_name(@_);
 	};
 	return $func;
+}
+
+sub _log
+{
+	my $self = shift;
+	$self->{logger}->log(@_);
 }
 
 sub get_client
@@ -113,7 +128,7 @@ sub remove_client
 	my $self      = shift;
 	my $client_id = shift;
 
-	print "MASTER: Removing client $client_id\n";
+	$self->_log( "MASTER: Removing client $client_id" );
 	
 	my $client = $self->get_client( $client_id );
 
@@ -164,7 +179,14 @@ sub _client_error
 	my $self = shift;
 	my ($kernel, $name, $number, $message) = @_[ KERNEL, ARG0, ARG1, ARG2 ];
 
-	print "ERROR: $name $number $message\n";
+	if ( $name eq 'read' and $number == 0 )
+	{
+		# This is EOF, which is perfectly fine!
+	}
+	else
+	{
+		$self->_log( 'error', "$name $number $message" );
+	}
 }
 
 sub _message_stored
@@ -206,7 +228,7 @@ sub _dispatch_from_store
 	}
 	else
 	{
-		print "No message in backstore on $destination for $client_id\n";
+		$self->_log( "No message in backstore on $destination for $client_id" );
 
 		# We need to free up the subscription.
 		my $sub = $queue->get_subscription($client);
@@ -255,10 +277,12 @@ sub route_frame
 
 	if ( $frame->command eq 'CONNECT' )
 	{
-		printf "RECV (%i): CONNECT %s:%s\n",
-			$client->{client_id},
-			$frame->headers->{login},
-			$frame->headers->{passcode};
+		$self->_log(
+			sprintf ("RECV (%i): CONNECT %s:%s",
+				$client->{client_id},
+				$frame->headers->{login},
+				$frame->headers->{passcode})
+		);
 		
 		# connect!
 		$client->connect({
@@ -268,7 +292,7 @@ sub route_frame
 	}
 	elsif ( $frame->command eq 'DISCONNECT' )
 	{
-		printf "RECV (%i): DISCONNECT\n", $client->{client_id};
+		$self->_log( sprintf("RECV (%i): DISCONNECT", $client->{client_id}) );
 
 		# disconnect, yo!
 		$self->remove_client( $client->{client_id} );
@@ -278,11 +302,13 @@ sub route_frame
 		my $destination = $frame->headers->{destination};
 		my $persistent  = $frame->headers->{persistent} eq 'true';
 
-		printf "RECV (%i): SEND message (%i bytes) to %s (persistent: %i)\n",
-			$client->{client_id},
-			length $frame->body,
-			$destination,
-			$persistent;
+		$self->_log( 
+			sprintf ("RECV (%i): SEND message (%i bytes) to %s (persistent: %i)",
+				$client->{client_id},
+				length $frame->body,
+				$destination,
+				$persistent)
+		);
 
 		if ( $destination =~ /^\/queue\/(.*)$/ )
 		{
@@ -300,7 +326,7 @@ sub route_frame
 		}
 		else
 		{
-			print "Don't know how to handle destination: $destination\n";
+			$self->_log( 'error', "Don't know how to handle destination: $destination" );
 		}
 	}
 	elsif ( $frame->command eq 'SUBSCRIBE' )
@@ -308,17 +334,19 @@ sub route_frame
 		my $destination = $frame->headers->{destination};
 		my $ack_type    = $frame->headers->{ack} || 'auto';
 
-		printf "RECV (%i): SUBSCRIBE %s (ack: %s)\n",
-			$client->{client_id},
-			$destination,
-			$ack_type;
+		$self->_log(
+			sprintf ("RECV (%i): SUBSCRIBE %s (ack: %s)",
+				$client->{client_id},
+				$destination,
+				$ack_type)
+		);
 
 		if ( $destination =~ /^\/queue\/(.*)$/ )
 		{
 			my $queue_name = $1;
 			my $queue = $self->get_queue( $queue_name );
 
-			print "MASTER: Subscribing client $client->{client_id} to $queue_name\n";
+			$self->_log( "MASTER: Subscribing client $client->{client_id} to $queue_name" );
 
 			$queue->add_subscription( $client, $ack_type );
 		}
@@ -327,16 +355,18 @@ sub route_frame
 	{
 		my $destination = $frame->headers->{destination};
 
-		printf "RECV (%i): UNSUBSCRIBE %s\n",
-			$client->{client_id},
-			$destination;
+		$self->_log(
+			sprintf ("RECV (%i): UNSUBSCRIBE %s\n",
+				$client->{client_id},
+				$destination)
+		);
 
 		if ( $destination =~ /^\/queue\/(.*)$/ )
 		{
 			my $queue_name = $1;
 			my $queue = $self->get_queue( $queue_name );
 
-			print "MASTER: UN-subscribing client $client->{client_id} from $queue_name\n";
+			$self->_log( "MASTER: UN-subscribing client $client->{client_id} from $queue_name" );
 
 			$queue->remove_subscription( $client );
 		}
@@ -345,15 +375,17 @@ sub route_frame
 	{
 		my $message_id = $frame->headers->{'message-id'};
 
-		printf "RECV (%i): ACK - message %i\n",
-			$client->{client_id},
-			$message_id;
+		$self->_log(
+			sprintf ("RECV (%i): ACK - message %i",
+				$client->{client_id},
+				$message_id)
+		);
 
 		$self->ack_message( $client, $message_id );
 	}
 	else
 	{
-		print "ERROR: Don't know how to handle frame: " . $frame->as_string . "\n";
+		$self->_log( "ERROR: Don't know how to handle frame: " . $frame->as_string );
 	}
 }
 
@@ -382,7 +414,7 @@ sub push_unacked_message
 	
 	$self->{needs_ack}->{$message->{message_id}} = $unacked;
 
-	printf "MASTER: message $message->{message_id} needs ACK from client $client->{client}\n";
+	$self->_log( "MASTER: message $message->{message_id} needs ACK from client $client->{client}" );
 }
 
 sub pop_unacked_message
@@ -393,10 +425,10 @@ sub pop_unacked_message
 
 	if ( $client != $unacked->{client} )
 	{
-		print "DANGER! DANGER!  Someone is trying to ACK a message that doesn't belong to them\n";
-		print "message id: $message_id\n";
-		print "needs_ack says $unacked->{client}->{client_id}\n";
-		print "but we got a message from $client->{client_id}\n";
+		$self->_log( 'alert', "DANGER! Someone is trying to ACK a message that isn't theirs" );
+		$self->_log( 'alert', "message id: $message_id" );;
+		$self->_log( 'alert', "needs_ack says $unacked->{client}->{client_id}" );
+		$self->_log( 'alert', "but we got a message from $client->{client_id}" );
 		exit 1;
 		return undef;
 	}
@@ -417,7 +449,7 @@ sub ack_message
 
 	if ( not defined $unacked )
 	{
-		print "WARNING: Attempting to ACK a message not in our needs_ack list\n";
+		$self->_log( 'alert', "Attempting to ACK a message not in our needs_ack list" );
 		return;
 	}
 	
