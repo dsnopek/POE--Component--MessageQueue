@@ -154,36 +154,50 @@ sub remove
 	# remove from file system
 	if ( $self->{use_files} )
 	{
+		my $do_delete = 1;
+
 		if ( exists $self->{file_wheels}->{$message_id} )
 		{
+			$self->_log( 'debug', "Stopping wheels for mesasge $message_id (deleting)" );
+			
 			my $infos = $self->{file_wheels}->{$message_id};
 			my $wheel = $infos->{write_wheel} || $infos->{read_wheel};
 
 			if ( defined $wheel )
 			{
+				$self->_log( 'debug', "REALLY stopping wheels" );
+
 				my $wheel_id = $wheel->ID();
 
 				# stop the wheel
-				if ( $wheel )
-				{
-					$wheel->shutdown_input();
-					$wheel->shutdown_output();
-				}
+				$wheel->shutdown_input();
+				$wheel->shutdown_output();
 
 				# clear our state
-				delete $self->{file_wheels}->{$message_id};
-				delete $self->{wheel_to_message_map}->{$wheel_id};
+				#delete $self->{file_wheels}->{$message_id};
+				#delete $self->{wheel_to_message_map}->{$wheel_id};
+
+				# mark to actually delete message, but don't do it now
+				$self->{file_wheels}->{$message_id}->{delete_me} = 1;
+				$do_delete = 0;
 			}
 			else
 			{
+				$self->_log( 'debug', "Just Kidding!  Not really stopping wheels" );
+
 				# This can happen if we had to abort before wheel
 				# creation.  Somehow.  I'm not quite sure.
 				delete $self->{file_wheels}->{$message_id};
 			}
 		}
 
-		my $fn = "$self->{data_dir}/msg-$message_id.txt";
-		unlink $fn || $self->_log( "Unable to remove $fn: $!" );
+		# we won't actually delete if there is an open wheel
+		if ( $do_delete )
+		{
+			my $fn = "$self->{data_dir}/msg-$message_id.txt";
+			$self->_log( "Deleting $fn" );
+			unlink $fn || $self->_log( 'error', "Unable to remove $fn: $!" );
+		}
 	}
 
 	# remove the message from the backing store
@@ -452,6 +466,8 @@ sub _read_message_from_disk
 	my $fn = "$self->{data_dir}/msg-$message->{message_id}.txt";
 	my $fh = IO::File->new( $fn );
 	
+	$self->_log( 'debug', "Starting to read $fn from disk" );
+
 	# if we can't find the message body.  This usually happens as a result
 	# of crash recovery.
 	if ( not defined $fh )
@@ -495,7 +511,7 @@ sub _read_error
 {
 	my ($self, $op, $errnum, $errstr, $wheel_id) = @_[ OBJECT, ARG0..ARG3 ];
 
-	if ( $errnum == 0 )
+	if ( $op eq 'read' and $errnum == 0 )
 	{
 		# EOF!  Our message is now totally assembled.  Hurray!
 
@@ -505,7 +521,7 @@ sub _read_error
 		my $destination = $infos->{destination};
 		my $client_id   = $infos->{client_id};
 
-		#print "STORE: READ COMPLETE! For $client_id on $destination: $message->{body}\n";
+		$self->_log( 'debug', "STORE: READ COMPLETE!  Message $message_id" );
 
 		# send the message out!
 		$self->{dispatch_message}->( $message, $destination, $client_id );
@@ -513,6 +529,13 @@ sub _read_error
 		# clear our state
 		delete $self->{wheel_to_message_map}->{$wheel_id};
 		delete $self->{file_wheels}->{$message_id};
+
+		if ( $infos->{delete_me} )
+		{
+			my $fn = "$self->{data_dir}/msg-$message_id.txt";
+			$self->_log( 'debug', "READ: Actually deleting $fn" );
+			unlink $fn || $self->_log( 'error', "Unable to remove $fn: $!" );
+		}
 	}
 	else
 	{
@@ -527,8 +550,17 @@ sub _write_flushed_event
 	# remove from the first map
 	my $message_id = delete $self->{wheel_to_message_map}->{$wheel_id};
 
+	$self->_log( 'debug', "STORE: Finished writting message $message_id to disk" );
+
 	# remove from the second map
-	delete $self->{file_wheels}->{$message_id};
+	my $infos = delete $self->{file_wheels}->{$message_id};
+
+	if ( $infos->{delete_me} )
+	{
+		my $fn = "$self->{data_dir}/msg-$message_id.txt";
+		$self->_log( 'debug', "WRITE: Actually deleting $fn" );
+		unlink $fn || $self->_log( 'error', "Unable to remove $fn: $!" );
+	}
 }
 
 1;
