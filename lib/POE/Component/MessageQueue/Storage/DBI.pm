@@ -183,6 +183,11 @@ sub remove
 			}
 			else
 			{
+				# TODO: I think this case will never get called!  It used to get called
+				# but I think that was the result of some former bug that got fixed.
+				# I am letting the MQ run on real load for a while and then I'll search
+				# the logs.
+
 				$self->_log( 'debug', "Just Kidding!  Not really stopping wheels" );
 
 				# This can happen if we had to abort before wheel
@@ -191,7 +196,7 @@ sub remove
 			}
 		}
 
-		# we won't actually delete if there is an open wheel
+		# We won't actually delete if there is an open wheel!
 		if ( $do_delete )
 		{
 			my $fn = "$self->{data_dir}/msg-$message_id.txt";
@@ -532,6 +537,10 @@ sub _read_error
 
 		if ( $infos->{delete_me} )
 		{
+			# NOTE:  I have never seen this called, but it seems theoretically possible
+			# and considering the former problem with leaking FD's, I'd rather keep this
+			# here just in case.
+
 			my $fn = "$self->{data_dir}/msg-$message_id.txt";
 			$self->_log( 'debug', "READ: Actually deleting $fn" );
 			unlink $fn || $self->_log( 'error', "Unable to remove $fn: $!" );
@@ -557,6 +566,10 @@ sub _write_flushed_event
 
 	if ( $infos->{delete_me} )
 	{
+		# NOTE: If we were actively writting the file when the message to delete
+		# came, we cannot actually delete it until the FD gets flushed, or the FD
+		# will live until the program dies.
+
 		my $fn = "$self->{data_dir}/msg-$message_id.txt";
 		$self->_log( 'debug', "WRITE: Actually deleting $fn" );
 		unlink $fn || $self->_log( 'error', "Unable to remove $fn: $!" );
