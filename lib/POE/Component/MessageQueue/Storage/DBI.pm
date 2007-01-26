@@ -154,54 +154,29 @@ sub remove
 	# remove from file system
 	if ( $self->{use_files} )
 	{
-		my $do_delete = 1;
-
 		if ( exists $self->{file_wheels}->{$message_id} )
 		{
-			$self->_log( 'debug', "Stopping wheels for mesasge $message_id (deleting)" );
+			$self->_log( 'debug', "STORE: FILE: Stopping wheels for mesasge $message_id (deleting)" );
 			
 			my $infos = $self->{file_wheels}->{$message_id};
 			my $wheel = $infos->{write_wheel} || $infos->{read_wheel};
 
-			if ( defined $wheel )
-			{
-				$self->_log( 'debug', "REALLY stopping wheels" );
+			my $wheel_id = $wheel->ID();
 
-				my $wheel_id = $wheel->ID();
+			# stop the wheel
+			$wheel->shutdown_input();
+			$wheel->shutdown_output();
 
-				# stop the wheel
-				$wheel->shutdown_input();
-				$wheel->shutdown_output();
-
-				# clear our state
-				#delete $self->{file_wheels}->{$message_id};
-				#delete $self->{wheel_to_message_map}->{$wheel_id};
-
-				# mark to actually delete message, but don't do it now
-				$self->{file_wheels}->{$message_id}->{delete_me} = 1;
-				$do_delete = 0;
-			}
-			else
-			{
-				# TODO: I think this case will never get called!  It used to get called
-				# but I think that was the result of some former bug that got fixed.
-				# I am letting the MQ run on real load for a while and then I'll search
-				# the logs.
-
-				$self->_log( 'debug', "Just Kidding!  Not really stopping wheels" );
-
-				# This can happen if we had to abort before wheel
-				# creation.  Somehow.  I'm not quite sure.
-				delete $self->{file_wheels}->{$message_id};
-			}
+			# mark to actually delete message, but don't do it now, in order
+			# to not leak FD's!
+			$self->{file_wheels}->{$message_id}->{delete_me} = 1;
 		}
-
-		# We won't actually delete if there is an open wheel!
-		if ( $do_delete )
+		else
 		{
+			# Actually delete the file, but *only* if there are no open wheels.
 			my $fn = "$self->{data_dir}/msg-$message_id.txt";
-			$self->_log( "Deleting $fn" );
-			unlink $fn || $self->_log( 'error', "Unable to remove $fn: $!" );
+			$self->_log( 'debug', "STORE: FILE: Deleting $fn" );
+			unlink $fn || $self->_log( 'error', "STORE: FILE: Unable to remove $fn: $!" );
 		}
 	}
 
@@ -373,7 +348,7 @@ sub _message_from_store
 		# check to see if we even finished writting to disk
 		if ( defined $self->{file_wheels}->{$message->{message_id}} )
 		{
-			$self->_log( "STORE: RETURNING MESSAGE BEFORE COMPLETELY IN STORE: $message->{message_id}" );
+			$self->_log( "STORE: FILE: Returning message before in store: $message->{message_id}" );
 
 			# get (and remove) the wheel infos
 			my $info = delete $self->{file_wheels}->{$message->{message_id}};
@@ -432,8 +407,8 @@ sub _write_message_to_disk
 
 	if ( defined $self->{file_wheels}->{$message->{messages_id}} )
 	{
-		$self->_log( 'emergency', "_write_message_to_disk: A wheel already exists for this messages $message->{messages_id}!  This should never happen!" );
-		exit 1;
+		$self->_log( 'emergency', "POE::Component::MessageQueue::Store::DBI::_write_message_to_disk(): A wheel already exists for this messages $message->{messages_id}!  This should never happen!" );
+		return;
 	}
 
 	# setup the wheel
@@ -463,21 +438,21 @@ sub _read_message_from_disk
 
 	if ( defined $self->{file_wheels}->{$message->{messages_id}} )
 	{
-		$self->_log( 'emergency', "_read_message_from_disk: A wheel already exists for this messages $message->{messages_id}!  This should never happen!" );
-		exit 1;
+		$self->_log( 'emergency', "POE::Component::MessageQueue::Store::DBI::_read_message_from_disk(): A wheel already exists for this messages $message->{messages_id}!  This should never happen!" );
+		return;
 	}
 
 	# setup the wheel
 	my $fn = "$self->{data_dir}/msg-$message->{message_id}.txt";
 	my $fh = IO::File->new( $fn );
 	
-	$self->_log( 'debug', "Starting to read $fn from disk" );
+	$self->_log( 'debug', "STORE: FILE: Starting to read $fn from disk" );
 
 	# if we can't find the message body.  This usually happens as a result
 	# of crash recovery.
 	if ( not defined $fh )
 	{
-		$self->_log( 'warning', "STORE: Can't find $fn on disk!  Discarding message." );
+		$self->_log( 'warning', "STORE: FILE: Can't find $fn on disk!  Discarding message." );
 
 		# we simply discard the message
 		$self->remove( $message->{message_id} );
@@ -526,7 +501,7 @@ sub _read_error
 		my $destination = $infos->{destination};
 		my $client_id   = $infos->{client_id};
 
-		$self->_log( 'debug', "STORE: READ COMPLETE!  Message $message_id" );
+		$self->_log( 'debug', "STORE: FILE: Finished reading $self->{data_dir}/msg-$message_id.txt" );
 
 		# send the message out!
 		$self->{dispatch_message}->( $message, $destination, $client_id );
@@ -542,7 +517,7 @@ sub _read_error
 			# here just in case.
 
 			my $fn = "$self->{data_dir}/msg-$message_id.txt";
-			$self->_log( 'debug', "READ: Actually deleting $fn" );
+			$self->_log( 'debug', "STORE: FILE: Actually deleting $fn (on read error)" );
 			unlink $fn || $self->_log( 'error', "Unable to remove $fn: $!" );
 		}
 	}
@@ -559,7 +534,7 @@ sub _write_flushed_event
 	# remove from the first map
 	my $message_id = delete $self->{wheel_to_message_map}->{$wheel_id};
 
-	$self->_log( 'debug', "STORE: Finished writting message $message_id to disk" );
+	$self->_log( 'debug', "STORE: FILE: Finished writting message $message_id to disk" );
 
 	# remove from the second map
 	my $infos = delete $self->{file_wheels}->{$message_id};
@@ -571,7 +546,7 @@ sub _write_flushed_event
 		# will live until the program dies.
 
 		my $fn = "$self->{data_dir}/msg-$message_id.txt";
-		$self->_log( 'debug', "WRITE: Actually deleting $fn" );
+		$self->_log( 'debug', "STORE: FILE: Actually deleting $fn (on write flush)" );
 		unlink $fn || $self->_log( 'error', "Unable to remove $fn: $!" );
 	}
 }
