@@ -27,8 +27,7 @@ sub new
 	my $self = $class->SUPER::new( $args );
 
 	$self->{message_id} = 0;
-	$self->{claiming}   = { };
-	$self->{mesasges}   = [ ];
+	$self->{messages}   = [ ];
 
 	return $self;
 }
@@ -39,12 +38,34 @@ sub get_next_message_id
 	return ++$self->{message_id};
 }
 
+sub has_message
+{
+	my ($self, $message_id) = @_;
+
+	# find the message and remove it
+	foreach my $message ( @{$self->{messages}} )
+	{
+		if ( $message->{message_id} == $message_id )
+		{
+			return 1;
+		}
+	}
+
+	return 0;
+}
+
 sub store
 {
 	my ($self, $message) = @_;
 
 	# push onto our array
 	push @{$self->{messages}}, $message;
+
+	# call the message_stored handler
+	if ( defined $self->{message_stored} )
+	{
+		$self->{message_stored}->( $message->{destination} );
+	}
 }
 
 sub remove
@@ -59,9 +80,48 @@ sub remove
 		if ( $self->{messages}->[$i]->{message_id} == $message_id )
 		{
 			splice @{$self->{messages}}, $i, 1;
-			last;
+
+			# return 1 to denote that a message was actually removed
+			return 1;
 		}
 	}
+
+	return 0;
+}
+
+sub remove_unused
+{
+	my ($self, $message_ids) = @_;
+
+	my $max = scalar @{$self->{messages}};
+	my @unused;
+
+	# find the message and remove it
+	for( my $i = 0; $i < $max; $i++ )
+	{
+		my $message = $self->{messages}->[$i];
+
+		if ( not defined $message->{in_use_by} )
+		{
+			# check if its on the list of message ids
+			foreach my $other_id ( @$message_ids )
+			{
+				if ( $message->{message_id} == $other_id )
+				{
+					# put on our list
+					push @unused, $message;
+
+					# remove
+					splice @{$self->{messages}}, $i--, 1;
+
+					# move onto next message
+					last;
+				}
+			}
+		}
+	}
+
+	return \@unused;
 }
 
 sub claim_and_retrieve
@@ -106,12 +166,12 @@ sub claim_and_retrieve
 			# let it know that the destination is ready
 			$self->{destination_ready}->( $destination );
 
-			last;
+			# we are always capable to attempt to claim
+			return 1;
 		}
 	}
 	
-	# we are always capable to attempt to claim
-	return 1;
+	return 0;
 }
 
 # unmark all messages owned by this client

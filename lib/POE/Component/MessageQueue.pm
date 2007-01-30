@@ -467,3 +467,17 @@ sub ack_message
 
 1;
 
+__END__
+
+=pod
+
+=head1 NAME
+
+POE::Component::MessageQueue - A POE message queue that uses STOMP for the communication protocol
+
+=head1 SYNOPSIS
+
+=head1 DESCRIPTION
+
+=cut
+
