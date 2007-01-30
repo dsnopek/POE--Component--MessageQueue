@@ -153,7 +153,12 @@ sub store
 	$self->{front_store}->store( $message );
 
 	# mark the timestamp that this message was added
-	$self->{timestamps}->{$message->{message_id}} = time();
+	if ( $message->{persistent} )
+	{
+		# don't add if not persistent so that non-persistent messages are
+		# never considered for adding to the backing store.
+		$self->{timestamps}->{$message->{message_id}} = time();
+	}
 
 	$self->_log( "STORE: MEMORY: Added $message->{message_id} to in-memory store" );
 }

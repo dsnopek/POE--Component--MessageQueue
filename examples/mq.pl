@@ -20,7 +20,7 @@ POE::Component::MessageQueue->new({
 
 	storage => POE::Component::MessageQueue::Storage::Complex->new({
 		data_dir => $DATA_DIR,
-		timeout  => 10
+		timeout  => 2
 	})
 });
 

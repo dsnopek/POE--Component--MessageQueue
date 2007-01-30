@@ -477,7 +477,173 @@ POE::Component::MessageQueue - A POE message queue that uses STOMP for the commu
 
 =head1 SYNOPSIS
 
+  use POE;
+  use POE::Component::Logger;
+  use POE::Component::MessageQueue;
+  use POE::Component::MessageQueue::Storage::Complex;
+  use strict;
+
+  my $DATA_DIR = '/tmp/perl_mq';
+
+  # we create a logger, because a production message queue would
+  # really need one.
+  POE::Component::Logger->spawn(
+    ConfigFile => 'log.conf',
+    Alias      => 'mq_logger'
+  );
+
+  POE::Component::MessageQueue->new({
+    port     => 61613,            # Optional.
+    address  => '127.0.0.1',      # Optional.
+    hostname => 'localhost',      # Optional.
+    domain   => AF_INET,          # Optional.
+    
+    logger_alias => 'mq_logger',  # Optional.
+
+    # Required!!
+    storage => POE::Component::MessageQueue::Storage::Complex->new({
+      data_dir => $DATA_DIR,
+      timeout  => 2
+    })
+  });
+
+  POE::Kernel->run();
+  exit;
+
 =head1 DESCRIPTION
+
+This module implements a message queue [1] on top of L<POE> that communicates
+via the STOMP protocol [2].
+
+There exist a few good Open Source message queues, most notably ActiveMQ [3] which
+is written in Java.  It provides more features and flexibility than this one (while
+still implementing the STOMP protocol), however, it was (at the time I last used it)
+very unstable.  With every version there was a different mix of memory leaks, persistence
+problems, STOMP bugs, and file descriptor leaks.  Due to its complexity I was
+unable to be very helpful in fixing any of these problems, so I wrote this module!
+
+This component distinguishes itself in a number of ways:
+
+=over 4
+
+=item *
+
+No OS threads, its asynchronise.  (Thanks to L<POE>!)
+
+=item *
+
+Persistence was a high priority.
+
+=item *
+
+A strong effort is put to low memory and high performance.
+
+=item *
+
+Message storage can be provided by a number of different backends.
+
+=back
+
+=head1 STORAGE
+
+When creating an instance of this component you must pass in a storage object
+so that the message queue knows how to store its messages.  There are three storage
+backends provided with this distribution.  See their individual documentation for 
+usage information.  Here is a quick break down:
+
+=over 4
+
+=item *
+
+L<POE::Component::MessageQueue::Storage::Memory> -- The simplest storage backend.  It keeps messages in memory and provides absolutely no presistence.
+
+=item *
+
+L<POE::Component::MessageQueue::Storage::DBI> -- Uses Perl L<DBI> and optionally the filesystem to store messages.  When using this backend, all messages are persistent regardless of whether a message has the persistent flag set or not.
+
+=item *
+
+L<POE::Component::MessageQueue::Storage::Complex> -- A combination of the two above modules.  It will keep messages in Memory and move them into DBI after not being sent for a configured number of seconds.  It actually uses the above modules in its implementation and has the DBI backend configured to use SQLite2 and the filesystem.  It is capable of correctly handling a messages persistent flag.  This is the recommended storage backend and should provide the best performance when both providers and consumers are connected to the queue at the same time.
+
+=back
+
+=head1 CONSTRUCTOR PARAMETERS
+
+=over 2
+
+=item storage => SCALAR
+
+The only required parameter.  Sets the object that the message queue should use for
+message storage.  This must be an object that follows the interface of
+L<POE::Component::MessageQueue::Storage> but doesn't necessarily need to be a child
+of that class.
+
+=item port => SCALAR
+
+The optional port to listen on.  If none is given, we use 61613 by default.
+
+=item address => SCALAR
+
+The option interface address to bind to.  It defaults to INADDR_ANY or INADDR6_ANY
+when using IPv4 or IPv6, respectively.
+
+=item hostname => SCALAR
+
+The optional name of the interface to bind to.  This will be converted to the IP and
+used as if you set I<address> instead.  If you set both I<hostname> and I<address>,
+I<address> will override this value.
+
+=item domain => SCALAR
+
+Optionally specifies the domain within which communication will take place.  Defaults
+to AF_INET.
+
+=item logger_alias => SCALAR
+
+Opitionally set the alias of the POE::Component::Logger object that you want the message
+queue to log to.  If no value is given, log information is simply printed to STDERR.
+
+=back
+
+=head1 REFERENCES
+
+=over 4
+
+=item [1]
+
+L<http://en.wikipedia.org/Message_Queue> -- General information about message queues
+
+=item [2]
+
+L<http://stomp.codehaus.org/Protocol> -- The informal "spec" for the STOMP protocol
+
+=item [3]
+
+L<http://www.activemq.org/> -- ActiveMQ is a popular Java-based message queue
+
+=back
+
+=head1 SEE ALSO
+
+I<External modules:>
+
+L<POE>, L<POE::Component::Server::Stomp>, L<Net::Stomp>, L<POE::Component::Logger>
+
+I<Internal modules:>
+
+L<POE::Component::MessageQueue::Storage>, L<POE::Component::MessageQueue::Storage::Memory>, L<POE::Component::MessageQueue::Storage::DBI>, L<POE::Component::MessageQueue::Storage::Complex>
+
+=head1 BUGS
+
+There is a mysterious memory leak I still haven't found.  I have narrowed it down
+to B<not> being in the storage layer but thats about it.  That said, I personally am
+using this in production for thousands of large messages daily and it takes quite
+a few days to get unreasonably bloated.  I do hope to find it but as is said, "Release
+often -- release early."
+
+=head1 AUTHOR
+
+Copyright 2007 David Snopek <dsnopek@gmail.com>
 
 =cut
 
