@@ -361,6 +361,12 @@ sub _message_from_store
 			# second, put the body on the message
 			$message->{body} = $info->{body};
 
+			# third, remove the map entry
+			delete $self->{wheel_to_message_map}->{$wheel->ID()};
+
+			# TEMP: Checking for suspected cause of memory leak.
+			$self->_log( 'debug', sprintf('_message_from_store: wheel_to_message_map=%i file_wheels=%i', scalar keys %{$self->{wheel_to_message_map}}, scalar keys %{$self->{file_wheels}}) );
+
 			# finally, distribute the message
 			$self->{dispatch_message}->( $message, $destination, $client_id );
 		}
@@ -430,6 +436,9 @@ sub _write_message_to_disk
 		body        => $body
 	};
 	$self->{wheel_to_message_map}->{$wheel->ID()} = $message->{message_id};
+
+	# TEMP: Checking for suspected cause of memory leak.
+	$self->_log( 'debug', sprintf('_write_message_to_disk: wheel_to_message_map=%i file_wheels=%i', scalar keys %{$self->{wheel_to_message_map}}, scalar keys %{$self->{file_wheels}}) );
 }
 
 sub _read_message_from_disk
@@ -475,6 +484,9 @@ sub _read_message_from_disk
 		client_id   => $client_id
 	};
 	$self->{wheel_to_message_map}->{$wheel->ID()} = $message->{message_id};
+
+	# TEMP: Checking for suspected cause of memory leak.
+	$self->_log( 'debug', sprintf('_read_message_from_disk: wheel_to_message_map=%i file_wheels=%i', scalar keys %{$self->{wheel_to_message_map}}, scalar keys %{$self->{file_wheels}}) );
 }
 
 sub _read_input
@@ -510,6 +522,9 @@ sub _read_error
 		delete $self->{wheel_to_message_map}->{$wheel_id};
 		delete $self->{file_wheels}->{$message_id};
 
+		# TEMP: Checking for suspected cause of memory leak.
+		$self->_log( 'debug', sprintf('_read_error: wheel_to_message_map=%i file_wheels=%i', scalar keys %{$self->{wheel_to_message_map}}, scalar keys %{$self->{file_wheels}}) );
+
 		if ( $infos->{delete_me} )
 		{
 			# NOTE:  I have never seen this called, but it seems theoretically possible
@@ -538,6 +553,9 @@ sub _write_flushed_event
 
 	# remove from the second map
 	my $infos = delete $self->{file_wheels}->{$message_id};
+
+	# TEMP: Checking for suspected cause of memory leak.
+	$self->_log( 'debug', sprintf('_write_flushed_event: wheel_to_message_map=%i file_wheels=%i', scalar keys %{$self->{wheel_to_message_map}}, scalar keys %{$self->{file_wheels}}) );
 
 	if ( $infos->{delete_me} )
 	{
