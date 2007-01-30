@@ -214,7 +214,7 @@ sub _check_messages
 	# get a list of message_ids that should be moved
 	while( my ($message_id, $timestamp) = each %{$self->{timestamps}} )
 	{
-		if ( $threshold > $timestamp )
+		if ( $threshold >= $timestamp )
 		{
 			push @outdated, $message_id;
 		}
