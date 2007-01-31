@@ -1,6 +1,5 @@
 
 package Local::Storage::DBI;
-use base qw(Test::Class);
 
 use POE::Kernel;
 use POE::Session;
