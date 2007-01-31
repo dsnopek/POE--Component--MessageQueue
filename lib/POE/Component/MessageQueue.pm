@@ -459,7 +459,12 @@ sub ack_message
 	my $queue = $self->get_queue( $unacked->{queue_name} );
 
 	# ACK the subscriber back into ready mode.
-	$queue->get_subscription( $client )->set_done_with_message();
+	my $sub = $queue->get_subscription( $client );
+	if ( defined $sub )
+	{
+		# Must check if subscriber is still connected before setting!
+		$sub->set_done_with_message();
+	}
 
 	# pump the queue, so that this subscriber will get another message
 	$queue->pump();
