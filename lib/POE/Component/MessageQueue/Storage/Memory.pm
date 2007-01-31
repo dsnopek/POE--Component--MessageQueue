@@ -9,22 +9,7 @@ use Data::Dumper;
 sub new
 {
 	my $class = shift;
-	my $args  = shift;
-
-	my $dsn;
-	my $username;
-	my $password;
-	my $options;
-
-	if ( ref($args) eq 'HASH' )
-	{
-		$dsn      = $args->{dsn};
-		$username = $args->{username};
-		$password = $args->{password};
-		$options  = $args->{options};
-	}
-
-	my $self = $class->SUPER::new( $args );
+	my $self  = $class->SUPER::new( @_ );
 
 	$self->{message_id} = 0;
 	$self->{messages}   = [ ];
@@ -190,3 +175,47 @@ sub disown
 
 1;
 
+__END__
+
+=pod
+
+=head1 NAME
+
+POE::Component::MessageQueue::Storage::Memory -- In memory storage backend.
+
+=head1 SYNOPSIS
+
+  use POE;
+  use POE::Component::MessageQueue;
+  use POE::Component::MessageQueue::Storage::Memory;
+  use strict;
+
+  POE::Component::MessageQueue->new({
+    storage => POE::Component::MessageQueue::Storage::Memory->new()
+  });
+
+  POE::Kernel->run();
+  exit;
+
+=head1 DESCRIPTION
+
+A storage backend that keeps all the messages in memory.  Provides no persistence
+what-so-ever.
+
+I wouldn't suggest using this as your main storage backend because if messages aren't
+removed by consumers, it will continue to consume more memory until it explodes.  Check-out
+L<POE::Component::MessageQueue::Complex> which uses this module internally to keep messages
+in memory for a period of time before moving them into persistent storage.
+
+=head1 CONSTRUCT PARAMETERS
+
+None to speak of!
+
+=head1 SEE ALSO
+
+L<POE::Component::MessageQueue>,
+L<POE::Component::MessageQueue::Storage>,
+L<POE::Component::MessageQueue::Storage::DBI>,
+L<POE::Component::MessageQueue::Storage::Complex>
+
+=cut

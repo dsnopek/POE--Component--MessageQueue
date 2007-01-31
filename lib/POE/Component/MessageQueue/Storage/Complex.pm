@@ -247,3 +247,73 @@ sub _check_messages
 
 1;
 
+__END__
+
+=pod
+
+=head1 NAME
+
+POE::Component::MessageQueue::Storage::Complex -- A storage backend that keeps messages in memory but moves them into persistent storage after a given number of seconds.
+
+=head1 SYNOPSIS
+
+  use POE;
+  use POE::Component::MessageQueue;
+  use POE::Component::MessageQueue::Storage::Complex;
+  use strict;
+
+  my $DATA_DIR = '/tmp/perl_mq';
+
+  POE::Component::MessageQueue->new({
+    storage => POE::Component::MessageQueue::Storage::Complex->new({
+      data_dir => $DATA_DIR,
+      timeout  => 2
+    })
+  });
+
+  POE::Kernel->run();
+  exit;
+
+=head1 DESCRIPTION
+
+This storage backend combines the two other provided backends.  It uses
+L<POE::Component::MessageQueue::Storage::Memory> as the "front-end storage" and 
+L<POE::Component::MessageQueue::Storage::DBI> as the "back-end storage".  Message
+are initially put into the front-end storage and will be moved into the backend
+storage after not being claimed for a given number of seconds.
+
+The L<POE::Component::MessageQueue::Storage::DBI> component used internally is configured to
+use L<DBD::SQLite2> and files for message body's.  Based on my experience this is the most
+efficient way to use it.
+
+This storage backend is recommended.  It should provide the best performance while (if
+configured sanely) still providing a reasonable amount of persistence with little
+risk of eating all your memory under high load.  This is also the only storage
+backend to correctly honor the persistent flag and will only persist those messages
+with it set.
+
+=head1 CONSTRUCTOR PARAMETERS
+
+=over 2
+
+=item data_dir => SCALAR
+
+The directory to store the SQLite database file and the message body's.
+
+=item timeout => SCALAR
+
+The number of seconds a message will remain in non-persistent storage if left unclaimed.  Ie. After this many seconds if the message hasn't been claimed, it will be moved to persistent storage.
+
+=back
+
+=head1 SEE ALSO
+
+L<DBI>,
+L<DBD::SQLite2>,
+L<POE::Component::MessageQueue>,
+L<POE::Component::MessageQueue::Storage>,
+L<POE::Component::MessageQueue::Storage::Memory>,
+L<POE::Component::MessageQueue::Storage::DBI>
+
+=cut
+

@@ -571,3 +571,136 @@ sub _write_flushed_event
 
 1;
 
+__END__
+
+=pod
+
+=head1 NAME
+
+POE::Component::MessageQueue::Storage::DBI -- A storage backend that uses Perl I<DBI>
+
+=head1 SYNOPSIS
+
+  use POE;
+  use POE::Component::MessageQueue;
+  use POE::Component::MessageQueue::Storage::DBI;
+  use strict;
+
+  # For mysql:
+  my $DB_DSN      = 'DBI:mysql:database=perl_mq';
+  my $DB_USERNAME = 'perl_mq';
+  my $DB_PASSWORD = 'perl_mq';
+
+  ### Mode 1: Use only DBI and keep message body in the database:
+
+  POE::Component::MessageQueue->new({
+    storage => POE::Component::MessageQueue::Storage::DBI->new({
+      dsn      => $DB_DSN,
+      username => $DB_USERNAME,
+      password => $DB_PASSWORD,
+    })
+  });
+
+  ### Mode 2: Use DBI for message properties but keep the body on the filesystem:
+
+  POE::Component::MessageQueue->new({
+    storage => POE::Component::MessageQueue::Storage::DBI->new({
+      dsn      => $DB_DSN,
+      username => $DB_USERNAME,
+      password => $DB_PASSWORD,
+
+      # keep the message body in files!
+      data_dir  => $DATA_DIR,
+      use_files => 1
+    })
+  });
+
+  POE::Kernel->run();
+  exit;
+
+=head1 DESCRIPTION
+
+A storage backend that uses DBI.  There are two main modes of operation:
+
+=over 4
+
+=item *
+
+Keep the messages (including the body) in the database.
+
+=item *
+
+Keep the message body on the filesystem and everything else in the database.
+
+=back
+
+If you are only going to deal with very small messages then you can safely keep
+the message body in the database.  However, this is still not really recommended
+for a couple of reasons:
+
+=over 4
+
+=item *
+
+All database access is conducted through L<POE::Component::EasyDBI> which maintains
+a single forked process to do database access.  So, not only must message body be
+communicated to this other proccess via a pipe, but only one database operation can
+happen at once.  The best performance can be achieved by having this forked process
+do as little as possible.
+
+=item *
+
+L<POE::Component::EasyDBI> has a limit to the size of queries it will take and query
+result it will return.
+
+=item *
+
+A number of database have hard limits on the amount of data that can be stored in
+a BLOB (namely, SQLite2 which sets an artificially lower limit than it is actually
+capable of).
+
+=item *
+
+Keeping large amounts of BLOB data in a database is bad form anyway!  Let the database do what
+it does best: index and look-up information quickly.
+
+=back
+
+While I would argument that using this module is less efficient than using
+L<POE::Component::MessageQueue::Storage::Complex>, using it directly would make sense if
+persistance was your primary concern.  All messages stored via this backend will be
+persistent regardless of whether they have the persistent flag set or not.  Every message
+is stored, even if it is handled right away and will be removed immediately after
+having been stored.
+
+=head1 CONSTRUCTOR PARAMETERS
+
+=over 2
+
+=item dsn => SCALAR
+
+=item username => SCALAR
+
+=item password => SCALAR
+
+=item use_files => SCALAR
+
+Set to 1 to store the massage body's on the filesystem.  Default is 0.
+
+=item data_dir => SCALAR
+
+The directory to store the files containing the message body's if I<use_files> was set to 1.
+
+=back
+
+=head1 SEE ALSO
+
+L<DBI>,
+L<POE::Component::EasyDBI>,
+L<POE::Component::MessageQueue>,
+L<POE::Component::MessageQueue::Storage>,
+L<POE::Component::MessageQueue::Storage::Memory>,
+L<POE::Component::MessageQueue::Storage::Complex>
+
+=cut
+

@@ -563,7 +563,7 @@ L<POE::Component::MessageQueue::Storage::DBI> -- Uses Perl L<DBI> and optionally
 
 =item *
 
-L<POE::Component::MessageQueue::Storage::Complex> -- A combination of the two above modules.  It will keep messages in Memory and move them into DBI after not being sent for a configured number of seconds.  It actually uses the above modules in its implementation and has the DBI backend configured to use SQLite2 and the filesystem.  It is capable of correctly handling a messages persistent flag.  This is the recommended storage backend and should provide the best performance when both providers and consumers are connected to the queue at the same time.
+L<POE::Component::MessageQueue::Storage::Complex> -- A combination of the two above modules.  It will keep messages in Memory and move them into DBI after not being sent for a given number of seconds.  It actually uses the above modules in its implementation and so has the DBI backend configured to use SQLite2 and the filesystem.  It is capable of correctly handling a messages persistent flag.  This is the recommended storage backend and should provide the best performance when both providers and consumers are connected to the queue at the same time.
 
 =back
 
@@ -623,11 +623,38 @@ L<http://www.activemq.org/> -- ActiveMQ is a popular Java-based message queue
 
 =back
 
+=head1 FUTURE
+
+The goal of this module is not to support every possible feature but rather to be
+small, simple, efficient and robust.  So, for the most part expect only incremental
+changes to address those areas.  Other than that, here are some things I would like
+to implement someday in the future:
+
+=over 4
+
+=item *
+
+Full support for the STOMP protocol.
+
+=item *
+
+Topics a la "topic://" in ActiveMQ.
+
+=item *
+
+Some kind of security based on username/password.
+
+=item *
+
+Optional add on module via L<POE::Component::IKC::Server> that allows to introspect the state of the message queue.
+
+=back
+
 =head1 SEE ALSO
 
 I<External modules:>
 
-L<POE>, L<POE::Component::Server::Stomp>, L<Net::Stomp>, L<POE::Component::Logger>
+L<POE>, L<POE::Component::Server::Stomp>, L<Net::Stomp>, L<POE::Component::Logger>, L<DBD::SQLite2>
 
 I<Internal modules:>
 
