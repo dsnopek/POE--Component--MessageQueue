@@ -4,6 +4,19 @@ package POE::Component::MessageQueue::Logger;
 use POE::Kernel;
 use strict;
 
+my $LEVELS = {
+	debug     => 0,
+	info      => 1,
+	notice    => 2,
+	warning   => 3,
+	error     => 4,
+	critical  => 5,
+	alert     => 6,
+	emergency => 7
+};
+
+my $LEVEL = 1;
+
 sub new
 {
 	my $class = shift;
@@ -40,7 +53,7 @@ sub log
 	{
 		$poe_kernel->post( $self->{logger_alias}, $type, "$msg\n" );
 	}
-	else
+	elsif ( $LEVELS->{$type} >= $LEVEL )
 	{
 		print STDERR "$msg\n";
 	}
