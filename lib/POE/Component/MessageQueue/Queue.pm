@@ -183,6 +183,10 @@ sub pump
 			{
 				# makes sure that this subscription isn't double picked
 				$sub->set_handling_message();
+
+				# TODO: tracking afformentioned bug!
+				my $ready = $sub->is_ready();
+				$self->_log( 'debug', "sub (client $sub->{client}->{client_id}): is_ready() = $ready" );
 			}
 		}
 	}
