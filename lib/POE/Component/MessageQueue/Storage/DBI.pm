@@ -250,7 +250,7 @@ sub disown
 				sql          => 'UPDATE messages SET in_use_by = NULL WHERE in_use_by = ?',
 				placeholders => [ $client_id ],
 				session      => $self->{session},
-				event        => 'easydbi_handler',
+				event        => '_easydbi_handler',
 			}
 		);
 	}
@@ -261,7 +261,7 @@ sub disown
 				sql          => 'UPDATE messages SET in_use_by = NULL WHERE message_id = ? AND in_use_by = ?',
 				placeholders => [ $message_id, $client_id ],
 				session      => $self->{session},
-				event        => 'easydbi_handler',
+				event        => '_easydbi_handler',
 			}
 		);
 	}

@@ -218,7 +218,7 @@ sub dispatch_message_to
 
 		# The message *NEEDS* to be disowned in the storage layer, otherwise
 		# it will live forever as being claimed by a client that doesn't exist.
-		$self->get_parent()->get_storage()->disown( $reciever->{client_id}, $message->{message_id} );
+		$self->get_parent()->get_storage()->disown( $receiver->{client_id}, $message->{message_id} );
 
 		# pump the queue to get the message to another suscriber.
 		$self->pump();
