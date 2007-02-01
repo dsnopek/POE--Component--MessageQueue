@@ -161,7 +161,7 @@ sub disown
 {
 	my ($self, $destination, $client_id) = @_;
 
-	foreach my $message ( @{$self->{message}} )
+	foreach my $message ( @{$self->{messages}} )
 	{
 		if ( $message->{destination} eq $destination and $message->{in_use_by} == $client_id )
 		{
