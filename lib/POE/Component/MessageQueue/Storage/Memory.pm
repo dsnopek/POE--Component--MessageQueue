@@ -74,39 +74,36 @@ sub remove
 	return 0;
 }
 
-sub remove_unused
+sub remove_multiple
 {
 	my ($self, $message_ids) = @_;
 
 	my $max = scalar @{$self->{messages}};
-	my @unused;
+	my @removed;
 
 	# find the message and remove it
 	for( my $i = 0; $i < $max; $i++ )
 	{
 		my $message = $self->{messages}->[$i];
 
-		if ( not defined $message->{in_use_by} )
+		# check if its on the list of message ids
+		foreach my $other_id ( @$message_ids )
 		{
-			# check if its on the list of message ids
-			foreach my $other_id ( @$message_ids )
+			if ( $message->{message_id} == $other_id )
 			{
-				if ( $message->{message_id} == $other_id )
-				{
-					# put on our list
-					push @unused, $message;
+				# put on our list
+				push @removed, $message;
 
-					# remove
-					splice @{$self->{messages}}, $i--, 1;
+				# remove
+				splice @{$self->{messages}}, $i--, 1;
 
-					# move onto next message
-					last;
-				}
+				# move onto next message
+				last;
 			}
 		}
 	}
 
-	return \@unused;
+	return \@removed;
 }
 
 sub claim_and_retrieve

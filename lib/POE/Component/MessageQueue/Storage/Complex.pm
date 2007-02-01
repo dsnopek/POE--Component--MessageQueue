@@ -216,7 +216,7 @@ sub _check_messages
 	my $threshold = time() - $self->{timeout};
 	my @outdated;
 
-	# get a list of message_ids that should be moved
+	# get a list of message_ids that should be moved based on the timestamp list
 	while( my ($message_id, $timestamp) = each %{$self->{timestamps}} )
 	{
 		if ( $threshold >= $timestamp )
@@ -228,7 +228,7 @@ sub _check_messages
 	# remove the outdated messages from the front store and send them to the back store
 	if ( scalar @outdated > 0)
 	{
-		my $messages = $self->{front_store}->remove_unused( \@outdated );
+		my $messages = $self->{front_store}->remove_multiple( \@outdated );
 		foreach my $message ( @$messages )
 		{
 			$self->_log( "STORE: COMPLEX: Moving message $message->{message_id} into backing store" );
