@@ -104,7 +104,7 @@ sub claim_and_retrieve
 
 sub disown
 {
-	my ($self, $client_id) = @_;
+	my ($self, $client_id, $message_id) = @_;
 
 	die "Abstract.";
 }
@@ -161,9 +161,9 @@ Takes a message_id to be removed from the storage backend.
 
 Takes the destination string and client id (or a HASHREF with keys "destination" and "client_id").  Should claim a message for the given client id on the given destination.  This call will eventually result in the I<dispatch_message_handler> and I<destination_ready_handler> being called exactly once each.
 
-=item disown I<SCALAR>
+=item disown I<SCALAR>, (I<SCALAR>)
 
-Take a client id.  All messages which are owned by this client id should be set as owned by nobody.
+Takes a client id and optionally a message id.  If message id is undefined, all messages which are owned by this client id should be set as owned by nobody.  Otherwise, only disown the specific message id (and only if it is infacted owned by the given client id!).
 
 =back
 

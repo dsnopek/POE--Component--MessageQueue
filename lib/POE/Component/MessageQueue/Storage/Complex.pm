@@ -35,7 +35,7 @@ sub new
 	if ( ref($args) eq 'HASH' )
 	{
 		$data_dir = $args->{data_dir};
-		$timeout  = $args->{timeout} || 6;
+		$timeout  = $args->{timeout} || 4;
 	}
 
 	# create the datadir

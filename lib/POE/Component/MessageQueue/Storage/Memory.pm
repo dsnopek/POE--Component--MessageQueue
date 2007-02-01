@@ -162,12 +162,19 @@ sub claim_and_retrieve
 # unmark all messages owned by this client
 sub disown
 {
-	my ($self, $client_id) = @_;
+	my ($self, $client_id, $message_id) = @_;
 
 	foreach my $message ( @{$self->{message}} )
 	{
 		if ( $message->{in_use_by} == $client_id )
 		{
+			if ( defined $message_id && $message->{message_id} != $message )
+			{
+				# if we are looking for only a specifc message id, then
+				# skip this one if it isn't it.
+				next;
+			}
+
 			$message->{in_use_by} = undef;
 		}
 	}

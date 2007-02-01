@@ -241,16 +241,30 @@ sub claim_and_retrieve
 # unmark all messages owned by this client
 sub disown
 {
-	my ($self, $client_id) = @_;
+	my ($self, $client_id, $message_id) = @_;
 
-	$poe_kernel->post( $self->{easydbi},
-		do => {
-			sql          => 'UPDATE messages SET in_use_by = NULL WHERE in_use_by = ?',
-			placeholders => [ $client_id ],
-			session      => $self->{session},
-			event        => 'easydbi_handler',
-		}
-	);
+	if ( not defined $message_id )
+	{
+		$poe_kernel->post( $self->{easydbi},
+			do => {
+				sql          => 'UPDATE messages SET in_use_by = NULL WHERE in_use_by = ?',
+				placeholders => [ $client_id ],
+				session      => $self->{session},
+				event        => 'easydbi_handler',
+			}
+		);
+	}
+	else
+	{
+		$poe_kernel->post( $self->{easydbi},
+			do => {
+				sql          => 'UPDATE messages SET in_use_by = NULL WHERE message_id = ? AND in_use_by = ?',
+				placeholders => [ $message_id, $client_id ],
+				session      => $self->{session},
+				event        => 'easydbi_handler',
+			}
+		);
+	}
 }
 
 #
@@ -349,25 +363,13 @@ sub _message_from_store
 		if ( defined $self->{file_wheels}->{$message->{message_id}} )
 		{
 			$self->_log( "STORE: FILE: Returning message before in store: $message->{message_id}" );
+			# attach the saved body to the message
+			$message->{body} = $self->{file_wheels}->{$message->{message_id}}->{body};
 
-			# get (and remove) the wheel infos
-			my $info = delete $self->{file_wheels}->{$message->{message_id}};
+			# NOTE: We don't stop writting, because if the message is not 
+			# removed (ie. no ACK) we want it to get saved to disk.
 
-			# first, stop the wheel
-			my $wheel = $info->{write_wheel};
-			$wheel->shutdown_input();
-			$wheel->shutdown_output();
-
-			# second, put the body on the message
-			$message->{body} = $info->{body};
-
-			# third, remove the map entry
-			delete $self->{wheel_to_message_map}->{$wheel->ID()};
-
-			# TEMP: Checking for suspected cause of memory leak.
-			$self->_log( 'debug', sprintf('_message_from_store: wheel_to_message_map=%i file_wheels=%i', scalar keys %{$self->{wheel_to_message_map}}, scalar keys %{$self->{file_wheels}}) );
-
-			# finally, distribute the message
+			# distribute the message
 			$self->{dispatch_message}->( $message, $destination, $client_id );
 		}
 		else

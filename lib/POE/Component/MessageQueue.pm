@@ -414,7 +414,7 @@ sub push_unacked_message
 	
 	$self->{needs_ack}->{$message->{message_id}} = $unacked;
 
-	$self->_log( "MASTER: message $message->{message_id} needs ACK from client $client->{client}" );
+	$self->_log( "MASTER: message $message->{message_id} needs ACK from client $client->{client_id}" );
 }
 
 sub pop_unacked_message
