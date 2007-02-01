@@ -174,6 +174,10 @@ sub pump
 				client_id   => $sub->{client}->{client_id}
 			});
 
+			# TODO: attempting to locate a bug where multiple messages are being
+			# sent to a subscriber at a time.
+			$self->_log( 'debug', "claim_and_retreive for $sub->{client}->{client_id} on $self->{queue_name}: $ret" );
+
 			# if a message was actually claimed!
 			if ( $ret )
 			{
@@ -239,7 +243,7 @@ sub dispatch_message_to
 	if ( $sub->{ack_type} eq 'client' )
 	{
 		# Put into waiting for ACK mode.
-		$sub->set_handling_message( $message );
+		$sub->set_handling_message();
 
 		# add to the general list of messages requiring ACK
 		$self->get_parent()->push_unacked_message( $message, $sub->get_client() );

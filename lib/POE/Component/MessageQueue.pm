@@ -412,6 +412,10 @@ sub push_unacked_message
 	
 	$self->{needs_ack}->{$message->{message_id}} = $unacked;
 
+	# TODO: looking for potential leak
+	my $needs_ack_count = scalar keys %{$self->{needs_ack}};
+	$self->_log( 'debug', "MASTER: needs_ack_count=$needs_ack_count" );
+
 	$self->_log( "MASTER: message $message->{message_id} needs ACK from client $client->{client_id}" );
 }
 
