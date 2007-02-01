@@ -132,18 +132,11 @@ sub remove_client
 	
 	my $client = $self->get_client( $client_id );
 
-	# deal with all queues it may be subscribed to.
-	if ( scalar @{$client->{queue_names}} )
+	# remove subscriptions to all queues
+	foreach my $queue_name ( @{$client->{queue_names}} )
 	{
-		# mark all messages owned by this client to be owned by nobody.
-		$self->{storage}->disown( $client_id );
-
-		# remove subscriptions to all queues
-		foreach my $queue_name ( @{$client->{queue_names}} )
-		{
-			my $queue = $self->get_queue( $queue_name );
-			$queue->remove_subscription( $client );
-		}
+		my $queue = $self->get_queue( $queue_name );
+		$queue->remove_subscription( $client );
 	}
 
 	# remove from the client list

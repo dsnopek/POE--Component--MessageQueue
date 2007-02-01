@@ -200,10 +200,10 @@ sub claim_and_retrieve
 # unmark all messages owned by this client
 sub disown
 {
-	my ($self, $client_id) = @_;
+	my ($self, $destination, $client_id) = @_;
 
-	$self->{front_store}->disown( $client_id );
-	$self->{back_store}->disown( $client_id );
+	$self->{front_store}->disown( $destination, $client_id );
+	$self->{back_store}->disown( $destination, $client_id );
 }
 
 # our periodic check to move messages into the backing store

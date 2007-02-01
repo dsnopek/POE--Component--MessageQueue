@@ -241,30 +241,16 @@ sub claim_and_retrieve
 # unmark all messages owned by this client
 sub disown
 {
-	my ($self, $client_id, $message_id) = @_;
+	my ($self, $destination, $client_id ) = @_;
 
-	if ( not defined $message_id )
-	{
-		$poe_kernel->post( $self->{easydbi},
-			do => {
-				sql          => 'UPDATE messages SET in_use_by = NULL WHERE in_use_by = ?',
-				placeholders => [ $client_id ],
-				session      => $self->{session},
-				event        => '_easydbi_handler',
-			}
-		);
-	}
-	else
-	{
-		$poe_kernel->post( $self->{easydbi},
-			do => {
-				sql          => 'UPDATE messages SET in_use_by = NULL WHERE message_id = ? AND in_use_by = ?',
-				placeholders => [ $message_id, $client_id ],
-				session      => $self->{session},
-				event        => '_easydbi_handler',
-			}
-		);
-	}
+	$poe_kernel->post( $self->{easydbi},
+		do => {
+			sql          => 'UPDATE messages SET in_use_by = NULL WHERE destination = ? AND in_use_by = ?',
+			placeholders => [ $destination, $client_id ],
+			session      => $self->{session},
+			event        => '_easydbi_handler',
+		}
+	);
 }
 
 #

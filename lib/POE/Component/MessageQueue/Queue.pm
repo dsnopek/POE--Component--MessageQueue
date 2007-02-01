@@ -82,6 +82,11 @@ sub remove_subscription
 			splice @{$self->{subscriptions}}, $i, 1;
 			$client->_remove_queue_name( $self->{queue_name} );
 
+			# disown all messages on the storage layer for this client on
+			# this queue.
+			$self->get_parent()->get_storage()->disown(
+				"/queue/$self->{queue_name}", $client->{client_id} );
+
 			return;
 		}
 	}
@@ -215,10 +220,12 @@ sub dispatch_message_to
 	{
 		# This can happen when a client disconnects before the server
 		# can give them the message intended for them.
+		$self->_log( 'warning', "QUEUE: Message $message->{message_id} intended for $receiver->{client_id} who is no longer subscribed to /queue/$self->{queue_name}" );
 
 		# The message *NEEDS* to be disowned in the storage layer, otherwise
 		# it will live forever as being claimed by a client that doesn't exist.
-		$self->get_parent()->get_storage()->disown( $receiver->{client_id}, $message->{message_id} );
+		$self->get_parent()->get_storage()->disown(
+			"/queue/$self->{queue_name}", $receiver->{client_id} );
 
 		# pump the queue to get the message to another suscriber.
 		$self->pump();
