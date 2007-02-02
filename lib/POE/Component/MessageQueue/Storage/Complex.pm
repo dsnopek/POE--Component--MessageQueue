@@ -3,7 +3,7 @@ package POE::Component::MessageQueue::Storage::Complex;
 use base qw(POE::Component::MessageQueue::Storage);
 
 use POE;
-use POE::Component::MessageQueue::Storage::DBI;
+use POE::Component::MessageQueue::Storage::FileSystem;
 use POE::Component::MessageQueue::Storage::Memory;
 use DBI;
 use strict;
@@ -62,12 +62,11 @@ sub new
 	my $front_store = POE::Component::MessageQueue::Storage::Memory->new();
 
 	# setup the DBI backing store
-	my $back_store = POE::Component::MessageQueue::Storage::DBI->new({
+	my $back_store = POE::Component::MessageQueue::Storage::FileSystem->new({
 		dsn       => $db_dsn,
 		username  => $db_username,
 		password  => $db_password,
 		data_dir  => $data_dir,
-		use_files => 1
 	});
 
 	# the delay is half of the given timeout
@@ -278,13 +277,13 @@ POE::Component::MessageQueue::Storage::Complex -- A storage backend that keeps m
 
 This storage backend combines the two other provided backends.  It uses
 L<POE::Component::MessageQueue::Storage::Memory> as the "front-end storage" and 
-L<POE::Component::MessageQueue::Storage::DBI> as the "back-end storage".  Message
+L<POE::Component::MessageQueue::Storage::FileSystem> as the "back-end storage".  Message
 are initially put into the front-end storage and will be moved into the backend
 storage after not being claimed for a given number of seconds.
 
-The L<POE::Component::MessageQueue::Storage::DBI> component used internally is configured to
-use L<DBD::SQLite2> and files for message body's.  Based on my experience this is the most
-efficient way to use it.
+The L<POE::Component::MessageQueue::Storage::FileSystem> component used internally is
+configured to use L<DBD::SQLite2>.  Based on my experience this is the most efficient
+way to use it.
 
 This storage backend is recommended.  It should provide the best performance while (if
 configured sanely) still providing a reasonable amount of persistence with little
@@ -313,6 +312,7 @@ L<DBD::SQLite2>,
 L<POE::Component::MessageQueue>,
 L<POE::Component::MessageQueue::Storage>,
 L<POE::Component::MessageQueue::Storage::Memory>,
+L<POE::Component::MessageQueue::Storage::FileSystem>,
 L<POE::Component::MessageQueue::Storage::DBI>
 
 =cut

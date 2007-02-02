@@ -172,6 +172,7 @@ Takes a destination and client id.  All messages which are owned by this client 
 L<POE::Component::MessageQueue>,
 L<POE::Component::MessageQueue::Storage::Memory>,
 L<POE::Component::MessageQueue::Storage::DBI>,
+L<POE::Component::MessageQueue::Storage::FileSystem>
 L<POE::Component::MessageQueue::Storage::Complex>
 
 =cut
