@@ -128,6 +128,15 @@ sub store
 		});
 		$message = $temp;
 
+		# DRS: To avaid a race condition where:
+		#
+		#  (1) We post _writer_message_to_disk
+		#  (2) Message is "removed" from disk (even though it isn't there yet)
+		#  (3) We start writting message to disk
+		#
+		# Mark message as needing to be written.
+		$self->{file_wheels}->{$message->{message_id}} = { write_message => 1 };
+
 		# initiate the process
 		$poe_kernel->post( $self->{session}, '_write_message_to_disk', $message, $body );
 	}
@@ -156,20 +165,27 @@ sub remove
 	{
 		if ( exists $self->{file_wheels}->{$message_id} )
 		{
-			$self->_log( 'debug', "STORE: FILE: Stopping wheels for mesasge $message_id (deleting)" );
-			
-			my $infos = $self->{file_wheels}->{$message_id};
-			my $wheel = $infos->{write_wheel} || $infos->{read_wheel};
+			if ( defined $self->{file_wheels}->{$message_id}->{write_message} )
+			{
+				$self->_log( 'debug', 'STORE: FILE: Removing message before we could start writting' );
+			}
+			else
+			{
+				$self->_log( 'debug', "STORE: FILE: Stopping wheels for mesasge $message_id (deleting)" );
+				
+				my $infos = $self->{file_wheels}->{$message_id};
+				my $wheel = $infos->{write_wheel} || $infos->{read_wheel};
 
-			my $wheel_id = $wheel->ID();
+				my $wheel_id = $wheel->ID();
 
-			# stop the wheel
-			$wheel->shutdown_input();
-			$wheel->shutdown_output();
+				# stop the wheel
+				$wheel->shutdown_input();
+				$wheel->shutdown_output();
 
-			# mark to actually delete message, but don't do it now, in order
-			# to not leak FD's!
-			$self->{file_wheels}->{$message_id}->{delete_me} = 1;
+				# mark to actually delete message, but don't do it now, in order
+				# to not leak FD's!
+				$self->{file_wheels}->{$message_id}->{delete_me} = 1;
+			}
 		}
 		else
 		{
@@ -399,9 +415,17 @@ sub _write_message_to_disk
 {
 	my ($self, $kernel, $message, $body) = @_[ OBJECT, KERNEL, ARG0, ARG1 ];
 
-	if ( defined $self->{file_wheels}->{$message->{messages_id}} )
+	if ( not defined $self->{file_wheels}->{$message->{message_id}}->{write_message} )
 	{
-		$self->_log( 'emergency', "POE::Component::MessageQueue::Store::DBI::_write_message_to_disk(): A wheel already exists for this messages $message->{messages_id}!  This should never happen!" );
+		$self->_log( 'emergency', "POE::Component::MessageQueue::Store::DBI::_write_message_to_disk(): A wheel already exists for this messages $message->{message_id}!  This should never happen!" );
+		return;
+	}
+	if ( not $self->{file_wheels}->{$message->{message_id}}->{write_message} )
+	{
+		$self->_log( 'debug', 'STORAGE: FILE: Abort write of message $message->{message_id} to disk' );
+
+		delete $self->{file_wheels}->{$message->{message_id}}->{write_message};
+
 		return;
 	}
 
@@ -433,9 +457,9 @@ sub _read_message_from_disk
 {
 	my ($self, $kernel, $message, $destination, $client_id) = @_[ OBJECT, KERNEL, ARG0..ARG2 ];
 
-	if ( defined $self->{file_wheels}->{$message->{messages_id}} )
+	if ( defined $self->{file_wheels}->{$message->{message_id}} )
 	{
-		$self->_log( 'emergency', "POE::Component::MessageQueue::Store::DBI::_read_message_from_disk(): A wheel already exists for this messages $message->{messages_id}!  This should never happen!" );
+		$self->_log( 'emergency', "POE::Component::MessageQueue::Store::DBI::_read_message_from_disk(): A wheel already exists for this messages $message->{message_id}!  This should never happen!" );
 		return;
 	}
 
