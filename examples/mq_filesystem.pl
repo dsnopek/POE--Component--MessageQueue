@@ -1,7 +1,7 @@
 
 use POE;
 use POE::Component::MessageQueue;
-use POE::Component::MessageQueue::Storage::DBI;
+use POE::Component::MessageQueue::Storage::FileSystem;
 use strict;
 
 my $DATA_DIR = '/tmp/perl_mq';
@@ -42,10 +42,11 @@ mkdir $DATA_DIR unless ( -d $DATA_DIR );
 _init_sqlite    unless ( -f $DB_FILE );
 
 POE::Component::MessageQueue->new({
-	storage => POE::Component::MessageQueue::Storage::DBI->new({
+	storage => POE::Component::MessageQueue::Storage::FileSystem->new({
 		dsn      => $DB_DSN,
 		username => $DB_USERNAME,
 		password => $DB_PASSWORD,
+		data_dir => $DATA_DIR,
 	})
 });
 

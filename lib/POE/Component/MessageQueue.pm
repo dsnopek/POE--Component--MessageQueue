@@ -554,7 +554,7 @@ Message storage can be provided by a number of different backends.
 =head1 STORAGE
 
 When creating an instance of this component you must pass in a storage object
-so that the message queue knows how to store its messages.  There are three storage
+so that the message queue knows how to store its messages.  There are four storage
 backends provided with this distribution.  See their individual documentation for 
 usage information.  Here is a quick break down:
 
@@ -566,11 +566,15 @@ L<POE::Component::MessageQueue::Storage::Memory> -- The simplest storage backend
 
 =item *
 
-L<POE::Component::MessageQueue::Storage::DBI> -- Uses Perl L<DBI> and optionally the filesystem to store messages.  When using this backend, all messages are persistent regardless of whether a message has the persistent flag set or not.
+L<POE::Component::MessageQueue::Storage::DBI> -- Uses Perl L<DBI> to store messages.  Not recommended to use directly because message body doesn't belong in the database.  All messages are stored persistently.
 
 =item *
 
-L<POE::Component::MessageQueue::Storage::Complex> -- A combination of the two above modules.  It will keep messages in Memory and move them into DBI after not being sent for a given number of seconds.  It actually uses the above modules in its implementation and so has the DBI backend configured to use SQLite2 and the filesystem.  It is capable of correctly handling a messages persistent flag.  This is the recommended storage backend and should provide the best performance when both providers and consumers are connected to the queue at the same time.
+L<POE::Component::MessageQueue::Storage::FileSystem> -- Builds on top of the DBI backend above but stores the message body on the filesystem.  All messages are stored persistently regardless of whether a message has the persistent flag set or not.
+
+=item *
+
+L<POE::Component::MessageQueue::Storage::Complex> -- A combination of the Memory and FileSystem modules above.  It will keep messages in Memory and move them into FileSystem after a given number of seconds.  The FileSystem backend is configured to use SQLite2.  It is capable of correctly handling a messages persistent flag.  This is the recommended storage backend and should provide the best performance when both providers and consumers are connected to the queue at the same time.
 
 =back
 
@@ -665,7 +669,11 @@ L<POE>, L<POE::Component::Server::Stomp>, L<Net::Stomp>, L<POE::Component::Logge
 
 I<Internal modules:>
 
-L<POE::Component::MessageQueue::Storage>, L<POE::Component::MessageQueue::Storage::Memory>, L<POE::Component::MessageQueue::Storage::DBI>, L<POE::Component::MessageQueue::Storage::Complex>
+L<POE::Component::MessageQueue::Storage>,
+L<POE::Component::MessageQueue::Storage::Memory>,
+L<POE::Component::MessageQueue::Storage::DBI>,
+L<POE::Component::MessageQueue::Storage::FileSystem>,
+L<POE::Component::MessageQueue::Storage::Complex>
 
 =head1 BUGS
 
