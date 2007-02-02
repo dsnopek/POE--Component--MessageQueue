@@ -574,7 +574,7 @@ L<POE::Component::MessageQueue::Storage::FileSystem> -- Builds on top of the DBI
 
 =item *
 
-L<POE::Component::MessageQueue::Storage::Complex> -- A combination of the Memory and FileSystem modules above.  It will keep messages in Memory and move them into FileSystem after not being sent for a given number of seconds.  The FileSystem backend is configured to use SQLite2.  It is capable of correctly handling a messages persistent flag.  This is the recommended storage backend and should provide the best performance when both providers and consumers are connected to the queue at the same time.
+L<POE::Component::MessageQueue::Storage::Complex> -- A combination of the Memory and FileSystem modules above.  It will keep messages in Memory and move them into FileSystem after a given number of seconds.  The FileSystem backend is configured to use SQLite2.  It is capable of correctly handling a messages persistent flag.  This is the recommended storage backend and should provide the best performance when both providers and consumers are connected to the queue at the same time.
 
 =back
 

@@ -426,7 +426,7 @@ __END__
 
 =head1 NAME
 
-POE::Component::MessageQueue::Storage::FileSystem -- A storage backend that keeps messages on the FS
+POE::Component::MessageQueue::Storage::FileSystem -- A storage backend that keeps messages on the filesystem
 
 =head1 SYNOPSIS
 
@@ -457,7 +457,7 @@ POE::Component::MessageQueue::Storage::FileSystem -- A storage backend that keep
 A storage backend that builds on top of L<POE::Component::MessageQueue::Storage::DBI>
 except that the message body is stored on the filesystem.
 
-While I would argument that using this module is less efficient than using
+While I would argue that using this module is less efficient than using
 L<POE::Component::MessageQueue::Storage::Complex>, using it directly would make sense if
 persistance was your primary concern.  All messages stored via this backend will be
 persistent regardless of whether they have the persistent flag set or not.  Every message

@@ -275,11 +275,11 @@ POE::Component::MessageQueue::Storage::Complex -- A storage backend that keeps m
 
 =head1 DESCRIPTION
 
-This storage backend combines the two other provided backends.  It uses
+This storage backend combines two other provided backends.  It uses
 L<POE::Component::MessageQueue::Storage::Memory> as the "front-end storage" and 
 L<POE::Component::MessageQueue::Storage::FileSystem> as the "back-end storage".  Message
 are initially put into the front-end storage and will be moved into the backend
-storage after not being claimed for a given number of seconds.
+storage after a given number of seconds.
 
 The L<POE::Component::MessageQueue::Storage::FileSystem> component used internally is
 configured to use L<DBD::SQLite2>.  Based on my experience this is the most efficient
@@ -301,7 +301,7 @@ The directory to store the SQLite database file and the message body's.
 
 =item timeout => SCALAR
 
-The number of seconds a message will remain in non-persistent storage if left unclaimed.  Ie. After this many seconds if the message hasn't been claimed, it will be moved to persistent storage.
+The number of seconds a message will remain in non-persistent storage.  Ie. After this many seconds if the message hasn't been removed, it will be put to persistent storage.
 
 =back
 

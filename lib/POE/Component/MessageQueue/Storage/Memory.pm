@@ -204,7 +204,7 @@ removed by consumers, it will continue to consume more memory until it explodes.
 L<POE::Component::MessageQueue::Complex> which uses this module internally to keep messages
 in memory for a period of time before moving them into persistent storage.
 
-=head1 CONSTRUCT PARAMETERS
+=head1 CONSTRUCTOR PARAMETERS
 
 None to speak of!
 

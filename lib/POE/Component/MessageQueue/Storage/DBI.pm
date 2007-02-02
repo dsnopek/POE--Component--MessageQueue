@@ -319,7 +319,7 @@ POE::Component::MessageQueue::Storage::DBI -- A storage backend that uses Perl L
       dsn      => $DB_DSN,
       username => $DB_USERNAME,
       password => $DB_PASSWORD,
-	  options  => $DB_OPTIONS
+      options  => $DB_OPTIONS
     })
   });
 
@@ -332,7 +332,9 @@ A storage backend that uses DBI.  All messages stored with this backend are pers
 
 Rather than using this module directly, I would suggest using
 L<POE::Component::MessageQueue::Storage::FileSystem>, which uses this module for
-synchronization but keeps the message body on the filesystem.
+synchronization but keeps the message body on the filesystem, or
+L<POE::Component::MessageQueue::Storage::Complex>, which is the overall recommended
+storage backend.
 
 If you are only going to deal with very small messages then, possibly, you could 
 safely keep the message body in the database.  However, this is still not really
@@ -351,7 +353,7 @@ do as little as possible.
 =item *
 
 L<POE::Component::EasyDBI> has a limit to the size of queries it will take and query
-result it will return.
+results it will return.
 
 =item *
 
