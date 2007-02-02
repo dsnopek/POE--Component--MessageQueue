@@ -32,7 +32,8 @@ sub new
 		queue_name           => $queue_name,
 		subscriptions        => [ ],
 		sub_map              => { },
-		has_pending_messages => 1
+		has_pending_messages => 1,
+		pumping              => 0
 	};
 
 	bless  $self, $class;
@@ -160,6 +161,13 @@ sub pump
 {
 	my $self = shift;
 
+	# Make sure we don't end up in some kind of recursive pump loop!
+	if ( $self->{pumping} )
+	{
+		return;
+	}
+	$self->{pumping} = 1;
+	
 	$self->_log( 'debug', " -- PUMP QUEUE: $self->{queue_name} -- " );
 
 	# attempt to get a pending message and pass it the the 'send_queue' action.
@@ -190,6 +198,9 @@ sub pump
 			}
 		}
 	}
+
+	# end pumping lock!
+	$self->{pumping} = 0;
 }
 
 sub send_message
