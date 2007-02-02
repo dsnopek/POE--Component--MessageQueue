@@ -168,6 +168,7 @@ sub remove
 			if ( defined $self->{file_wheels}->{$message_id}->{write_message} )
 			{
 				$self->_log( 'debug', 'STORE: FILE: Removing message before we could start writting' );
+				$self->{file_wheels}->{$message_id}->{write_message} = 0;
 			}
 			else
 			{
@@ -422,7 +423,7 @@ sub _write_message_to_disk
 	}
 	if ( not $self->{file_wheels}->{$message->{message_id}}->{write_message} )
 	{
-		$self->_log( 'debug', 'STORAGE: FILE: Abort write of message $message->{message_id} to disk' );
+		$self->_log( 'debug', "STORE: FILE: Abort write of message $message->{message_id} to disk" );
 
 		delete $self->{file_wheels}->{$message->{message_id}}->{write_message};
 
