@@ -28,8 +28,6 @@ CREATE TABLE messages
 );
 EOF
 
-my $USE_FILES = 0;
-
 my $TESTS = [
 	'testStore', 'testRemove', 'testClaim'
 ];
@@ -72,10 +70,6 @@ sub _start
 		dsn      => $dsn,
 		username => '',
 		password => '',
-
-		# TODO: make a real temp dir for real unit-test-ability.
-		data_dir  => '/tmp/blah',
-		use_files => $USE_FILES
 	});
 
 	# list here all the 
@@ -137,7 +131,7 @@ sub teardown
 {
 	my ($kernel, $heap) = @_[ KERNEL, HEAP ];
 
-	$kernel->post( 'MQ-DBI',
+	$kernel->post( 'MQ-EasyDBI',
 		do => {
 			sql   => 'DELETE FROM messages',
 			event => 'nothing'
@@ -158,7 +152,7 @@ sub testStore
 
 	$heap->{storage}->store( $message );
 
-	$kernel->post( 'MQ-DBI',
+	$kernel->post( 'MQ-EasyDBI',
 		hash => {
 			sql   => 'SELECT * FROM messages WHERE message_id = 27',
 			event => 'testStore_post'
@@ -176,17 +170,7 @@ sub testStore_post
 	is( $result->{destination}, '/queue/something' );
 	is( $result->{persistent},  'Y' );
 	is( $result->{in_use_by},   undef );
-
-	if ( $USE_FILES )
-	{
-		# TODO: Should be undef!
-		#is( $result->{body}, undef );
-		is( $result->{body}, '' );
-	}
-	else
-	{
-		is( $result->{body}, 'A message' );
-	}
+	is( $result->{body}, 'A message' );
 
 	# advance the testing, yo!
 	nextTest();
@@ -205,7 +189,7 @@ sub testRemove
 
 	$heap->{storage}->store( $message );
 
-	$kernel->post( 'MQ-DBI',
+	$kernel->post( 'MQ-EasyDBI',
 		hash => {
 			sql   => 'SELECT * FROM messages WHERE message_id = 27',
 			event => 'testRemove_0'
@@ -223,21 +207,11 @@ sub testRemove_0
 	is( $result->{destination}, '/queue/something' );
 	is( $result->{persistent},  'Y' );
 	is( $result->{in_use_by},   undef );
-
-	if ( $USE_FILES )
-	{
-		# TODO: Should be undef!
-		#is( $result->{body}, undef );
-		is( $result->{body}, '' );
-	}
-	else
-	{
-		is( $result->{body}, 'A message' );
-	}
+	is( $result->{body}, 'A message' );
 
 	$heap->{storage}->remove( 27 );
 
-	$kernel->post( 'MQ-DBI',
+	$kernel->post( 'MQ-EasyDBI',
 		hash => {
 			sql   => 'SELECT * FROM messages WHERE message_id = 27',
 			event => 'testRemove_1'
