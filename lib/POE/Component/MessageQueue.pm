@@ -128,7 +128,7 @@ sub remove_client
 	my $self      = shift;
 	my $client_id = shift;
 
-	$self->_log( "MASTER: Removing client $client_id" );
+	$self->_log( 'notice', "MASTER: Removing client $client_id" );
 	
 	my $client = $self->get_client( $client_id );
 
@@ -226,7 +226,7 @@ sub _dispatch_from_store
 	}
 	else
 	{
-		$self->_log( "No message in backstore on $destination for $client_id" );
+		$self->_log( 'notice', "No message in backstore on $destination for $client_id" );
 
 		# We need to free up the subscription.
 		my $sub = $queue->get_subscription($client);
@@ -275,7 +275,7 @@ sub route_frame
 
 	if ( $frame->command eq 'CONNECT' )
 	{
-		$self->_log(
+		$self->_log( 'notice',
 			sprintf ("RECV (%i): CONNECT %s:%s",
 				$client->{client_id},
 				$frame->headers->{login},
@@ -290,7 +290,7 @@ sub route_frame
 	}
 	elsif ( $frame->command eq 'DISCONNECT' )
 	{
-		$self->_log( sprintf("RECV (%i): DISCONNECT", $client->{client_id}) );
+		$self->_log( 'notice', sprintf("RECV (%i): DISCONNECT", $client->{client_id}) );
 
 		# disconnect, yo!
 		$self->remove_client( $client->{client_id} );
@@ -300,7 +300,7 @@ sub route_frame
 		my $destination = $frame->headers->{destination};
 		my $persistent  = $frame->headers->{persistent} eq 'true';
 
-		$self->_log( 
+		$self->_log( 'notice',
 			sprintf ("RECV (%i): SEND message (%i bytes) to %s (persistent: %i)",
 				$client->{client_id},
 				length $frame->body,
@@ -332,7 +332,7 @@ sub route_frame
 		my $destination = $frame->headers->{destination};
 		my $ack_type    = $frame->headers->{ack} || 'auto';
 
-		$self->_log(
+		$self->_log( 'notice',
 			sprintf ("RECV (%i): SUBSCRIBE %s (ack: %s)",
 				$client->{client_id},
 				$destination,
@@ -344,7 +344,7 @@ sub route_frame
 			my $queue_name = $1;
 			my $queue = $self->get_queue( $queue_name );
 
-			$self->_log( "MASTER: Subscribing client $client->{client_id} to $queue_name" );
+			$self->_log( 'notice', "MASTER: Subscribing client $client->{client_id} to $queue_name" );
 
 			$queue->add_subscription( $client, $ack_type );
 		}
@@ -353,7 +353,7 @@ sub route_frame
 	{
 		my $destination = $frame->headers->{destination};
 
-		$self->_log(
+		$self->_log( 'notice',
 			sprintf ("RECV (%i): UNSUBSCRIBE %s\n",
 				$client->{client_id},
 				$destination)
@@ -364,7 +364,7 @@ sub route_frame
 			my $queue_name = $1;
 			my $queue = $self->get_queue( $queue_name );
 
-			$self->_log( "MASTER: UN-subscribing client $client->{client_id} from $queue_name" );
+			$self->_log( 'notice', "MASTER: UN-subscribing client $client->{client_id} from $queue_name" );
 
 			$queue->remove_subscription( $client );
 		}
@@ -373,7 +373,7 @@ sub route_frame
 	{
 		my $message_id = $frame->headers->{'message-id'};
 
-		$self->_log(
+		$self->_log( 'notice',
 			sprintf ("RECV (%i): ACK - message %i",
 				$client->{client_id},
 				$message_id)
@@ -383,7 +383,7 @@ sub route_frame
 	}
 	else
 	{
-		$self->_log( "ERROR: Don't know how to handle frame: " . $frame->as_string );
+		$self->_log( 'error', "ERROR: Don't know how to handle frame: " . $frame->as_string );
 	}
 }
 
@@ -412,11 +412,7 @@ sub push_unacked_message
 	
 	$self->{needs_ack}->{$message->{message_id}} = $unacked;
 
-	# TODO: looking for potential leak
-	my $needs_ack_count = scalar keys %{$self->{needs_ack}};
-	$self->_log( 'debug', "MASTER: needs_ack_count=$needs_ack_count" );
-
-	$self->_log( "MASTER: message $message->{message_id} needs ACK from client $client->{client_id}" );
+	$self->_log( 'notice', "MASTER: message $message->{message_id} needs ACK from client $client->{client_id}" );
 }
 
 sub pop_unacked_message
