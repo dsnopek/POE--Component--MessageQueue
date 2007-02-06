@@ -201,7 +201,7 @@ sub _easydbi_handler
 	if ( $event->{action} eq 'do' )
 	{
 		my $pretty = join ', ', @{$event->{placeholders}};
-		$self->_log( "STORE: DBI: $event->{sql} [ $pretty ]" );
+		$self->_log( 'debug', "STORE: DBI: $event->{sql} [ $pretty ]" );
 	}
 }
 

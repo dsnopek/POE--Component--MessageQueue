@@ -182,19 +182,11 @@ sub pump
 				client_id   => $sub->{client}->{client_id}
 			});
 
-			# TODO: attempting to locate a bug where multiple messages are being
-			# sent to a subscriber at a time.
-			$self->_log( 'debug', "claim_and_retreive for $sub->{client}->{client_id} on $self->{queue_name}: $ret" );
-
 			# if a message was actually claimed!
 			if ( $ret )
 			{
 				# makes sure that this subscription isn't double picked
 				$sub->set_handling_message();
-
-				# TODO: tracking afformentioned bug!
-				my $ready = $sub->is_ready();
-				$self->_log( 'debug', "sub (client $sub->{client}->{client_id}): is_ready() = $ready" );
 			}
 		}
 	}
