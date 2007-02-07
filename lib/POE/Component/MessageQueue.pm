@@ -531,7 +531,7 @@ This component distinguishes itself in a number of ways:
 
 =item *
 
-No OS threads, its asynchronise.  (Thanks to L<POE>!)
+No OS threads, its asynchronous.  (Thanks to L<POE>!)
 
 =item *
 
