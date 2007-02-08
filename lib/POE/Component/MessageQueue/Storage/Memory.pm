@@ -132,7 +132,7 @@ sub claim_and_retrieve
 	{
 		my $message = $self->{messages}->[$i];
 
-		if ( not defined $message->{in_use_by} )
+		if ( $message->{destination} eq $destination and not defined $message->{in_use_by} )
 		{
 			if ( not defined $self->{dispatch_message} )
 			{
