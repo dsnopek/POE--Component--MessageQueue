@@ -85,15 +85,15 @@ sub process_buffer
 	my ($self, $kernel, $heap) = @_[ OBJECT, KERNEL, HEAP ];
 
 	# we extract the first message at the front of the buffer
-	if ( $heap->{buffer} =~ /(.*?)\0(.*)/s )
+	if ( $heap->{buffer} =~ /\0/s )
 	{
 		$heap->{processing_buffer} = 1;
 
-		my $frame_data;
+		my $index = index $heap->{buffer}, "\0";
 
 		# adjust the buffer, grab our data
-		$frame_data     = $1;
-		$heap->{buffer} = $2;
+		my $frame_data  = substr $heap->{buffer}, 0, $index;
+		$heap->{buffer} = substr $heap->{buffer}, ($index+1);
 
 		# parse the frame 
 		my $frame = $self->parse_frame( $frame_data );
