@@ -212,7 +212,14 @@ sub _message_to_store
 	my $message_id  = $value->{_message_id};
 	my $destination = $value->{_destination};
 
-	$self->_log( "STORE: DBI: Added message $message_id to backing store" );
+	if ( defined $value->{error} )
+	{
+		$self->_log( 'error', "STORE: DBI: $value->{error}" );
+	}
+	else
+	{
+		$self->_log( "STORE: DBI: Added message $message_id to backing store" );
+	}
 
 	if ( defined $self->{message_stored} )
 	{
@@ -358,7 +365,7 @@ results it will return.
 =item *
 
 A number of database have hard limits on the amount of data that can be stored in
-a BLOB (namely, SQLite2 which sets an artificially lower limit than it is actually
+a BLOB (namely, SQLite which sets an artificially lower limit than it is actually
 capable of).
 
 =item *

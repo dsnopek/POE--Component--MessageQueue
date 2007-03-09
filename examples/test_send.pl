@@ -1,5 +1,6 @@
 
 use Net::Stomp;
+use Getopt::Long;
 use strict;
 
 my $MAX_THREADS  = 100;
@@ -17,18 +18,23 @@ sub throw_a_monkey
 {
 	my $data = "monkey";
 
-	#my $stomp = Net::Stomp->new({
-	#	hostname => "$LM_MESSAGE_QUEUE_HOST",
-	#	port     => 61613
-	#});
-	#$stomp->connect({ login => $USERNAME, passcode => $PASSWORD });
 	$stomp->send({
 		destination => "/queue/monkey_bin",
 		body        => $data,
 		persistent  => 'true',
 	});
-	#$stomp->disconnect();
 }
 
-throw_a_monkey;
+sub main
+{
+	my $count = 1;
+
+	GetOptions ("count|c=i" => \$count);
+
+	for (my $i = 0; $i < $count; $i++)
+	{
+		throw_a_monkey;
+	}
+}
+main;
 

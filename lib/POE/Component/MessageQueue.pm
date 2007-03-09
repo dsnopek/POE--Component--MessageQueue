@@ -570,7 +570,7 @@ L<POE::Component::MessageQueue::Storage::FileSystem> -- Builds on top of the DBI
 
 =item *
 
-L<POE::Component::MessageQueue::Storage::Complex> -- A combination of the Memory and FileSystem modules above.  It will keep messages in Memory and move them into FileSystem after a given number of seconds.  The FileSystem backend is configured to use SQLite2.  It is capable of correctly handling a messages persistent flag.  This is the recommended storage backend and should provide the best performance when both providers and consumers are connected to the queue at the same time.
+L<POE::Component::MessageQueue::Storage::Complex> -- A combination of the Memory and FileSystem modules above.  It will keep messages in Memory and move them into FileSystem after a given number of seconds.  The FileSystem backend is configured to use SQLite.  It is capable of correctly handling a messages persistent flag.  This is the recommended storage backend and should provide the best performance when both providers and consumers are connected to the queue at the same time.
 
 =back
 
@@ -661,7 +661,7 @@ Optional add on module via L<POE::Component::IKC::Server> that allows to introsp
 
 I<External modules:>
 
-L<POE>, L<POE::Component::Server::Stomp>, L<Net::Stomp>, L<POE::Component::Logger>, L<DBD::SQLite2>
+L<POE>, L<POE::Component::Server::Stomp>, L<Net::Stomp>, L<POE::Component::Logger>, L<DBD::SQLite>
 
 I<Internal modules:>
 
@@ -673,8 +673,20 @@ L<POE::Component::MessageQueue::Storage::Complex>
 
 =head1 BUGS
 
-There is a mysterious memory leak I still haven't found.  I have narrowed it down
-to B<not> being in the storage layer but thats about it.  That said, I personally am
+There is a mysterious memory leak I still haven't found.  I've, through much intensive
+testing, found that L<POE::Component::Server::Stomp> itself and running the message queue
+with L<POE::Component::MessageQueue::Storage::Memory> do NOT leak ANY memory.  And that
+running with
+L<POE::Component::MessageQueue::Storage::DBI> and
+L<POE::Component::MessageQueue::Storage::Filesystem>
+DO leak some memory.
+
+DBI leaks very predictably and recreatably.  I suspect it might
+be L<POE::Component::EasyDBI> to blame but I haven't looked into that yet.
+Filesystem leaks memory IN ADDITION to what DBI leaks, which is really easy to see given
+the predictable pattern by which DBI leaks.  Haven't looked into that one yet either.
+
+This all said, I personally am
 using this in production for thousands of large messages daily and it takes quite
 a few days to get unreasonably bloated.  I do hope to find it but as is said, "Release
 often -- release early."

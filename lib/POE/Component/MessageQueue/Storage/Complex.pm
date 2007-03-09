@@ -45,7 +45,7 @@ sub new
 	}
 
 	my $db_file     = "$data_dir/mq.db";
-	my $db_dsn      = "DBI:SQLite2:dbname=$db_file";
+	my $db_dsn      = "DBI:SQLite:dbname=$db_file";
 	my $db_username = "";
 	my $db_password = "";
 
@@ -282,7 +282,7 @@ are initially put into the front-end storage and will be moved into the backend
 storage after a given number of seconds.
 
 The L<POE::Component::MessageQueue::Storage::FileSystem> component used internally is
-configured to use L<DBD::SQLite2>.  Based on my experience this is the most efficient
+configured to use L<DBD::SQLite>.  Based on my experience this is the most efficient
 way to use it.
 
 This storage backend is recommended.  It should provide the best performance while (if
@@ -308,7 +308,7 @@ The number of seconds a message will remain in non-persistent storage.  Ie. Afte
 =head1 SEE ALSO
 
 L<DBI>,
-L<DBD::SQLite2>,
+L<DBD::SQLite>,
 L<POE::Component::MessageQueue>,
 L<POE::Component::MessageQueue::Storage>,
 L<POE::Component::MessageQueue::Storage::Memory>,

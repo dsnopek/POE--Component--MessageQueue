@@ -3,7 +3,11 @@ use POE;
 use POE::Component::Logger;
 use POE::Component::MessageQueue;
 use POE::Component::MessageQueue::Storage::Complex;
+use POE::Component::MessageQueue::Logger;
 use strict;
+
+# Force some logger output without using the real logger.
+$POE::Component::MessageQueue::Logger::LEVEL = 0;
 
 my $DATA_DIR = '/tmp/perl_mq';
 

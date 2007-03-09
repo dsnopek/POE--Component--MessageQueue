@@ -2,7 +2,11 @@
 use POE;
 use POE::Component::MessageQueue;
 use POE::Component::MessageQueue::Storage::FileSystem;
+use POE::Component::MessageQueue::Logger;
 use strict;
+
+# Force some logger output without using the real logger.
+$POE::Component::MessageQueue::Logger::LEVEL = 0;
 
 my $DATA_DIR = '/tmp/perl_mq';
 
@@ -13,7 +17,7 @@ my $DATA_DIR = '/tmp/perl_mq';
 
 # For sqlite:
 my $DB_FILE     = "$DATA_DIR/mq.db";
-my $DB_DSN      = "DBI:SQLite2:dbname=$DB_FILE";
+my $DB_DSN      = "DBI:SQLite:dbname=$DB_FILE";
 my $DB_USERNAME = "";
 my $DB_PASSWORD = "";
 

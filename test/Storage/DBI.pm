@@ -60,7 +60,7 @@ sub _start
 	$fh->close();
 
 	# create initial database
-	my $dsn = "dbi:SQLite2:dbname=$heap->{dbfile}";
+	my $dsn = "dbi:SQLite:dbname=$heap->{dbfile}";
 	my $dbh = DBI->connect($dsn, '', '');
 	$dbh->do( $DB_CREATE );
 	$dbh->disconnect();

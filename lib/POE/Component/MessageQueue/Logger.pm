@@ -15,7 +15,7 @@ my $LEVELS = {
 	emergency => 7
 };
 
-my $LEVEL = 3;
+our $LEVEL = 3;
 
 sub new
 {
