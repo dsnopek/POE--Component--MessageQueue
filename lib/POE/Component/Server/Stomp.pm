@@ -7,7 +7,6 @@ use POE::Filter::Stream;
 use IO::String;
 use Net::Stomp::Frame;
 
-use Data::Dumper;
 use Carp qw(croak);
 use strict;
 
@@ -74,7 +73,6 @@ sub new
 			$self => [ 'process_buffer' ]
 		],
 
-		#ClientFilter => [ "POE::Filter::Line", Literal => "\000" ],
 		ClientFilter => "POE::Filter::Stream"
 	);
 
@@ -89,9 +87,9 @@ sub process_buffer
 	# we extract the first message at the front of the buffer
 	if ( $heap->{buffer} =~ /(.*?)\0(.*)/s )
 	{
-		my $frame_data;
-
 		$heap->{processing_buffer} = 1;
+
+		my $frame_data;
 
 		# adjust the buffer, grab our data
 		$frame_data     = $1;
