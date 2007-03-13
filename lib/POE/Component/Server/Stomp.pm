@@ -85,18 +85,12 @@ sub process_buffer
 	my ($self, $kernel, $heap) = @_[ OBJECT, KERNEL, HEAP ];
 
 	# we extract the first message at the front of the buffer
-	if ( $heap->{buffer} =~ /\0/s )
+	if ( $heap->{buffer} =~ s/^(.*?)\0//s )
 	{
 		$heap->{processing_buffer} = 1;
 
-		my $index = index $heap->{buffer}, "\0";
-
-		# adjust the buffer, grab our data
-		my $frame_data  = substr $heap->{buffer}, 0, $index;
-		$heap->{buffer} = substr $heap->{buffer}, ($index+1);
-
 		# parse the frame 
-		my $frame = $self->parse_frame( $frame_data );
+		my $frame = $self->parse_frame( $1 );
 
 		# call the user handler
 		splice @_, ARG0, 1, $frame;
