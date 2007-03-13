@@ -10,7 +10,7 @@ use Net::Stomp::Frame;
 use Carp qw(croak);
 use strict;
 
-my $VERSION = '0.2';
+my $VERSION = '0.2.1';
 
 sub new
 {
@@ -46,26 +46,11 @@ sub new
 	};
 	bless $self, $class;
 
-	# pushes data onto the per-client buffers and initiates processing
-	my $client_input = sub 
-	{
-		my ($kernel, $input, $heap) = @_[ KERNEL, ARG0, HEAP ];
-
-		# append input to existing buffer
-		$heap->{buffer} .= $input;
-
-		# if not already in a process cycle, then start one!
-		if ( $heap->{processing_buffer} != 1 )
-		{
-			$kernel->yield('process_buffer');
-		}
-	};
-
 	# create the TCP server.
 	POE::Component::Server::TCP->new(
 		Port => 61613,
 
-		ClientInput        => $client_input,
+		ClientInput        => \&client_input,
 		ClientError        => $client_error,
 		ClientDisconnected => $client_disconnected,
 
@@ -78,6 +63,20 @@ sub new
 
 	# POE::Component::Server::TCP does it!  So, I do it too.
 	return undef;
+}
+
+sub client_input
+{
+	my ($kernel, $input, $heap) = @_[ KERNEL, ARG0, HEAP ];
+
+	# append input to existing buffer
+	$heap->{buffer} .= $input;
+
+	# if not already in a process cycle, then start one!
+	if ( $heap->{processing_buffer} != 1 )
+	{
+		$kernel->yield('process_buffer');
+	}
 }
 
 sub process_buffer
