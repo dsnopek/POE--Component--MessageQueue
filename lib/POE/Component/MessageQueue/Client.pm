@@ -63,7 +63,16 @@ sub send_frame
 	my $frame = shift;
 
 	my $client_session = $poe_kernel->alias_resolve( $self->{client_id} );
-	$client_session->get_heap()->{client}->put( $frame->as_string() . "\n" );
+	my $client = $client_session->get_heap()->{client};
+
+	if ( defined $client )
+	{
+		$client->put( $frame->as_string() . "\n" );
+
+		return 1;
+	}
+
+	return 0;
 }
 
 sub connect

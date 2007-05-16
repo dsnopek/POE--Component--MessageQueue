@@ -227,11 +227,14 @@ sub dispatch_message_to
 		$sub = $receiver;
 	}
 
-	if ( not defined $sub )
+	$self->_log( "QUEUE: Sending message $message->{message_id} to client $sub->{client}->{client_id}" );
+
+	# send actual message
+	if ( not defined $sub or not $sub->get_client()->send_frame( $message->create_stomp_frame() ) )
 	{
 		# This can happen when a client disconnects before the server
 		# can give them the message intended for them.
-		$self->_log( 'warning', "QUEUE: Message $message->{message_id} intended for $receiver->{client_id} who is no longer subscribed to /queue/$self->{queue_name}" );
+		$self->_log( 'warning', "QUEUE: Message $message->{message_id} intended for $receiver->{client_id} on /queue/$self->{queue_name} could not be delivered" );
 
 		# The message *NEEDS* to be disowned in the storage layer, otherwise
 		# it will live forever as being claimed by a client that doesn't exist.
@@ -243,8 +246,6 @@ sub dispatch_message_to
 
 		return;
 	}
-
-	$self->_log( "QUEUE: Sending message $message->{message_id} to client $sub->{client}->{client_id}" );
 
 	# mark as needing ack, or remove message.
 	if ( $sub->{ack_type} eq 'client' )
@@ -259,9 +260,6 @@ sub dispatch_message_to
 	{
 		$self->get_parent()->get_storage()->remove( $message->get_message_id() );
 	}
-
-	# send actual message
-	$sub->get_client()->send_frame( $message->create_stomp_frame() );
 }
 
 sub enqueue

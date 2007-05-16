@@ -4,7 +4,12 @@ use POE;
 use POE::Component::Logger;
 use POE::Component::MessageQueue;
 use POE::Component::MessageQueue::Storage::Complex;
+use Carp;
 use strict;
+
+$SIG{__DIE__} = sub {
+    Carp::confess(@_);
+};
 
 my $DATA_DIR = '/var/lib/perl_mq';
 my $CONF_DIR = '/etc/perl_mq';
