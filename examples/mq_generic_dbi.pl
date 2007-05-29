@@ -1,7 +1,8 @@
 
 use POE;
 use POE::Component::MessageQueue;
-use POE::Component::MessageQueue::Storage::DBI;
+use POE::Component::MessageQueue::Storage::Generic;
+use POE::Component::MessageQueue::Storage::Generic::DBI;
 use POE::Component::MessageQueue::Logger;
 use strict;
 
@@ -46,10 +47,13 @@ mkdir $DATA_DIR unless ( -d $DATA_DIR );
 _init_sqlite    unless ( -f $DB_FILE );
 
 POE::Component::MessageQueue->new({
-	storage => POE::Component::MessageQueue::Storage::DBI->new({
-		dsn      => $DB_DSN,
-		username => $DB_USERNAME,
-		password => $DB_PASSWORD,
+	storage => POE::Component::MessageQueue::Storage::Generic->new({
+		package => 'POE::Component::MessageQueue::Storage::Generic::DBI',
+		options => [{
+			dsn      => $DB_DSN,
+			username => $DB_USERNAME,
+			password => $DB_PASSWORD,
+		}]
 	})
 });
 

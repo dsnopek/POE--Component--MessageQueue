@@ -34,29 +34,45 @@ sub _log
 sub set_message_stored_handler
 {
 	my ($self, $handler) = @_;
-
 	$self->{message_stored} = $handler;
+	undef;
 }
 
 sub set_dispatch_message_handler
 {
 	my ($self, $handler) = @_;
-	
 	$self->{dispatch_message} = $handler;
+	undef;
 }
 
 sub set_destination_ready_handler
 {
 	my ($self, $handler) = @_;
-
 	$self->{destination_ready} = $handler;
+	undef;
 }
 
 sub set_logger
 {
 	my ($self, $logger) = @_;
-
 	$self->{logger} = $logger;
+	undef;
+}
+
+# A hack to allow POE::Component::Generic to set the log function
+# in a single event.  This allows us to setup the logger before any
+# other events happen.
+sub set_log_function
+{
+	my ($self, $func) = @_;
+	$self->get_logger()->set_log_function($func);
+	undef;
+}
+
+sub get_logger
+{
+	my $self = shift;
+	return $self->{logger};
 }
 
 sub get_next_message_id
