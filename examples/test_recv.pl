@@ -1,5 +1,6 @@
 
 use Net::Stomp;
+use Getopt::Long;
 use strict;
 
 my $MAX_THREADS  = 100;
@@ -7,9 +8,17 @@ my $MONKEY_COUNT = 10000;
 my $USERNAME     = 'system';
 my $PASSWORD     = 'manager';
 
+my $port     = 61613;
+my $hostname = "localhost";
+
+GetOptions(
+	"port|p=i"     => \$port,
+	"hostname|h=s" => \$hostname
+);
+
 my $stomp = Net::Stomp->new({
-	hostname => 'localhost',
-	port     => 61613
+	hostname => $hostname,
+	port     => $port
 });
 $stomp->connect({ login => $USERNAME, passcode => $PASSWORD });
 $stomp->subscribe({

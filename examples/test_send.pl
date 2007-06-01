@@ -36,14 +36,24 @@ sub throw_an_image
 
 sub main
 {
+	my $port     = 61613;
+	my $hostname = "localhost";
+
 	my $count = 1;
 	my $image = 0;
 	my $fork  = 0;
+	my $disconnect = 0;
+	my $delay      = 0;
 
 	GetOptions(
-		"count|c=i" => \$count,
-		"fork|f=i"  => \$fork,
-		'image|i'   => \$image
+		"port|p=i"     => \$port,
+		"hostname|h=s" => \$hostname,
+
+		"count|c=i"    => \$count,
+		"fork|f=i"     => \$fork,
+		"image|i"      => \$image,
+		"disconnect"   => \$disconnect,
+		"delay|d=i"    => \$delay
 	);
 
 	while ( $fork-- > 1 )
@@ -52,11 +62,16 @@ sub main
 		fork() or last;
 	}
 
-	my $stomp = Net::Stomp->new({
-		hostname => 'localhost',
-		port     => 61613
-	});
-	$stomp->connect({ login => $USERNAME, passcode => $PASSWORD });
+	my $_setup = sub ()
+	{
+		my $stomp = Net::Stomp->new({
+			hostname => $hostname,
+			port     => $port
+		});
+		$stomp->connect({ login => $USERNAME, passcode => $PASSWORD });
+		return $stomp;
+	};
+	my $stomp = $_setup->();
 
 	for (my $i = 0; $i < $count; $i++)
 	{
@@ -68,7 +83,19 @@ sub main
 		{
 			throw_a_monkey($stomp);
 		}
+
+		if ( $disconnect )
+		{
+			$stomp->disconnect();
+			$stomp = $_setup->();
+		}
+
+		if ( $delay )
+		{
+			sleep($delay);
+		}
 	}
+	$stomp->disconnect();
 }
 main;
 

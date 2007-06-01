@@ -3,6 +3,7 @@ use POE;
 use POE::Component::MessageQueue;
 use POE::Component::MessageQueue::Storage::DBI;
 use POE::Component::MessageQueue::Logger;
+use Getopt::Long;
 use strict;
 
 # Force some logger output without using the real logger.
@@ -20,6 +21,14 @@ my $DB_FILE     = "$DATA_DIR/mq.db";
 my $DB_DSN      = "DBI:SQLite:dbname=$DB_FILE";
 my $DB_USERNAME = "";
 my $DB_PASSWORD = "";
+
+my $port     = 61613;
+my $hostname = undef;
+
+GetOptions(
+	"port|p=i"     => \$port,
+	"hostname|h=s" => \$hostname
+);
 
 sub _init_sqlite
 {
@@ -46,6 +55,9 @@ mkdir $DATA_DIR unless ( -d $DATA_DIR );
 _init_sqlite    unless ( -f $DB_FILE );
 
 POE::Component::MessageQueue->new({
+	port     => $port,
+	hostname => $hostname,
+
 	storage => POE::Component::MessageQueue::Storage::DBI->new({
 		dsn      => $DB_DSN,
 		username => $DB_USERNAME,
