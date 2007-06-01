@@ -32,10 +32,16 @@ sub new
 	my $data_dir;
 	my $timeout;
 
+	# we default to 2 because I think its a good idea
+	my $throttle_max = 2;
+
 	if ( ref($args) eq 'HASH' )
 	{
 		$data_dir = $args->{data_dir};
 		$timeout  = $args->{timeout} || 4;
+
+		# only set if the user set to preserve default
+		$throttle_max = $args->{throttle_max} if exists $args->{throttle_max};
 	}
 
 	# create the datadir
@@ -67,6 +73,7 @@ sub new
 		username  => $db_username,
 		password  => $db_password,
 		data_dir  => $data_dir,
+		throttle_max => $throttle_max,
 	});
 
 	# the delay is half of the given timeout

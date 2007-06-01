@@ -162,7 +162,6 @@ sub _do_store
 {
 	my ($self, $message) = @_;
 
-	print "  *-*  --- Calling store() for $message->{message_id}\n";
 	$self->{generic}->store(
 		{ session => $self->{session}->ID(), event => '_general_handler' },
 		$message
@@ -190,8 +189,6 @@ sub store
 			# increment so we know that another message was sent to the 
 			# underlying engine.
 			$self->{throttle_count} ++;
-
-			print "throttle: start: $self->{throttle_count}\n";
 		}
 	}
 
@@ -325,8 +322,6 @@ sub _message_stored
 		{
 			# else, simple decrease the throttle count
 			$self->{throttle_count} --;
-
-			print "throttle: done: $self->{throttle_count}\n";
 		}
 	}
 }

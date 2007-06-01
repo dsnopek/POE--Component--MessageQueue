@@ -21,6 +21,7 @@ sub new
 	my $username;
 	my $password;
 	my $options;
+	my $throttle_max;
 
 	my $use_files;
 	my $data_dir;
@@ -31,6 +32,7 @@ sub new
 		$username = $args->{username};
 		$password = $args->{password};
 		$options  = $args->{options};
+		$throttle_max = $args->{throttle_max};
 
 		# not "straight DBI" options.
 		$use_files = $args->{use_files};
@@ -44,7 +46,8 @@ sub new
 		dsn      => $dsn,
 		username => $username,
 		password => $password,
-		options  => $options
+		options  => $options,
+		throttle_max => $throttle_max,
 	});
 	$self->{dbi_storage}->set_dispatch_message_handler( $self->__closure('_dbi_dispatch_message') );
 
