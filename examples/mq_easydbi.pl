@@ -1,6 +1,7 @@
 
 use POE;
 use POE::Component::MessageQueue;
+use POE::Component::MessageQueue::Storage::Throttled;
 use POE::Component::MessageQueue::Storage::EasyDBI;
 use POE::Component::MessageQueue::Logger;
 use Getopt::Long;
@@ -24,10 +25,12 @@ my $DB_PASSWORD = "";
 
 my $port     = 61613;
 my $hostname = undef;
+my $throttle_max = 2;
 
 GetOptions(
 	"port|p=i"     => \$port,
-	"hostname|h=s" => \$hostname
+	"hostname|h=s" => \$hostname,
+	"throttle|T=i" => \$throttle_max,
 );
 
 sub _init_sqlite
@@ -58,10 +61,13 @@ POE::Component::MessageQueue->new({
 	port     => $port,
 	hostname => $hostname,
 
-	storage => POE::Component::MessageQueue::Storage::EasyDBI->new({
-		dsn      => $DB_DSN,
-		username => $DB_USERNAME,
-		password => $DB_PASSWORD,
+	storage => POE::Component::MessageQueue::Storage::Throttled->new({
+		storage => POE::Component::MessageQueue::Storage::EasyDBI->new({
+			dsn      => $DB_DSN,
+			username => $DB_USERNAME,
+			password => $DB_PASSWORD,
+		}),
+		throttle_max => $throttle_max,
 	})
 });
 

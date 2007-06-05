@@ -6,7 +6,6 @@ use POE::Kernel;
 use POE::Session;
 use POE::Filter::Stream;
 use POE::Wheel::ReadWrite;
-use POE::Component::MessageQueue::Storage::DBI;
 use IO::File;
 use strict;
 
@@ -17,42 +16,22 @@ sub new
 	my $class = shift;
 	my $args  = shift;
 
-	my $dsn;
-	my $username;
-	my $password;
-	my $options;
-	my $throttle_max;
-
-	my $use_files;
+	my $info_storage;
 	my $data_dir;
 
 	if ( ref($args) eq 'HASH' )
 	{
-		$dsn      = $args->{dsn};
-		$username = $args->{username};
-		$password = $args->{password};
-		$options  = $args->{options};
-		$throttle_max = $args->{throttle_max};
-
-		# not "straight DBI" options.
-		$use_files = $args->{use_files};
-		$data_dir  = $args->{data_dir};
+		$info_storage = $args->{info_storage};
+		$data_dir     = $args->{data_dir};
 	}
 
 	my $self = $class->SUPER::new( $args );
 
 	# for storing message properties
-	$self->{dbi_storage} = POE::Component::MessageQueue::Storage::DBI->new({
-		dsn      => $dsn,
-		username => $username,
-		password => $password,
-		options  => $options,
-		throttle_max => $throttle_max,
-	});
-	$self->{dbi_storage}->set_dispatch_message_handler( $self->__closure('_dbi_dispatch_message') );
+	$self->{info_storage} = $info_storage;
+	$self->{info_storage}->set_dispatch_message_handler( $self->__closure('_dispatch_message') );
 
 	# for keeping the message body on the FS
-	$self->{use_files}   = $use_files;
 	$self->{data_dir}    = $data_dir;
 	$self->{file_wheels} = { };
 	$self->{wheel_to_message_map} = { };
@@ -60,7 +39,7 @@ sub new
 	my $session = POE::Session->create(
 		inline_states => {
 			_start => sub {
-				$_[KERNEL]->alias_set('MQ-Storage-File')
+				$_[KERNEL]->alias_set('MQ-Storage-FileSystem')
 			},
 		},
 		object_states => [
@@ -95,20 +74,20 @@ sub set_message_stored_handler
 {
 	my ($self, $handler) = @_;
 
-	# We never need to call this directly, dbi_storage will!
+	# We never need to call this directly, info_storage will!
 	#$self->SUPER::set_message_stored_handler( $handler );
 
-	$self->{dbi_storage}->set_message_stored_handler( $handler );
+	$self->{info_storage}->set_message_stored_handler( $handler );
 }
 
 sub set_destination_ready_handler
 {
 	my ($self, $handler) = @_;
 
-	# We never need to call this directly, dbi_storage will!
+	# We never need to call this directly, info_storage will!
 	#$self->SUPER::set_destination_ready_handler( $handler );
 
-	$self->{dbi_storage}->set_destination_ready_handler( $handler );
+	$self->{info_storage}->set_destination_ready_handler( $handler );
 }
 
 sub set_logger
@@ -116,13 +95,13 @@ sub set_logger
 	my ($self, $logger) = @_;
 
 	$self->SUPER::set_logger( $logger );
-	$self->{dbi_storage}->set_logger( $logger );
+	$self->{info_storage}->set_logger( $logger );
 }
 
 sub get_next_message_id
 {
 	my $self = shift;
-	return $self->{dbi_storage}->get_next_message_id();
+	return $self->{info_storage}->get_next_message_id();
 }
 
 sub store
@@ -154,8 +133,8 @@ sub store
 	# initiate file writting process
 	$poe_kernel->post( $self->{session}, '_write_message_to_disk', $message, $body );
 
-	# hand-off to the DBI storage
-	$self->{dbi_storage}->store( $message );
+	# hand-off to the info storage
+	$self->{info_storage}->store( $message );
 }
 
 sub remove
@@ -195,27 +174,27 @@ sub remove
 		unlink $fn || $self->_log( 'error', "STORE: FILE: Unable to remove $fn: $!" );
 	}
 
-	# remove from the DBI store
-	$self->{dbi_storage}->remove( $message_id );
+	# remove from the info store
+	$self->{info_storage}->remove( $message_id );
 }
 
 sub claim_and_retrieve
 {
 	my $self = shift;
-	return $self->{dbi_storage}->claim_and_retrieve( @_ );
+	return $self->{info_storage}->claim_and_retrieve( @_ );
 }
 
 sub disown
 {
 	my ($self, $destination, $client_id ) = @_;
-	return $self->{dbi_storage}->disown( $destination, $client_id );
+	return $self->{info_storage}->disown( $destination, $client_id );
 }
 
 #
 # For handling responses from database:
 #
 
-sub _dbi_dispatch_message
+sub _dispatch_message
 {
 	my ($self, $message, $destination, $client_id) = @_;
 
@@ -257,7 +236,7 @@ sub _write_message_to_disk
 
 	if ( not defined $self->{file_wheels}->{$message->{message_id}}->{write_message} )
 	{
-		$self->_log( 'emergency', "POE::Component::MessageQueue::Store::DBI::_write_message_to_disk(): A wheel already exists for this messages $message->{message_id}!  This should never happen!" );
+		$self->_log( 'emergency', "POE::Component::MessageQueue::Storage::FileSystem::_write_message_to_disk(): A wheel already exists for this messages $message->{message_id}!  This should never happen!" );
 		return;
 	}
 	if ( not $self->{file_wheels}->{$message->{message_id}}->{write_message} )
@@ -296,7 +275,7 @@ sub _read_message_from_disk
 
 	if ( defined $self->{file_wheels}->{$message->{message_id}} )
 	{
-		$self->_log( 'emergency', "POE::Component::MessageQueue::Store::DBI::_read_message_from_disk(): A wheel already exists for this messages $message->{message_id}!  This should never happen!" );
+		$self->_log( 'emergency', "POE::Component::MessageQueue::Storage::FileSystem::_read_message_from_disk(): A wheel already exists for this messages $message->{message_id}!  This should never happen!" );
 		return;
 	}
 

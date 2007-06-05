@@ -306,13 +306,13 @@ __END__
 
 =head1 NAME
 
-POE::Component::MessageQueue::Storage::DBI -- A storage backend that uses Perl L<DBI>
+POE::Component::MessageQueue::Storage::EasyDBI -- A storage backend that uses L<POE::Component::EasyDBI>
 
 =head1 SYNOPSIS
 
   use POE;
   use POE::Component::MessageQueue;
-  use POE::Component::MessageQueue::Storage::DBI;
+  use POE::Component::MessageQueue::Storage::EasyDBI;
   use strict;
 
   # For mysql:
@@ -322,7 +322,7 @@ POE::Component::MessageQueue::Storage::DBI -- A storage backend that uses Perl L
   my $DB_OPTIONS  = undef;
 
   POE::Component::MessageQueue->new({
-    storage => POE::Component::MessageQueue::Storage::DBI->new({
+    storage => POE::Component::MessageQueue::Storage::EasyDBI->new({
       dsn      => $DB_DSN,
       username => $DB_USERNAME,
       password => $DB_PASSWORD,
@@ -335,7 +335,8 @@ POE::Component::MessageQueue::Storage::DBI -- A storage backend that uses Perl L
 
 =head1 DESCRIPTION
 
-A storage backend that uses DBI.  All messages stored with this backend are persistent.
+A storage backend that uses L<POE::Component::EasyDBI>.  All messages stored with
+this backend are persistent.
 
 Rather than using this module directly, I would suggest using
 L<POE::Component::MessageQueue::Storage::FileSystem>, which uses this module for

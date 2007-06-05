@@ -1,6 +1,7 @@
 
 use POE;
 use POE::Component::MessageQueue;
+use POE::Component::MessageQueue::Storage::Throttled;
 use POE::Component::MessageQueue::Storage::Generic;
 use POE::Component::MessageQueue::Storage::Generic::DBI;
 use POE::Component::MessageQueue::Logger;
@@ -28,7 +29,7 @@ my $DB_PASSWORD = "";
 
 my $port     = 61613;
 my $hostname = undef;
-my $throttle_max = 0;
+my $throttle_max = 2;
 
 GetOptions(
 	"port|p=i"     => \$port,
@@ -64,13 +65,15 @@ POE::Component::MessageQueue->new({
 	port     => $port,
 	hostname => $hostname,
 
-	storage => POE::Component::MessageQueue::Storage::Generic->new({
-		package => 'POE::Component::MessageQueue::Storage::Generic::DBI',
-		options => [{
-			dsn      => $DB_DSN,
-			username => $DB_USERNAME,
-			password => $DB_PASSWORD,
-		}],
+	storage => POE::Component::MessageQueue::Storage::Throttled->new({
+		storage => POE::Component::MessageQueue::Storage::Generic->new({
+			package => 'POE::Component::MessageQueue::Storage::Generic::DBI',
+			options => [{
+				dsn      => $DB_DSN,
+				username => $DB_USERNAME,
+				password => $DB_PASSWORD,
+			}],
+		}),
 		throttle_max => $throttle_max,
 	})
 });

@@ -16,13 +16,11 @@ sub new
 
 	my $package;
 	my $options;
-	my $throttle_max;
 
 	if ( ref($args) eq 'HASH' )
 	{
-		$package      = $args->{package};
-		$options      = $args->{options};
-		$throttle_max = $args->{throttle_max} || 0;
+		$package = $args->{package};
+		$options = $args->{options};
 	}
 	else
 	{
@@ -34,12 +32,6 @@ sub new
 
 	$self->{message_id}   = 0;
 	$self->{claiming}     = { };
-
-	# for throttling data to the engine
-	$self->{throttle_buffer} = { };
-	$self->{throttle_order}  = [ ];
-	$self->{throttle_max}    = $throttle_max;
-	$self->{throttle_count}  = 0;
 
 	my $generic = POE::Component::Generic->spawn(
 		package => $package,
@@ -123,42 +115,7 @@ sub get_next_message_id
 	return $value;
 }
 
-sub _throttle_push
-{
-	my ($self, $message) = @_;
-
-	# stash in an ordered-lookup kind of way
-	$self->{throttle_buffer}->{$message->{message_id}} = $message;
-	push @{$self->{throttle_order}}, $message->{message_id};
-}
-
-sub _throttle_pop
-{
-	my ($self) = @_;
-
-	while ( scalar @{$self->{throttle_order}} > 0 )
-	{
-		my $message_id = shift @{$self->{throttle_order}};
-
-		# if there is still a message with that id in the buffer
-		# then return it.
-		if ( exists $self->{throttle_buffer}->{$message_id} )
-		{
-			return delete $self->{throttle_buffer}->{$message_id};
-		}
-	}
-
-	undef;
-}
-
-sub _throttle_remove
-{
-	my ($self, $message_id) = @_;
-
-	delete $self->{throttle_buffer}->{$message_id};
-}
-
-sub _do_store
+sub store
 {
 	my ($self, $message) = @_;
 
@@ -168,43 +125,9 @@ sub _do_store
 	);
 }
 
-sub store
-{
-	my ($self, $message) = @_;
-
-	if ( $self->{throttle_max} )
-	{
-		if ( $self->{throttle_count} >= $self->{throttle_max} )
-		{
-			$self->_log("STORE: Already have sent $self->{throttle_max} messages to store engine.  Throttling.  Message will be buffered until engine has stored some messages.");
-
-			# push into buffer
-			$self->_throttle_push($message);
-			
-			# don't send, yet!
-			return;
-		}
-		else
-		{
-			# increment so we know that another message was sent to the 
-			# underlying engine.
-			$self->{throttle_count} ++;
-		}
-	}
-
-	$self->_do_store($message);
-}
-
 sub remove
 {
 	my ($self, $message_id) = @_;
-
-	if ( $self->{throttle_max} )
-	{
-		# if we put this message in the throttle buffer, then remove
-		# it before it can even get to the storage engine
-		$self->_throttle_remove( $message_id );
-	}
 
 	$self->{generic}->remove(
 		{ session => $self->{session}->ID(), event => '_general_handler' },
@@ -307,22 +230,6 @@ sub _message_stored
 	if ( defined $self->{message_stored} )
 	{
 		$self->{message_stored}->( $destination );
-	}
-
-	if ( $self->{throttle_max} )
-	{
-		my $message = $self->_throttle_pop();
-		if ( $message )
-		{
-			# if we have a throttled message then send it!
-			$self->_log("STORE: Sending throttled message from the buffer to the storage engine");
-			$self->_do_store($message);
-		}
-		else
-		{
-			# else, simple decrease the throttle count
-			$self->{throttle_count} --;
-		}
 	}
 }
 

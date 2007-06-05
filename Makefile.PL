@@ -11,6 +11,7 @@ build_requires 'Data::Dumper';
 # next 2 for the unit-tests
 build_requires 'Test::More';
 build_requires 'File::Temp';
+requires 'POE' => 0.38;
 requires 'POE::Component::Server::TCP';
 requires 'POE::Component::Logger';
 requires 'POE::Wheel::ReadWrite';

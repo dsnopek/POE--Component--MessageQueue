@@ -3,6 +3,8 @@ package POE::Component::MessageQueue::Storage::Complex;
 use base qw(POE::Component::MessageQueue::Storage);
 
 use POE;
+use POE::Component::MessageQueue::Storage::Throttled;
+use POE::Component::MessageQueue::Storage::DBI;
 use POE::Component::MessageQueue::Storage::FileSystem;
 use POE::Component::MessageQueue::Storage::Memory;
 use DBI;
@@ -69,11 +71,15 @@ sub new
 
 	# setup the DBI backing store
 	my $back_store = POE::Component::MessageQueue::Storage::FileSystem->new({
-		dsn       => $db_dsn,
-		username  => $db_username,
-		password  => $db_password,
+		info_storage => POE::Component::MessageQueue::Storage::Throttled->new({
+			storage => POE::Component::MessageQueue::Storage::DBI->new({
+				dsn       => $db_dsn,
+				username  => $db_username,
+				password  => $db_password,
+			}),
+			throttle_max => $throttle_max,
+		}),
 		data_dir  => $data_dir,
-		throttle_max => $throttle_max,
 	});
 
 	# the delay is half of the given timeout
