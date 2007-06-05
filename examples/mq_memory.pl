@@ -6,6 +6,9 @@ use POE::Component::MessageQueue::Logger;
 use Getopt::Long;
 use strict;
 
+#use POE::Component::DebugShell;
+#POE::Component::DebugShell->spawn();
+
 # Force some logger output without using the real logger.
 $POE::Component::MessageQueue::Logger::LEVEL = 0;
 

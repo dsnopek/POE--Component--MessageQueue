@@ -150,6 +150,9 @@ sub remove_client
 			delete $self->{needs_ack}->{$key};
 		}
 	}
+
+	# shutdown TCP connection
+	$client->shutdown();
 }
 
 sub _handle_frame

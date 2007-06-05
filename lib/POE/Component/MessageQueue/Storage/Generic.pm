@@ -66,7 +66,7 @@ sub new
 	my $session = POE::Session->create(
 		inline_states => {
 			_start => sub {
-				$_[KERNEL]->alias_set('MQ-Storage-DBI')
+				$_[KERNEL]->alias_set('MQ-Storage-Generic')
 			},
 		},
 		object_states => [

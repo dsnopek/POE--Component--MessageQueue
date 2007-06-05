@@ -109,5 +109,12 @@ sub connect
 	$self->send_frame( $response );
 }
 
+sub shutdown
+{
+	my $self = shift;
+
+	$poe_kernel->post( $self->{client_id}, "shutdown" );
+}
+
 1;
 
