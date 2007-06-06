@@ -227,10 +227,17 @@ sub dispatch_message_to
 		$sub = $receiver;
 	}
 
-	$self->_log( "QUEUE: Sending message $message->{message_id} to client $sub->{client}->{client_id}" );
+	my $result = 0;
 
-	# send actual message
-	if ( not defined $sub or not $sub->get_client()->send_frame( $message->create_stomp_frame() ) )
+	if ( defined $sub )
+	{
+		$self->_log( "QUEUE: Sending message $message->{message_id} to client $sub->{client}->{client_id}" );
+
+		# send actual message
+		$result = $sub->get_client()->send_frame( $message->create_stomp_frame() );
+	}
+
+	if ( not $result )
 	{
 		# This can happen when a client disconnects before the server
 		# can give them the message intended for them.

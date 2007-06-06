@@ -5,7 +5,12 @@ use POE::Component::MessageQueue::Storage::Throttled;
 use POE::Component::MessageQueue::Storage::EasyDBI;
 use POE::Component::MessageQueue::Logger;
 use Getopt::Long;
+use Carp;
 use strict;
+
+$SIG{__DIE__} = sub {
+    Carp::confess(@_);
+};
 
 # Force some logger output without using the real logger.
 $POE::Component::MessageQueue::Logger::LEVEL = 0;

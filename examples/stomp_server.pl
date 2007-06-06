@@ -2,7 +2,12 @@
 use POE;
 use POE::Component::Server::Stomp;
 use Net::Stomp::Frame;
+use Carp;
 use strict;
+
+$SIG{__DIE__} = sub {
+    Carp::confess(@_);
+};
 
 POE::Component::Server::Stomp->new(
 	HandleFrame        => \&handle_frame,

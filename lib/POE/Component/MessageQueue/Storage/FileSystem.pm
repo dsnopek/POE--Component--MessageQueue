@@ -48,13 +48,19 @@ sub new
 				'_read_message_from_disk',
 				'_read_input',
 				'_read_error',
-				'_write_flushed_event'
+				'_write_flushed_event',
+
+				# for debug!
+				'_log_state'
 			]
 		]
 	);
 
 	# store sessions
 	$self->{session} = $session;
+
+	# DEBUG!
+	#$poe_kernel->post( $self->{session}, '_log_state' );
 
 	return $self;
 }
@@ -386,6 +392,34 @@ sub _write_flushed_event
 		$self->_log( 'debug', "STORE: FILE: Actually deleting $fn (on write flush)" );
 		unlink $fn || $self->_log( 'error', "Unable to remove $fn: $!" );
 	}
+}
+
+sub _log_state
+{
+	my ($self, $kernel) = @_[ OBJECT, KERNEL ];
+
+	my $wheel_count = scalar keys %{$self->{file_wheels}};
+	$self->_log('debug', "STORE: FILE: Currently there are $wheel_count wheels in action.");
+
+	my $wheel_to_message_map = Dumper($self->{wheel_to_message_map});
+	$wheel_to_message_map =~ s/\n//g;
+	$wheel_to_message_map =~ s/\s+/ /g;
+	$self->_log('debug', "STORE: FILE: wheel_to_message_map: $wheel_to_message_map");
+
+	while ( my ($key, $value) = each %{$self->{file_wheels}} )
+	{
+		my %tmp = ( %$value );
+		$tmp{write_wheel} = "$tmp{write_wheel}" if exists $tmp{write_wheel};
+		$tmp{read_wheel}  = "$tmp{read_wheel}"  if exists $tmp{read_wheel};
+
+		my $wheel = Dumper(\%tmp);
+		$wheel =~ s/\n//g;
+		$wheel =~ s/\s+/ /g;
+		
+		$self->_log('debug', "STORE: FILE: wheel ($key): $wheel");
+	}
+
+	$kernel->delay_set('_log_state', 5);
 }
 
 1;

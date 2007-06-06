@@ -6,7 +6,12 @@ use POE::Component::MessageQueue::Storage::Generic;
 use POE::Component::MessageQueue::Storage::Generic::DBI;
 use POE::Component::MessageQueue::Logger;
 use Getopt::Long;
+use Carp;
 use strict;
+
+$SIG{__DIE__} = sub {
+    Carp::confess(@_);
+};
 
 #use POE::Component::DebugShell;
 #POE::Component::DebugShell->spawn();
