@@ -63,13 +63,19 @@ sub send_frame
 	my $frame = shift;
 
 	my $client_session = $poe_kernel->alias_resolve( $self->{client_id} );
-	my $client = $client_session->get_heap()->{client};
 
-	if ( defined $client )
+	# Check to see if the client's session is still around
+	if ( defined $client_session )
 	{
-		$client->put( $frame->as_string() . "\n" );
+		my $client = $client_session->get_heap()->{client};
 
-		return 1;
+		# Check to see if the socket's Wheel is still around
+		if ( defined $client )
+		{
+			$client->put( $frame->as_string() . "\n" );
+
+			return 1;
+		}
 	}
 
 	return 0;
