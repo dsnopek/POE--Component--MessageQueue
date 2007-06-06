@@ -300,6 +300,10 @@ sub _read_message_from_disk
 		# we simply discard the message
 		$self->remove( $message->{message_id} );
 
+		# we need to send a null message to this client to mark it is ready again (it is
+		# waiting for a message).
+		$self->{dispatch_message}->( undef, $destination, $client_id );
+
 		return;
 	}
 	

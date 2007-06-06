@@ -13,6 +13,9 @@ $SIG{__DIE__} = sub {
     Carp::confess(@_);
 };
 
+#use POE::Component::DebugShell;
+#POE::Component::DebugShell->spawn();
+
 # Force some logger output without using the real logger.
 $POE::Component::MessageQueue::Logger::LEVEL = 0;
 
