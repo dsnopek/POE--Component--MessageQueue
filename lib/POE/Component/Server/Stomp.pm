@@ -6,11 +6,11 @@ use POE::Component::Server::TCP;
 use POE::Filter::Stream;
 use IO::String;
 use Net::Stomp::Frame;
-
 use Carp qw(croak);
+use vars qw($VERSION);
 use strict;
 
-my $VERSION = '0.2.2';
+$VERSION = '0.2.2';
 
 sub new
 {

@@ -278,3 +278,109 @@ sub disown
 
 1;
 
+__END__
+
+=pod
+
+=head1 NAME
+
+POE::Component::MessageQueue::Storage::Generic::DBI -- A storage backend that uses L<DBI>
+
+=head1 SYNOPSIS
+
+  use POE;
+  use POE::Component::MessageQueue;
+  use POE::Component::MessageQueue::Storage::Generic;
+  use POE::Component::MessageQueue::Storage::Generic::DBI;
+  use strict;
+
+  # For mysql:
+  my $DB_DSN      = 'DBI:mysql:database=perl_mq';
+  my $DB_USERNAME = 'perl_mq';
+  my $DB_PASSWORD = 'perl_mq';
+  my $DB_OPTIONS  = undef;
+
+  POE::Component::MessageQueue->new({
+    storage => POE::Component::MessageQueue::Storage::Generic->new({
+      package => 'POE::Component::MessageQueue::Storage::DBI',
+      options => [{
+        dsn      => $DB_DSN,
+        username => $DB_USERNAME,
+        password => $DB_PASSWORD,
+        options  => $DB_OPTIONS
+      }],
+    })
+  });
+
+  POE::Kernel->run();
+  exit;
+
+=head1 DESCRIPTION
+
+A storage backend that uses L<DBI>.  All messages stored with this backend are
+persistent.
+
+This module is not itself asynchronous and must be run via 
+L<POE::Component::MessageQueue::Storage::Generic>.
+
+Rather than using this module directly, I would suggest using
+L<POE::Component::MessageQueue::Storage::FileSystem>, to keep the message bodys on
+the filesystem, or L<POE::Component::MessageQueue::Storage::Complex>, which is the
+overall recommended storage backend.
+
+If you are only going to deal with very small messages then, possibly, you could 
+safely keep the message body in the database.  However, this is still not really
+recommended for a couple of reasons:
+
+=over 4
+
+=item *
+
+All database access is conducted through L<POE::Component::Generic> which maintains
+a single forked process to do database access.  So, not only must the message body be
+communicated to this other proccess via a pipe, but only one database operation can
+happen at once.  The best performance can be achieved by having this forked process
+do as little as possible.
+
+=item *
+
+A number of database have hard limits on the amount of data that can be stored in
+a BLOB (namely, SQLite which sets an artificially lower limit than it is actually
+capable of).
+
+=item *
+
+Keeping large amounts of BLOB data in a database is bad form anyway!  Let the database do what
+it does best: index and look-up information quickly.
+
+=back
+
+=head1 CONSTRUCTOR PARAMETERS
+
+=over 2
+
+=item dsn => SCALAR
+
+=item username => SCALAR
+
+=item password => SCALAR
+
+=item options => SCALAR
+
+=back
+
+=head1 SEE ALSO
+
+L<DBI>,
+L<POE::Component::Generic>,
+L<POE::Component::MessageQueue>,
+L<POE::Component::MessageQueue::Storage>,
+L<POE::Component::MessageQueue::Storage::Memory>,
+L<POE::Component::MessageQueue::Storage::FileSystem>,
+L<POE::Component::MessageQueue::Storage::DBI>,
+L<POE::Component::MessageQueue::Storage::Generic>,
+L<POE::Component::MessageQueue::Storage::Throttled>,
+L<POE::Component::MessageQueue::Storage::Complex>
+
+=cut
+

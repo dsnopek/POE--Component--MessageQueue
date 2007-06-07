@@ -288,15 +288,17 @@ POE::Component::MessageQueue::Storage::Complex -- A storage backend that keeps m
 
 =head1 DESCRIPTION
 
-This storage backend combines two other provided backends.  It uses
+This storage backend combines all the other provided backends.  It uses
 L<POE::Component::MessageQueue::Storage::Memory> as the "front-end storage" and 
 L<POE::Component::MessageQueue::Storage::FileSystem> as the "back-end storage".  Message
 are initially put into the front-end storage and will be moved into the backend
 storage after a given number of seconds.
 
-The L<POE::Component::MessageQueue::Storage::FileSystem> component used internally is
-configured to use L<DBD::SQLite>.  Based on my experience this is the most efficient
-way to use it.
+The L<POE::Component::MessageQueue::Storage::FileSystem> component used internally 
+uses a throttled (via L<POE::Component::MessageQueue::Storage::Throttled>) 
+L<POE::Component::MessageQueue::Storage::DBI> with a L<DBD::SQLite> database.
+
+Based on my experience this is the most efficient configuration.
 
 This storage backend is recommended.  It should provide the best performance while (if
 configured sanely) still providing a reasonable amount of persistence with little
@@ -316,6 +318,10 @@ The directory to store the SQLite database file and the message body's.
 
 The number of seconds a message will remain in non-persistent storage.  Ie. After this many seconds if the message hasn't been removed, it will be put to persistent storage.
 
+=item throttle_max => SCALAR
+
+The max number of messages that can be sent to the DBI store at once.  This value is passed directly to the underlying L<POE::Component::MessageQueue::Storage::Throttled>.
+
 =back
 
 =head1 SEE ALSO
@@ -326,7 +332,10 @@ L<POE::Component::MessageQueue>,
 L<POE::Component::MessageQueue::Storage>,
 L<POE::Component::MessageQueue::Storage::Memory>,
 L<POE::Component::MessageQueue::Storage::FileSystem>,
-L<POE::Component::MessageQueue::Storage::DBI>
+L<POE::Component::MessageQueue::Storage::DBI>,
+L<POE::Component::MessageQueue::Storage::Generic>,
+L<POE::Component::MessageQueue::Storage::Generic::DBI>,
+L<POE::Component::MessageQueue::Storage::Throttled>
 
 =cut
 

@@ -434,13 +434,14 @@ __END__
 
 =head1 NAME
 
-POE::Component::MessageQueue::Storage::FileSystem -- A storage backend that keeps messages on the filesystem
+POE::Component::MessageQueue::Storage::FileSystem -- A storage backend that keeps message bodies on the filesystem
 
 =head1 SYNOPSIS
 
   use POE;
   use POE::Component::MessageQueue;
   use POE::Component::MessageQueue::Storage::FileSystem;
+  use POE::Component::MessageQueue::Storage::DBI;
   use strict;
 
   # For mysql:
@@ -450,9 +451,11 @@ POE::Component::MessageQueue::Storage::FileSystem -- A storage backend that keep
 
   POE::Component::MessageQueue->new({
     storage => POE::Component::MessageQueue::Storage::FileSystem->new({
-      dsn      => $DB_DSN,
-      username => $DB_USERNAME,
-      password => $DB_PASSWORD,
+      info_storage => POE::Component::MessageQueue::Storage::DBI->new({
+        dsn      => $DB_DSN,
+        username => $DB_USERNAME,
+        password => $DB_PASSWORD,
+      }),
       data_dir => $DATA_DIR,
     })
   });
@@ -462,8 +465,7 @@ POE::Component::MessageQueue::Storage::FileSystem -- A storage backend that keep
 
 =head1 DESCRIPTION
 
-A storage backend that builds on top of L<POE::Component::MessageQueue::Storage::DBI>
-except that the message body is stored on the filesystem.
+A storage backend that wraps around another storage engine in order to store the message bodies on the file system.  The other message properties are stored with the wrapped storage engine.
 
 While I would argue that using this module is less efficient than using
 L<POE::Component::MessageQueue::Storage::Complex>, using it directly would make sense if
@@ -476,13 +478,9 @@ having been stored.
 
 =over 2
 
-=item dsn => SCALAR
+=item info_storage => L<POE::Component::MessageQueue::Storage>
 
-=item username => SCALAR
-
-=item password => SCALAR
-
-=item options => SCALAR
+The storage engine used to store message properties.
 
 =item data_dir => SCALAR
 
@@ -498,6 +496,9 @@ L<POE::Component::MessageQueue>,
 L<POE::Component::MessageQueue::Storage>,
 L<POE::Component::MessageQueue::Storage::DBI>,
 L<POE::Component::MessageQueue::Storage::Memory>,
+L<POE::Component::MessageQueue::Storage::Generic>,
+L<POE::Component::MessageQueue::Storage::Generic::DBI>,
+L<POE::Component::MessageQueue::Storage::Throttled>,
 L<POE::Component::MessageQueue::Storage::Complex>
 
 =cut

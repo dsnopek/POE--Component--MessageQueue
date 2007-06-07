@@ -360,11 +360,6 @@ do as little as possible.
 
 =item *
 
-L<POE::Component::EasyDBI> has a limit to the size of queries it will take and query
-results it will return.
-
-=item *
-
 A number of database have hard limits on the amount of data that can be stored in
 a BLOB (namely, SQLite which sets an artificially lower limit than it is actually
 capable of).
@@ -390,6 +385,11 @@ it does best: index and look-up information quickly.
 
 =back
 
+=head1 BUGS
+
+There is an inexplicable memory leak when using this storage engine.  Use 
+L<POE::Component::DBI> instead.
+
 =head1 SEE ALSO
 
 L<DBI>,
@@ -398,6 +398,10 @@ L<POE::Component::MessageQueue>,
 L<POE::Component::MessageQueue::Storage>,
 L<POE::Component::MessageQueue::Storage::Memory>,
 L<POE::Component::MessageQueue::Storage::FileSystem>,
+L<POE::Component::MessageQueue::Storage::DBI>,
+L<POE::Component::MessageQueue::Storage::Generic>,
+L<POE::Component::MessageQueue::Storage::Generic::DBI>,
+L<POE::Component::MessageQueue::Storage::Throttled>,
 L<POE::Component::MessageQueue::Storage::Complex>
 
 =cut

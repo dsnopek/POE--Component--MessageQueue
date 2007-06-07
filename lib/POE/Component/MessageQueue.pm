@@ -588,11 +588,11 @@ L<POE::Component::MessageQueue::Storage::Generic> -- Uses L<POE::Component::Gene
 
 =item *
 
-L<POE::Component::MessageQueue::Storage::Generic::DBI> -- A synchronise storage engine that can be used in side of generic.
+L<POE::Component::MessageQueue::Storage::Generic::DBI> -- A synchronise L<DBI>-based storage engine that can be used in side of Generic.  This provides the basis for the L<POE::Component::MessageQueue::Storage::DBI> module.
 
 =item *
 
-L<POE::Component::MessageQueue::Storage::Throttled> -- Wraps around another engine to limit the number of messages sent to be stored in a storage engine at once.  Use of this module is B<highly> recommend!  If the storage engine is unable to store the messages fast enough (ie. with slow disk IO) it can get really backed up and stall messages coming out of the queue, allowing execessive producers to basically monopolise the server, preventing any messages from getting distributed to subscribers.
+L<POE::Component::MessageQueue::Storage::Throttled> -- Wraps around another engine to limit the number of messages sent to be stored at once.  Use of this module is B<highly> recommend!  If the storage engine is unable to store the messages fast enough (ie. with slow disk IO) it can get really backed up and stall messages coming out of the queue, allowing execessive producers to basically monopolise the server, preventing any messages from getting distributed to subscribers.
 
 =item *
 

@@ -198,3 +198,75 @@ sub disown
 
 1;
 
+__END__
+
+=pod
+
+=head1 NAME
+
+POE::Component::MessageQueue::Storage::Throttled -- Wraps around another storage engine to throttle the number of messages sent to be stored at on time.
+
+=head1 SYNOPSIS
+
+  use POE;
+  use POE::Component::MessageQueue;
+  use POE::Component::MessageQueue::Storage::Throttled;
+  use POE::Component::MessageQueue::Storage::DBI;
+  use strict;
+
+  my $DATA_DIR = '/tmp/perl_mq';
+
+  POE::Component::MessageQueue->new({
+    storage => POE::Component::MessageQueue::Storage::Throttled->new({
+      storage => POE::Component::MessageQueue::Storage::DBI->new({
+        dsn      => $DB_DSN,
+        username => $DB_USERNAME,
+        password => $DB_PASSWORD,
+      }),
+      throttle_max => 2
+    }),
+  });
+
+  POE::Kernel->run();
+  exit;
+
+=head1 DESCRIPTION
+
+Wraps around another engine to limit the number of messages sent to be stored at once.
+
+Use of this module is B<highly> recommend!
+
+If the storage engine is unable to store the messages fast enough (ie. with slow disk IO) it can get really backed up and stall messages coming out of the queue.  This allows client producing execessive amounts of messages to basically monopolize the server, preventing any messages from getting distributed to the subscribers.
+
+It is suggested to keep the throttle_max very low.  In an ideal situation, the underlying storage engine would be able to write each message immediately.  This means that there will never be more than one message sent to be stored at a time.  The purpose of this module is make the message act as though this were the case even if it isn't.  So, a throttle_max of 1, will strictly enforce this, however, for a little bit of leniancy, the suggested default is 2.
+
+=head1 CONSTRUCTOR PARAMETERS
+
+=over 2
+
+=item storage => SCALAR
+
+The storage engine to wrap.
+
+=item throttle_max => SCALAR
+
+The max number of messages that can be sent to the DBI store at one time.
+
+=back
+
+=head1 SEE ALSO
+
+L<DBI>,
+L<DBD::SQLite>,
+L<POE::Component::MessageQueue>,
+L<POE::Component::MessageQueue::Storage>,
+L<POE::Component::MessageQueue::Storage::Memory>,
+L<POE::Component::MessageQueue::Storage::FileSystem>,
+L<POE::Component::MessageQueue::Storage::DBI>,
+L<POE::Component::MessageQueue::Storage::Generic>,
+L<POE::Component::MessageQueue::Storage::Generic::DBI>,
+L<POE::Component::MessageQueue::Storage::Throttled>,
+L<POE::Component::MessageQueue::Storage::Complex>
+
+=cut
+
