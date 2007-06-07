@@ -3,7 +3,7 @@ package POE::Component::MessageQueue::Storage::Generic;
 use base qw(POE::Component::MessageQueue::Storage);
 
 use POE;
-use POE::Component::Generic;
+use POE::Component::Generic 0.1001;
 use POE::Component::MessageQueue::Logger;
 use strict;
 

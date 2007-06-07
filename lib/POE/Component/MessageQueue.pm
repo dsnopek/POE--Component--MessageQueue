@@ -1,13 +1,16 @@
 
 package POE::Component::MessageQueue;
 
-use POE;
+use POE 0.38;
 use POE::Component::Server::Stomp;
 use POE::Component::MessageQueue::Client;
 use POE::Component::MessageQueue::Queue;
 use POE::Component::MessageQueue::Message;
 use Net::Stomp;
+use vars qw($VERSION);
 use strict;
+
+$VERSION = '0.1.3';
 
 use Carp qw(croak);
 use Data::Dumper;

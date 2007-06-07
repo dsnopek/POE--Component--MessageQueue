@@ -112,11 +112,8 @@ sub _message_stored
 {
 	my ($self, $destination) = @_;
 
-	if ( defined $self->{message_stored} )
-	{
-		$self->{message_stored}->( $destination );
-	}
-
+	# first, check if there are any throttled messages we can now push to
+	# the underlying storage engine.
 	if ( $self->{throttle_max} )
 	{
 		my $message = $self->_throttle_pop();
@@ -131,6 +128,12 @@ sub _message_stored
 			# else, simple decrease the throttle count
 			$self->{throttle_count} --;
 		}
+	}
+
+	# Then, call the user handler!
+	if ( defined $self->{message_stored} )
+	{
+		$self->{message_stored}->( $destination );
 	}
 }
 
