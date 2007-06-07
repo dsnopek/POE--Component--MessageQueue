@@ -20,6 +20,7 @@ sub new
 	my $class = shift;
 	my $args  = shift;
 
+	my $alias;
 	my $address;
 	my $hostname;
 	my $port;
@@ -30,6 +31,7 @@ sub new
 
 	if ( ref($args) eq 'HASH' )
 	{
+		$alias    = $args->{alias};
 		$address  = $args->{address};
 		$hostname = $args->{hostname};
 		$port     = $args->{port};
@@ -68,6 +70,7 @@ sub new
 
 	# setup our stomp server
 	POE::Component::Server::Stomp->new(
+		Alias    => $alias,
 		Address  => $address,
 		Hostname => $hostname,
 		Port     => $port,
@@ -511,8 +514,9 @@ POE::Component::MessageQueue - A POE message queue that uses STOMP for the commu
 
     # Required!!
     storage => POE::Component::MessageQueue::Storage::Complex->new({
-      data_dir => $DATA_DIR,
-      timeout  => 2
+      data_dir     => $DATA_DIR,
+      timeout      => 2,
+	  throttle_max => 2
     })
   });
 
@@ -556,7 +560,7 @@ Message storage can be provided by a number of different backends.
 =head1 STORAGE
 
 When creating an instance of this component you must pass in a storage object
-so that the message queue knows how to store its messages.  There are four storage
+so that the message queue knows how to store its messages.  There are some storage
 backends provided with this distribution.  See their individual documentation for 
 usage information.  Here is a quick break down:
 
@@ -568,15 +572,31 @@ L<POE::Component::MessageQueue::Storage::Memory> -- The simplest storage backend
 
 =item *
 
-L<POE::Component::MessageQueue::Storage::DBI> -- Uses Perl L<DBI> to store messages.  Not recommended to use directly because message body doesn't belong in the database.  All messages are stored persistently.
+L<POE::Component::MessageQueue::Storage::DBI> -- Uses Perl L<DBI> to store messages.  Not recommended to use directly because message body doesn't belong in the database.  All messages are stored persistently.  (Underneath this is really just L<POE::Component::MessageQueue::Storage::Generic> and L<POE::Component::MessageQueue::Storage::Generic::DBI>)
 
 =item *
 
-L<POE::Component::MessageQueue::Storage::FileSystem> -- Builds on top of the DBI backend above but stores the message body on the filesystem.  All messages are stored persistently regardless of whether a message has the persistent flag set or not.
+L<POE::Component::MessageQueue::Storage::EasyDBI> -- An alternative L<DBI> storage engine based on L<POE::Component::EasyDBI>.  Its use is B<not recommend> because of inexplicable memory problems.  This will remain in the distribution for the time being but will probably be removed in the future.  All messages are stored persistently.
 
 =item *
 
-L<POE::Component::MessageQueue::Storage::Complex> -- A combination of the Memory and FileSystem modules above.  It will keep messages in Memory and move them into FileSystem after a given number of seconds.  The FileSystem backend is configured to use SQLite.  It is capable of correctly handling a messages persistent flag.  This is the recommended storage backend and should provide the best performance when both providers and consumers are connected to the queue at the same time.
+L<POE::Component::MessageQueue::Storage::FileSystem> -- Wraps around another storage engine to store the message bodies on the filesystem.  This can be used in conjunction with the DBI storage engine so that message properties are stored in DBI, but the message bodies are stored on disk.  All messages are stored persistently regardless of whether a message has the persistent flag set or not.
+
+=item *
+
+L<POE::Component::MessageQueue::Storage::Generic> -- Uses L<POE::Component::Generic> to wrap storage modules that aren't asynchronous.  Using this module is the easiest way to write custom storage engines.
+
+=item *
+
+L<POE::Component::MessageQueue::Storage::Generic::DBI> -- A synchronise storage engine that can be used in side of generic.
+
+=item *
+
+L<POE::Component::MessageQueue::Storage::Throttled> -- Wraps around another engine to limit the number of messages sent to be stored in a storage engine at once.  Use of this module is B<highly> recommend!  If the storage engine is unable to store the messages fast enough (ie. with slow disk IO) it can get really backed up and stall messages coming out of the queue, allowing execessive producers to basically monopolise the server, preventing any messages from getting distributed to subscribers.
+
+=item *
+
+L<POE::Component::MessageQueue::Storage::Complex> -- A combination of the Memory, FileSystem, DBI and Throttled modules above.  It will keep messages in Memory and move them into FileSystem after a given number of seconds, throttling messages passed into DBI.  The DBI backend is configured to use SQLite.  It is capable of correctly handling a messages persistent flag.  This is the recommended storage backend and should provide the best performance in the most common case (ie. when both providers and consumers are connected to the queue at the same time).
 
 =back
 
@@ -590,6 +610,10 @@ The only required parameter.  Sets the object that the message queue should use 
 message storage.  This must be an object that follows the interface of
 L<POE::Component::MessageQueue::Storage> but doesn't necessarily need to be a child
 of that class.
+
+=item alias => SCALAR
+
+The session alias to use.
 
 =item port => SCALAR
 
@@ -667,7 +691,8 @@ Optional add on module via L<POE::Component::IKC::Server> that allows to introsp
 
 I<External modules:>
 
-L<POE>, L<POE::Component::Server::Stomp>, L<Net::Stomp>, L<POE::Component::Logger>, L<DBD::SQLite>
+L<POE>, L<POE::Component::Server::Stomp>, L<Net::Stomp>, L<POE::Component::Logger>, L<DBD::SQLite>,
+L<POE::Component::Generic>
 
 I<Internal modules:>
 
@@ -675,27 +700,28 @@ L<POE::Component::MessageQueue::Storage>,
 L<POE::Component::MessageQueue::Storage::Memory>,
 L<POE::Component::MessageQueue::Storage::DBI>,
 L<POE::Component::MessageQueue::Storage::FileSystem>,
+L<POE::Component::MessageQueue::Storage::Generic>,
+L<POE::Component::MessageQueue::Storage::Generic::DBI>,
+L<POE::Component::MessageQueue::Storage::Throttled>,
 L<POE::Component::MessageQueue::Storage::Complex>
 
 =head1 BUGS
 
-There is a mysterious memory leak I still haven't found.  I've, through much intensive
-testing, found that L<POE::Component::Server::Stomp> itself and running the message queue
-with L<POE::Component::MessageQueue::Storage::Memory> do NOT leak ANY memory.  And that
-running with
-L<POE::Component::MessageQueue::Storage::DBI> and
-L<POE::Component::MessageQueue::Storage::Filesystem>
-DO leak some memory.
+A ton of debugging work went into the 0.1.3 release.
 
-DBI leaks very predictably and recreatably.  I suspect it might
-be L<POE::Component::EasyDBI> to blame but I haven't looked into that yet.
-Filesystem leaks memory IN ADDITION to what DBI leaks, which is really easy to see given
-the predictable pattern by which DBI leaks.  Haven't looked into that one yet either.
+I recieved a script from a user that would cause a memory leak in 0.1.2.  By switching to
+L<POE::Component::Generic> for the L<POE::Component::MessageQueue::Storage::DBI> module,
+I was able to eliminate this memory leak.
 
-This all said, I personally am
-using this in production for thousands of large messages daily and it takes quite
-a few days to get unreasonably bloated.  I do hope to find it but as is said, "Release
-often -- release early."
+However!  Our message queue in production still leaks memory!
+
+I don't have an automated way to recreate this leak, making it difficult to debug.  If anyone
+experiences this bug, and can recreate in an automated way, I<let me know>!
+
+That said, we are using this in production in a commercial application for
+thousands of large messages daily and it takes quite a few days to get unreasonably bloated.
+It is my dream on earth to solve this memory leak and I do hope to one day eliminate it,
+but as is said, "Release early -- release often."
 
 =head1 AUTHOR
 
