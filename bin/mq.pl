@@ -32,8 +32,16 @@ GetOptions(
 
 if ( not -d $DATA_DIR )
 {
-	mkdir $DATA_DIR
-		|| die "Unable to create the data dir: $DATA_DIR";
+	mkdir $DATA_DIR;
+
+	if ( not -d $DATA_DIR )
+	{
+		die "Unable to create the data dir: $DATA_DIR";
+	}
+}
+else
+{
+	print "Huh?!\n";
 }
 
 my $logger_alias;
@@ -63,6 +71,7 @@ POE::Component::MessageQueue->new({
 		timeout      => $timeout,
 		throttle_max => $throttle_max
 	}),
+
 	logger_alias => $logger_alias,
 });
 
