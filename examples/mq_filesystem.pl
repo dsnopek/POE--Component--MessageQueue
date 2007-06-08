@@ -70,16 +70,16 @@ POE::Component::MessageQueue->new({
 	port     => $port,
 	hostname => $hostname,
 
-	storage => POE::Component::MessageQueue::Storage::FileSystem->new({
-		info_storage => POE::Component::MessageQueue::Storage::Throttled->new({
-			storage => POE::Component::MessageQueue::Storage::DBI->new({
+	storage => POE::Component::MessageQueue::Storage::Throttled->new({
+		storage => POE::Component::MessageQueue::Storage::FileSystem->new({
+			info_storage => POE::Component::MessageQueue::Storage::DBI->new({
 				dsn      => $DB_DSN,
 				username => $DB_USERNAME,
 				password => $DB_PASSWORD,
 			}),
-			throttle_max => $throttle_max
+			data_dir => $DATA_DIR,
 		}),
-		data_dir => $DATA_DIR,
+		throttle_max => $throttle_max
 	})
 });
 

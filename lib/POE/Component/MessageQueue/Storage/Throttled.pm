@@ -119,8 +119,10 @@ sub _message_stored
 		my $message = $self->_throttle_pop();
 		if ( $message )
 		{
+			my $c = (scalar @{$self->{throttle_order}});
+
 			# if we have a throttled message then send it!
-			$self->_log("STORE: Sending throttled message from the buffer to the storage engine");
+			$self->_log("STORE: Sending throttled message from the buffer to the storage engine.  (Total throttled: $c)");
 			$self->{storage}->store($message);
 		}
 		else
@@ -150,7 +152,9 @@ sub store
 	{
 		if ( $self->{throttle_count} >= $self->{throttle_max} )
 		{
-			$self->_log("STORE: Already have sent $self->{throttle_max} messages to store engine.  Throttling.  Message will be buffered until engine has stored some messages.");
+			my $c = (scalar @{$self->{throttle_order}}) + 1;
+
+			$self->_log("STORE: THROTTLED: Already have sent $self->{throttle_max} messages to store engine.  Throttling.  Message will be buffered until engine has stored some messages.  (Total throttled: $c)");
 
 			# push into buffer
 			$self->_throttle_push($message);
