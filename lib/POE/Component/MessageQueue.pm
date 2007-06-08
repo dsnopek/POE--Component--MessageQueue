@@ -713,15 +713,19 @@ I recieved a script from a user that would cause a memory leak in 0.1.2.  By swi
 L<POE::Component::Generic> for the L<POE::Component::MessageQueue::Storage::DBI> module,
 I was able to eliminate this memory leak.
 
-However!  Our message queue in production still leaks memory!
+However!  Our message queue in production still appears to steadily increase its memory 
+usage.  This could be another memory leak but it is also possible that its just memory
+fragmentation or the load being so high that the number of throttled messages is getting
+out of control.
 
-I don't have an automated way to recreate this leak, making it difficult to debug.  If anyone
-experiences this bug, and can recreate in an automated way, I<let me know>!
+I am unable to recreate this in testing, making it difficult to debug.  It only turns up
+under our production load.  If anyone else experiences this problem and can recreate in an
+reliable way (preferably with something automated like a script), I<let me know>!
 
 That said, we are using this in production in a commercial application for
-thousands of large messages daily and it takes quite a few days to get unreasonably bloated.
-It is my dream on earth to solve this memory leak and I do hope to one day eliminate it,
-but as is said, "Release early -- release often."
+thousands of large messages daily and it takes quite awhile to get unreasonably bloated.
+Despite its problems, in the true spirit of Open Source and Free Software, I've decided
+to "release early -- release often."
 
 =head1 AUTHOR
 

@@ -57,6 +57,10 @@ POE::Component::MessageQueue::Storage::DBI -- A storage backend that uses L<DBI>
 A storage backend that uses L<DBI>.  All messages stored with this backend are
 persistent.
 
+Performance is increased greatly by wrapping this engine in 
+L<POE::Component::MessageQueue::Storage::Throttled> at the expense of being slower
+to persist messages.
+
 This module is really just L<POE::Component::MessageQueue::Storage::Generic> with
 L<POE::Component::MessageQueue::Storage::Generic::DBI>.  See the documentation for
 those modules for more information (primarily

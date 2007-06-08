@@ -321,9 +321,9 @@ A storage backend that uses L<DBI>.  All messages stored with this backend are
 persistent.
 
 This module is not itself asynchronous and must be run via 
-L<POE::Component::MessageQueue::Storage::Generic>.
+L<POE::Component::MessageQueue::Storage::Generic> as shown above.
 
-Rather than using this module directly, I would suggest using
+Rather than using this module "directly" [1], I would suggest wrapping it inside of
 L<POE::Component::MessageQueue::Storage::FileSystem>, to keep the message bodys on
 the filesystem, or L<POE::Component::MessageQueue::Storage::Complex>, which is the
 overall recommended storage backend.
@@ -366,6 +366,17 @@ it does best: index and look-up information quickly.
 =item password => SCALAR
 
 =item options => SCALAR
+
+=back
+
+=head1 FOOTNOTES
+
+=over 4
+
+=item [1] 
+
+By "directly", I still mean inside of L<POE::Component::MessageQueue::Storage::Generic> because
+that is the only way to use this module.
 
 =back
 

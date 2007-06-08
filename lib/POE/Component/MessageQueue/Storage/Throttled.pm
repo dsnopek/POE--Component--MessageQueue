@@ -208,7 +208,7 @@ __END__
 
 =head1 NAME
 
-POE::Component::MessageQueue::Storage::Throttled -- Wraps around another storage engine to throttle the number of messages sent to be stored at on time.
+POE::Component::MessageQueue::Storage::Throttled -- Wraps around another storage engine to throttle the number of messages sent to be stored at one time.
 
 =head1 SYNOPSIS
 
@@ -240,7 +240,7 @@ Wraps around another engine to limit the number of messages sent to be stored at
 
 Use of this module is B<highly> recommend!
 
-If the storage engine is unable to store the messages fast enough (ie. with slow disk IO) it can get really backed up and stall messages coming out of the queue.  This allows client producing execessive amounts of messages to basically monopolize the server, preventing any messages from getting distributed to the subscribers.
+If the storage engine is unable to store the messages fast enough (ie. with slow disk IO) it can get really backed up and stall messages coming out of the queue.  This allows a client producing execessive amounts of messages to basically monopolize the server, preventing any messages from getting distributed to subscribers.
 
 It is suggested to keep the throttle_max very low.  In an ideal situation, the underlying storage engine would be able to write each message immediately.  This means that there will never be more than one message sent to be stored at a time.  The purpose of this module is make the message act as though this were the case even if it isn't.  So, a throttle_max of 1, will strictly enforce this, however, for a little bit of leniancy, the suggested default is 2.
 
@@ -248,7 +248,7 @@ It is suggested to keep the throttle_max very low.  In an ideal situation, the u
 
 =over 2
 
-=item storage => SCALAR
+=item storage => L<POE::Component::MessageQueue::Storage>
 
 The storage engine to wrap.
 
@@ -269,7 +269,6 @@ L<POE::Component::MessageQueue::Storage::FileSystem>,
 L<POE::Component::MessageQueue::Storage::DBI>,
 L<POE::Component::MessageQueue::Storage::Generic>,
 L<POE::Component::MessageQueue::Storage::Generic::DBI>,
-L<POE::Component::MessageQueue::Storage::Throttled>,
 L<POE::Component::MessageQueue::Storage::Complex>
 
 =cut

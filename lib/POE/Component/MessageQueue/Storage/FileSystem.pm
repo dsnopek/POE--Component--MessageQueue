@@ -434,7 +434,7 @@ __END__
 
 =head1 NAME
 
-POE::Component::MessageQueue::Storage::FileSystem -- A storage backend that keeps message bodies on the filesystem
+POE::Component::MessageQueue::Storage::FileSystem -- A storage engine that keeps message bodies on the filesystem
 
 =head1 SYNOPSIS
 
@@ -465,7 +465,7 @@ POE::Component::MessageQueue::Storage::FileSystem -- A storage backend that keep
 
 =head1 DESCRIPTION
 
-A storage backend that wraps around another storage engine in order to store the message bodies on the file system.  The other message properties are stored with the wrapped storage engine.
+A storage engine that wraps around another storage engine in order to store the message bodies on the file system.  The other message properties are stored with the wrapped storage engine.
 
 While I would argue that using this module is less efficient than using
 L<POE::Component::MessageQueue::Storage::Complex>, using it directly would make sense if

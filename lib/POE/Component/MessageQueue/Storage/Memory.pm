@@ -178,7 +178,7 @@ __END__
 
 =head1 NAME
 
-POE::Component::MessageQueue::Storage::Memory -- In memory storage backend.
+POE::Component::MessageQueue::Storage::Memory -- In memory storage engine.
 
 =head1 SYNOPSIS
 
@@ -196,7 +196,7 @@ POE::Component::MessageQueue::Storage::Memory -- In memory storage backend.
 
 =head1 DESCRIPTION
 
-A storage backend that keeps all the messages in memory.  Provides no persistence
+A storage engine that keeps all the messages in memory.  Provides no persistence
 what-so-ever.
 
 I wouldn't suggest using this as your main storage backend because if messages aren't
