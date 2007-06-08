@@ -265,7 +265,7 @@ __END__
 
 =head1 NAME
 
-POE::Component::MessageQueue::Storage::Complex -- A storage backend that keeps messages in memory but moves them into persistent storage after a given number of seconds.
+POE::Component::MessageQueue::Storage::Complex -- A storage engine that keeps messages in memory but moves them into persistent storage after a given number of seconds.
 
 =head1 SYNOPSIS
 
@@ -278,8 +278,9 @@ POE::Component::MessageQueue::Storage::Complex -- A storage backend that keeps m
 
   POE::Component::MessageQueue->new({
     storage => POE::Component::MessageQueue::Storage::Complex->new({
-      data_dir => $DATA_DIR,
-      timeout  => 2
+      data_dir     => $DATA_DIR,
+      timeout      => 4,
+	  throttle_max => 2
     })
   });
 
@@ -288,19 +289,17 @@ POE::Component::MessageQueue::Storage::Complex -- A storage backend that keeps m
 
 =head1 DESCRIPTION
 
-This storage backend combines all the other provided backends.  It uses
+This storage engine combines all the other provided engine.  It uses
 L<POE::Component::MessageQueue::Storage::Memory> as the "front-end storage" and 
 L<POE::Component::MessageQueue::Storage::FileSystem> as the "back-end storage".  Message
 are initially put into the front-end storage and will be moved into the backend
 storage after a given number of seconds.
 
 The L<POE::Component::MessageQueue::Storage::FileSystem> component used internally 
-uses a throttled (via L<POE::Component::MessageQueue::Storage::Throttled>) 
-L<POE::Component::MessageQueue::Storage::DBI> with a L<DBD::SQLite> database.
+uses L<POE::Component::MessageQueue::Storage::DBI> with a L<DBD::SQLite> database.
+It is also throttled via L<POE::Component::MessageQueue::Storage::Throttled>.
 
-Based on my experience this is the most efficient configuration.
-
-This storage backend is recommended.  It should provide the best performance while (if
+This is the recommended storage engine.  It should provide the best performance while (if
 configured sanely) still providing a reasonable amount of persistence with little
 risk of eating all your memory under high load.  This is also the only storage
 backend to correctly honor the persistent flag and will only persist those messages

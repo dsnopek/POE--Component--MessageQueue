@@ -568,7 +568,7 @@ usage information.  Here is a quick break down:
 
 =item *
 
-L<POE::Component::MessageQueue::Storage::Memory> -- The simplest storage backend.  It keeps messages in memory and provides absolutely no presistence.
+L<POE::Component::MessageQueue::Storage::Memory> -- The simplest storage engine.  It keeps messages in memory and provides absolutely no presistence.
 
 =item *
 
@@ -596,7 +596,7 @@ L<POE::Component::MessageQueue::Storage::Throttled> -- Wraps around another engi
 
 =item *
 
-L<POE::Component::MessageQueue::Storage::Complex> -- A combination of the Memory, FileSystem, DBI and Throttled modules above.  It will keep messages in Memory and move them into FileSystem after a given number of seconds, throttling messages passed into DBI.  The DBI backend is configured to use SQLite.  It is capable of correctly handling a messages persistent flag.  This is the recommended storage backend and should provide the best performance in the most common case (ie. when both providers and consumers are connected to the queue at the same time).
+L<POE::Component::MessageQueue::Storage::Complex> -- A combination of the Memory, FileSystem, DBI and Throttled modules above.  It will keep messages in Memory and move them into FileSystem after a given number of seconds, throttling messages passed into DBI.  The DBI backend is configured to use SQLite.  It is capable of correctly handling a messages persistent flag.  This is the recommended storage engine and should provide the best performance in the most common case (ie. when both providers and consumers are connected to the queue at the same time).
 
 =back
 

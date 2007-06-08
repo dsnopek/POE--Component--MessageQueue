@@ -284,7 +284,7 @@ __END__
 
 =head1 NAME
 
-POE::Component::MessageQueue::Storage::Generic::DBI -- A storage backend that uses L<DBI>
+POE::Component::MessageQueue::Storage::Generic::DBI -- A storage engine that uses L<DBI>
 
 =head1 SYNOPSIS
 
@@ -317,7 +317,7 @@ POE::Component::MessageQueue::Storage::Generic::DBI -- A storage backend that us
 
 =head1 DESCRIPTION
 
-A storage backend that uses L<DBI>.  All messages stored with this backend are
+A storage engine that uses L<DBI>.  All messages stored with this backend are
 persistent.
 
 This module is not itself asynchronous and must be run via 
@@ -326,7 +326,7 @@ L<POE::Component::MessageQueue::Storage::Generic> as shown above.
 Rather than using this module "directly" [1], I would suggest wrapping it inside of
 L<POE::Component::MessageQueue::Storage::FileSystem>, to keep the message bodys on
 the filesystem, or L<POE::Component::MessageQueue::Storage::Complex>, which is the
-overall recommended storage backend.
+overall recommended storage engine.
 
 If you are only going to deal with very small messages then, possibly, you could 
 safely keep the message body in the database.  However, this is still not really

@@ -133,11 +133,11 @@ __END__
 
 =head1 NAME
 
-POE::Component::MessageQueue::Storage -- Parent of provided storage backends
+POE::Component::MessageQueue::Storage -- Parent of provided storage engines
 
 =head1 DESCRIPTION
 
-The parent class of the provided storage backends.  This is an "abstract" class that can't be used as is, but defines the interface for other objects of this type.
+The parent class of the provided storage engines.  This is an "abstract" class that can't be used as is, but defines the interface for other objects of this type.
 
 =head1 INTERFACE
 
@@ -153,7 +153,7 @@ Takes a CODEREF which will get called back when a message has been retrieved fro
 
 =item set_destination_ready_header I<CODEREF>
 
-Takes a CODEREF which will get called back when a destination is ready to be claimed from again.  This is necessary for storage backends that will lock a destination while attempting to retrieve a message.  This handler will be called when the destination is unlocked so that message queue knows that it can claim more messages.  If your storage backend doesn't lock anything, you B<must> call this handler immediately after called the above handler.  
+Takes a CODEREF which will get called back when a destination is ready to be claimed from again.  This is necessary for storage engines that will lock a destination while attempting to retrieve a message.  This handler will be called when the destination is unlocked so that message queue knows that it can claim more messages.  If your storage engine doesn't lock anything, you B<must> call this handler immediately after called the above handler.  
 
 It will be called with a single argument: the destination string.
 
@@ -171,7 +171,7 @@ Takes an object of type L<POE::Component::MessageQueue::Message> that should be 
 
 =item remove I<SCALAR>
 
-Takes a message_id to be removed from the storage backend.
+Takes a message_id to be removed from the storage engine.
 
 =item claim_and_retrieve I<SCALAR, SCALAR> or I<HASHREF>
 

@@ -25,7 +25,7 @@ __END__
 
 =head1 NAME
 
-POE::Component::MessageQueue::Storage::DBI -- A storage backend that uses L<DBI>
+POE::Component::MessageQueue::Storage::DBI -- A storage engine that uses L<DBI>
 
 =head1 SYNOPSIS
 
@@ -54,7 +54,7 @@ POE::Component::MessageQueue::Storage::DBI -- A storage backend that uses L<DBI>
 
 =head1 DESCRIPTION
 
-A storage backend that uses L<DBI>.  All messages stored with this backend are
+A storage engine that uses L<DBI>.  All messages stored with this backend are
 persistent.
 
 Performance is increased greatly by wrapping this engine in 

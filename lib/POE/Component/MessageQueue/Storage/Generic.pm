@@ -265,3 +265,77 @@ sub _destination_ready
 
 1;
 
+__END__
+
+=pod
+
+=head1 NAME
+
+POE::Component::MessageQueue::Storage::Generic -- Wraps storage engines that aren't asynchronous via L<POE::Component::Generic> so they can be used.
+
+=head1 SYNOPSIS
+
+  use POE;
+  use POE::Component::MessageQueue;
+  use POE::Component::MessageQueue::Storage::Generic;
+  use POE::Component::MessageQueue::Storage::Generic::DBI;
+  use strict;
+
+  # For mysql:
+  my $DB_DSN      = 'DBI:mysql:database=perl_mq';
+  my $DB_USERNAME = 'perl_mq';
+  my $DB_PASSWORD = 'perl_mq';
+  my $DB_OPTIONS  = undef;
+
+  POE::Component::MessageQueue->new({
+    storage => POE::Component::MessageQueue::Storage::Generic->new({
+      package => 'POE::Component::MessageQueue::Storage::DBI',
+      options => [{
+        dsn      => $DB_DSN,
+        username => $DB_USERNAME,
+        password => $DB_PASSWORD,
+        options  => $DB_OPTIONS
+      }],
+    })
+  });
+
+  POE::Kernel->run();
+  exit;
+
+=head1 DESCRIPTION
+
+Wraps storage engines that aren't asynchronous via L<POE::Component::Generic> so they can be used.
+
+Using this module is by far the easiest way to write custom storage engines because you don't have to worry about making your operations asynchronous.  This approach isn't without its down-sides, but on the whole, the simplicity is worth it.
+
+There is only one package currently provided designed to work with this module: L<POE::Component::MessageQueue::Storage::Generic::DBI>.
+
+=head1 CONSTRUCTOR PARAMETERS
+
+=over 2
+
+=item package => SCALAR
+
+The name of the package to wrap.
+
+=item options => ARRAYREF
+
+The arguments to pass to the new() function of the above package.
+
+=back
+
+=head1 SEE ALSO
+
+L<DBI>,
+L<POE::Component::Generic>,
+L<POE::Component::MessageQueue>,
+L<POE::Component::MessageQueue::Storage>,
+L<POE::Component::MessageQueue::Storage::Memory>,
+L<POE::Component::MessageQueue::Storage::FileSystem>,
+L<POE::Component::MessageQueue::Storage::DBI>,
+L<POE::Component::MessageQueue::Storage::Generic::DBI>,
+L<POE::Component::MessageQueue::Storage::Throttled>,
+L<POE::Component::MessageQueue::Storage::Complex>
+
+=cut
+
