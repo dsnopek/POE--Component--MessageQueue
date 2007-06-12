@@ -5,21 +5,37 @@ use POE::Component::Logger;
 use POE::Component::MessageQueue;
 use POE::Component::MessageQueue::Storage::Complex;
 use Getopt::Long;
+use Devel::StackTrace;
+use IO::File;
 use Carp;
+use POSIX qw(setsid strftime);
 use strict;
-
-$SIG{__DIE__} = sub {
-    Carp::confess(@_);
-};
 
 my $DATA_DIR = '/var/lib/perl_mq';
 my $CONF_DIR = '/etc/perl_mq';
 my $CONF_LOG = "$CONF_DIR/log.conf";
 
+$SIG{__DIE__} = sub {
+	# keep track of message queue crashes for later debugging
+	my $trace = Devel::StackTrace->new;
+	my $fd = IO::File->new(">>$DATA_DIR/crashed.log");
+	my (@l) = localtime(time());
+	$fd->write("\n============================== \n");
+	$fd->write(" Crashed: ".strftime('%Y-%m-%d %H:%M:%S', @l));
+	$fd->write("\n============================== \n\n");
+	$fd->write( $trace->as_string );
+	$fd->close();
+
+	# spit out a stack trace
+    Carp::confess(@_);
+};
+
 my $port     = 61613;
 my $hostname = undef;
 my $timeout  = 4;
 my $throttle_max = 2;
+my $background = 0;
+my $pidfile;
 
 GetOptions(
 	"port|p=i"     => \$port,
@@ -27,7 +43,9 @@ GetOptions(
 	"timeout|i=i"  => \$timeout,
 	"throttle|T=i" => \$throttle_max,
 	"data-dir=s"   => \$DATA_DIR,
-	"log-conf=s"   => \$CONF_LOG
+	"log-conf=s"   => \$CONF_LOG,
+	"background|b" => \$background,
+	"pid-file|p=s" => \$PID_FILE,
 );
 
 if ( not -d $DATA_DIR )
@@ -39,9 +57,22 @@ if ( not -d $DATA_DIR )
 		die "Unable to create the data dir: $DATA_DIR";
 	}
 }
-else
+
+if ( $background )
+{   
+	# the simplest daemonize, ever.
+	defined(fork() && exit 0) or "Can't fork: $!";
+	setsid or die "Can't start a new session: $!";
+	open STDIN,  '/dev/null' or die "Can't redirect STDIN from /dev/null: $!";
+	open STDOUT, '>/dev/null' or die "Can't redirect STDOUT to /dev/null: $!";
+	open STDERR, '>/dev/null' or die "Can't redirect STDERR to /dev/null: $!";
+}
+
+if ( $pid_file )
 {
-	print "Huh?!\n";
+	my $fd = IO::File->new(">$pid_file");
+	$fd->write("$PID");
+	$fd->close();
 }
 
 my $logger_alias;
