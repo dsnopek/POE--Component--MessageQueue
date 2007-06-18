@@ -45,7 +45,7 @@ GetOptions(
 	"data-dir=s"   => \$DATA_DIR,
 	"log-conf=s"   => \$CONF_LOG,
 	"background|b" => \$background,
-	"pid-file|p=s" => \$PID_FILE,
+	"pidfile|p=s" => \$pidfile,
 );
 
 if ( not -d $DATA_DIR )
@@ -68,10 +68,11 @@ if ( $background )
 	open STDERR, '>/dev/null' or die "Can't redirect STDERR to /dev/null: $!";
 }
 
-if ( $pid_file )
+if ( $pidfile )
 {
-	my $fd = IO::File->new(">$pid_file");
-	$fd->write("$PID");
+	my $fd = IO::File->new(">$pidfile")
+		|| die "Unable to open pidfile: $pidfile: $!";
+	$fd->write("$$");
 	$fd->close();
 }
 
