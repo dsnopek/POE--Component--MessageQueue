@@ -621,7 +621,7 @@ L<POE::Component::MessageQueue::Storage::Generic> -- Uses L<POE::Component::Gene
 
 =item *
 
-L<POE::Component::MessageQueue::Storage::Generic::DBI> -- A synchronise L<DBI>-based storage engine that can be used in side of Generic.  This provides the basis for the L<POE::Component::MessageQueue::Storage::DBI> module.
+L<POE::Component::MessageQueue::Storage::Generic::DBI> -- A synchronous L<DBI>-based storage engine that can be used in side of Generic.  This provides the basis for the L<POE::Component::MessageQueue::Storage::DBI> module.
 
 =item *
 

@@ -344,8 +344,8 @@ do as little as possible.
 
 =item *
 
-A number of database have hard limits on the amount of data that can be stored in
-a BLOB (namely, SQLite which sets an artificially lower limit than it is actually
+A number of databases have hard limits on the amount of data that can be stored in
+a BLOB (namely, SQLite, which sets an artificially lower limit than it is actually
 capable of).
 
 =item *

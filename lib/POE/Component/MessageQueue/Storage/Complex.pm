@@ -280,7 +280,7 @@ POE::Component::MessageQueue::Storage::Complex -- A storage engine that keeps me
     storage => POE::Component::MessageQueue::Storage::Complex->new({
       data_dir     => $DATA_DIR,
       timeout      => 4,
-	  throttle_max => 2
+      throttle_max => 2
     })
   });
 
