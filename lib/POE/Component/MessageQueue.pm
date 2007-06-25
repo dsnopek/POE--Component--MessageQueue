@@ -516,7 +516,7 @@ POE::Component::MessageQueue - A POE message queue that uses STOMP for the commu
     storage => POE::Component::MessageQueue::Storage::Complex->new({
       data_dir     => $DATA_DIR,
       timeout      => 2,
-	  throttle_max => 2
+      throttle_max => 2
     })
   });
 
