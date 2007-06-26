@@ -44,6 +44,7 @@ MANIFEST.SKIP
 META.yml
 README
 RELEASING
+CHANGES
 schema/mysql.sql
 schema/sqlite.sql
 test.sh

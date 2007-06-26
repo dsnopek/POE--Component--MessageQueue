@@ -11,6 +11,8 @@ TODO for making a release.
 
  * Look over MANIFEST and delete unused files in source tree (or just
    their entries in MANIFEST).
+ 
+ * Look over 'bzr log' and update CHANGES file.
 
  * Run 'make dist'.
 
