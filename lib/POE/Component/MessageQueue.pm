@@ -10,7 +10,7 @@ use Net::Stomp;
 use vars qw($VERSION);
 use strict;
 
-$VERSION = '0.1.4';
+$VERSION = '0.1.5';
 
 use Carp qw(croak);
 use Data::Dumper;

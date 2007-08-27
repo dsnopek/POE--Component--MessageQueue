@@ -4,7 +4,7 @@ use inc::Module::Install;
 name 'POE-Component-MessageQueue';
 abstract 'A Perl message queue based on POE that uses STOMP as its communication protocol.';
 author 'David Snopek';
-version '0.1.4';
+version '0.1.5';
 license 'gpl';
 
 build_requires 'Data::Dumper';
