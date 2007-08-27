@@ -17,6 +17,8 @@ requires 'POE::Component::Logger';
 requires 'POE::Component::Generic' => 0.1001;
 requires 'POE::Wheel::ReadWrite';
 requires 'Net::Stomp';
+requires 'Exception::Class::DBI';
+requires 'Exception::Class::TryCatch';
 requires 'DBI';
 requires 'DBD::SQLite' => 1.13;
 requires 'IO::String';
