@@ -75,8 +75,6 @@ sub store
 {
 	my ($self, $message) = @_;
 
-	print "  *-*  --- Executing store() for $message->{message_id}\n";
-
 	my $SQL = "INSERT INTO messages (message_id, destination, body, persistent, in_use_by) VALUES ( ?, ?, ?, ?, ? )";
 
 	try eval

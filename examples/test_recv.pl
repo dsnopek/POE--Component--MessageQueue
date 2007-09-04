@@ -10,10 +10,12 @@ my $PASSWORD     = 'manager';
 
 my $port     = 61613;
 my $hostname = "localhost";
+my $ack_type = "client";
 
 GetOptions(
 	"port|p=i"     => \$port,
-	"hostname|h=s" => \$hostname
+	"hostname|h=s" => \$hostname,
+	"ack-type=s"   => \$ack_type
 );
 
 my $stomp = Net::Stomp->new({
@@ -23,14 +25,17 @@ my $stomp = Net::Stomp->new({
 $stomp->connect({ login => $USERNAME, passcode => $PASSWORD });
 $stomp->subscribe({
 	'destination'           => '/queue/monkey_bin',
-	'ack'                   => 'client',
+	'ack'                   => $ack_type,
 	'activemq.prefetchSize' => 1 
 });
 while (1)
 {
 	my $frame = $stomp->receive_frame;
 	print $frame->body . "\n";
-	$stomp->ack({ frame => $frame });
+	if ( $ack_type eq 'client' )
+	{
+		$stomp->ack({ frame => $frame });
+	}
 }
 $stomp->disconnect();
 

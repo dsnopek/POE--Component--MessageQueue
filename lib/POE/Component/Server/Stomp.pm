@@ -68,6 +68,10 @@ sub new
 		ClientDisconnected => $client_disconnected,
 
 		ClientFilter => [ "POE::Filter::Line", Literal => "\000" ],
+
+		# pass everything left as arguments to the PoCo::Server::TCP
+		# contructor.
+		%$args
 	);
 
 	# POE::Component::Server::TCP does it!  So, I do it too.

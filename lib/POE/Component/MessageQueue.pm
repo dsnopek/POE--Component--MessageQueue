@@ -78,10 +78,30 @@ sub new
 
 		HandleFrame        => $self->__closure('_handle_frame'),
 		ClientDisconnected => $self->__closure('_client_disconnected'),
-		ClientError        => $self->__closure('_client_error')
+		ClientError        => $self->__closure('_client_error'),
+
+		ObjectStates => [
+			$self => [ '_pump' ]
+		],
 	);
 
-	# TODO: We will probably need to setup a custom session for 'master' tasks.
+	# to name the session for master tasks
+	if ( not defined $alias )
+	{
+		$alias = "MQ";
+	}
+
+	# a custom session for non-STOMP responsive tasks
+	$self->{session} = POE::Session->create(
+		inline_states => {
+			_start => sub { 
+				$_[ KERNEL ]->alias_set("$alias-master");
+			}
+		},
+		object_states => [
+			$self => [ '_pump' ]
+		],
+	);
 
 	return $self;
 }
@@ -261,6 +281,37 @@ sub _destination_store_ready
 
 		$queue->pump();
 	}
+}
+
+sub _pump
+{
+	my ($self, $kernel, $destination) = @_[ OBJECT, KERNEL, ARG0 ];
+
+	if ( $destination =~ /\/queue\/(.*)/ )
+	{
+		my $queue_name = $1;
+		my $queue = $self->get_queue( $queue_name );
+		$queue->pump();
+	}
+}
+
+sub pump_deferred
+{
+	my $self = shift;
+	my $args = shift;
+
+	my $destination;
+
+	if ( ref($args) eq 'HASH' )
+	{
+		$destination = $args->{destination};
+	}
+	else
+	{
+		$destination = $args;
+	}
+
+	$poe_kernel->post( $self->{session}, '_pump', $destination );
 }
 
 sub route_frame

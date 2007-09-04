@@ -183,7 +183,7 @@ sub pump
 			});
 
 			# if a message was actually claimed!
-			if ( $ret )
+			if ( $ret and $sub->{ack_type} eq 'client' )
 			{
 				# makes sure that this subscription isn't double picked
 				$sub->set_handling_message();
@@ -266,6 +266,10 @@ sub dispatch_message_to
 	else
 	{
 		$self->get_parent()->get_storage()->remove( $message->get_message_id() );
+
+		# we aren't waiting for anything, so pump the queue
+		# NOTE: For some reason, using the deferred pump is so much more performant!
+		$self->get_parent->pump_deferred("/queue/$self->{queue_name}");
 	}
 }
 

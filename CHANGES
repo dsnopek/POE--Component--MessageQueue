@@ -1,4 +1,10 @@
 
+== 0.1.6 -- 9/4/2007 ==
+
+ * Added a pump_deferred() function to send a message to pump the queue
+ * Fixed a bug with ack_type => 'auto'
+ * mq.pl: Output a sane error message when unable to write the crashed.log
+
 == 0.1.5 -- 8/27/2007 ==
 
  * Added missing dependancies to Makefile.PL

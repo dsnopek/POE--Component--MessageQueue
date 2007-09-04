@@ -16,18 +16,27 @@ my $CONF_DIR = '/etc/perl_mq';
 my $CONF_LOG = "$CONF_DIR/log.conf";
 
 $SIG{__DIE__} = sub {
-	# keep track of message queue crashes for later debugging
 	my $trace = Devel::StackTrace->new;
-	my $fd = IO::File->new(">>$DATA_DIR/crashed.log");
-	my (@l) = localtime(time());
-	$fd->write("\n============================== \n");
-	$fd->write(" Crashed: ".strftime('%Y-%m-%d %H:%M:%S', @l));
-	$fd->write("\n============================== \n\n");
-	$fd->write( $trace->as_string );
-	$fd->close();
+
+	# attempt to write to the crashed log for later debugging
+	my $fn = "$DATA_DIR/crashed.log";
+	my $fd = IO::File->new(">>$fn");
+	if ( $fd )
+	{
+		my (@l) = localtime(time());
+		$fd->write("\n============================== \n");
+		$fd->write(" Crashed: ".strftime('%Y-%m-%d %H:%M:%S', @l));
+		$fd->write("\n============================== \n\n");
+		$fd->write( $trace->as_string );
+		$fd->close();
+	}
+	else
+	{
+		print STDERR "Unable to open crashed log '$fn': $!\n";
+	}
 
 	# spit out a stack trace
-    Carp::confess(@_);
+	print STDERR $trace->as_string;
 };
 
 my $port     = 61613;
