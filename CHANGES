@@ -1,7 +1,7 @@
 
-== 0.1.6 -- 9/4/2007 ==
+== 0.1.6 -- 9/5/2007 ==
 
- * Added a pump_deferred() function to send a message to pump the queue
+ * Added a pump_deferred() function to send a message to pump a queue
  * Fixed a bug with ack_type => 'auto'
  * mq.pl: Output a sane error message when unable to write the crashed.log
 
