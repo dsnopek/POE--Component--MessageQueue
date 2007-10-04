@@ -239,14 +239,16 @@ sub dispatch_message_to
 
 	if ( not $result )
 	{
+		my $client_id = (defined $sub) ? $sub->{client}->{client_id} : $receiver->{client_id};
+
 		# This can happen when a client disconnects before the server
 		# can give them the message intended for them.
-		$self->_log( 'warning', "QUEUE: Message $message->{message_id} intended for $receiver->{client_id} on /queue/$self->{queue_name} could not be delivered" );
+		$self->_log( 'warning', "QUEUE: Message $message->{message_id} intended for $client_id on /queue/$self->{queue_name} could not be delivered" );
 
 		# The message *NEEDS* to be disowned in the storage layer, otherwise
 		# it will live forever as being claimed by a client that doesn't exist.
 		$self->get_parent()->get_storage()->disown(
-			"/queue/$self->{queue_name}", $receiver->{client_id} );
+			"/queue/$self->{queue_name}", $client_id );
 
 		# pump the queue to get the message to another suscriber.
 		$self->pump();
