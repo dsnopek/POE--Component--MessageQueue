@@ -102,7 +102,7 @@ sub store
 
 	if ( defined $self->{message_stored} )
 	{
-		$self->{message_stored}->( $message->{destination} );
+		$self->{message_stored}->( $message );
 	}
 
 	undef;

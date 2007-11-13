@@ -230,9 +230,11 @@ sub _client_error
 
 sub _message_stored
 {
-	my ($self, $destination) = @_;
+	my ($self, $message) = @_;
 	
+	my $destination = $message->{destination};
 	my $queue;
+
 	if ( $destination =~ /\/queue\/(.*)/ )
 	{
 		my $queue_name = $1;
@@ -240,7 +242,7 @@ sub _message_stored
 		$queue = $self->get_queue( $queue_name );
 	}
 
-	$self->{notify}->notify( 'store', { queue => $queue } );
+	$self->{notify}->notify( 'store', { queue => $queue, message => $message } );
 
 	# pump the queue for good luck!
 	$queue->pump();
