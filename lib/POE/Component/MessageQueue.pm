@@ -401,6 +401,12 @@ sub route_frame
 				stored      => 0
 			});
 
+			$self->{notify}->notify( 'recv', {
+				message => $message,
+				queue   => $queue,
+				client  => $client,
+			});
+
 			$queue->enqueue( $message );
 		}
 		else

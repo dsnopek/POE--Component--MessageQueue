@@ -28,10 +28,31 @@ sub register
 
 my %METHODS = (
     store    => 'notify_store',
+    'recv'   => 'notify_recv',
     dispatch => 'notify_dispatch',
     ack      => 'notify_ack',
     pump     => 'notify_pump',
 );
+
+sub get_queue
+{
+	my ($self, $name) = @_;
+
+	my $queue = $self->{statistics}{queues}{$name};
+
+	if ( not defined $queue )
+	{
+		$queue = $self->{statistics}{queues}{$name} = {
+			stored          => 0,
+			total_stored    => 0,
+			total_recvd     => 0,
+			avg_secs_stored => 0,
+			avg_size_recvd  => 0,
+		};
+	}
+
+	return $queue;
+}
 
 sub notify
 {
@@ -48,14 +69,23 @@ sub notify_store
     my $h = $self->{statistics};
     $h->{total_stored}++;
 
-    my $queue = $data->{queue};
-    $h->{queues}{ $queue->{queue_name} } ||= {};
-    $h->{queues}{ $queue->{queue_name} }{stored}++;
-    $h->{queues}{ $queue->{queue_name} }{total_stored}++;
-    $h->{queues}{ $queue->{queue_name} }{avg_secs_stored} = 0;
-    $h->{queues}{ $queue->{queue_name} }{avg_size_received} = 0;
+	my $stats = $self->get_queue($data->{queue}->{queue_name});
+	$stats->{stored}++;
+	$stats->{total_stored}++;
 }
 
+sub notify_recv
+{
+	my ($self, $data) = @_;
+
+	my $stats = $self->get_queue( $data->{queue}->{queue_name} );
+	$stats->{total_recvd}++;
+
+	my $size = $data->{message}->{size};
+
+	# recalc the average
+	$stats->{avg_size_recvd} = (($stats->{avg_size_recvd} * ($stats->{total_recvd} - 1)) + $size) / $stats->{total_recvd};
+}
 
 sub message_handled
 {
@@ -63,7 +93,7 @@ sub message_handled
 
 	my $info = $data->{message} || $data->{message_info};
 
-	my $stats = $self->{statistics}{queues}{ $data->{queue}->{queue_name} };
+	my $stats = $self->get_queue( $data->{queue}->{queue_name} );
 
 	$stats->{stored}--;
 	
@@ -134,7 +164,9 @@ sub dump_as_string
         my $queue = $queues->{$name};
         print $output " + $name\n";
 		print $output "   - Stored: $queue->{stored}\n";
+		#print $output "   - Recv'd: $queue->{total_recvd}\n";
 		print $output "   - Avg. secs stored: $queue->{avg_secs_stored}\n";
+		#print $output "   - Avg. size recv'd: $queue->{avg_size_recvd}\n";
     }
 }
 
