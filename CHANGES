@@ -1,4 +1,8 @@
 
+== 0.1.7 -- ??/??/2007 ==
+
+ * Fixed a bug where messages could get owned by a subscriber forever.
+
 == 0.1.6 -- 9/5/2007 ==
 
  * Added a pump_deferred() function to send a message to pump a queue
