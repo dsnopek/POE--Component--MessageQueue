@@ -488,7 +488,9 @@ sub push_unacked_message
 	my $unacked = {
 		client     => $client,
 		message_id => $message->{message_id},
-		queue_name => $message->get_queue_name()
+		queue_name => $message->get_queue_name(),
+		timestamp  => $message->{timestamp},
+		size       => $message->{size}
 	};
 	
 	$self->{needs_ack}->{$message->{message_id}} = $unacked;
@@ -548,7 +550,11 @@ sub ack_message
 	$self->{notify}->notify('ack', {
 		queue => $queue,
 		client => $client,
-		message => $unacked
+		message_info => {
+			message_id => $unacked->{message_id},
+			timestamp  => $unacked->{timestamp},
+			size       => $unacked->{size},
+		}
 	});
 
 	# pump the queue, so that this subscriber will get another message

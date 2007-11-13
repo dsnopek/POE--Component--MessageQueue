@@ -75,7 +75,7 @@ sub store
 {
 	my ($self, $message) = @_;
 
-	my $SQL = "INSERT INTO messages (message_id, destination, body, persistent, in_use_by) VALUES ( ?, ?, ?, ?, ? )";
+	my $SQL = "INSERT INTO messages (message_id, destination, body, persistent, in_use_by, timestamp, size) VALUES ( ?, ?, ?, ?, ?, ?, ? )";
 
 	try eval
 	{
@@ -86,7 +86,9 @@ sub store
 			$message->{destination},
 			$message->{body},
 			$message->{persistent},
-			$message->{in_use_by}
+			$message->{in_use_by},
+			$message->{timestamp},
+			$message->{size},
 		);
 	};
 	my $err = catch;
@@ -162,7 +164,9 @@ sub _retrieve
 			destination => $result->{destination},
 			persistent  => $result->{persistent},
 			body        => $result->{body},
-			in_use_by   => $result->{in_use_by}
+			in_use_by   => $result->{in_use_by},
+			timestamp   => $result->{timestamp},
+			size        => $result->{size},
 		});
 	}
 

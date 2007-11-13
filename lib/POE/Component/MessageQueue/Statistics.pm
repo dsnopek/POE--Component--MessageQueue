@@ -7,6 +7,8 @@ package POE::Component::MessageQueue::Statistics;
 use strict;
 use warnings;
 
+use Data::Dumper;
+
 sub new
 {
     my $class = shift;
@@ -49,6 +51,26 @@ sub notify_store
     my $queue = $data->{queue};
     $h->{queues}{ $queue->{queue_name} } ||= {};
     $h->{queues}{ $queue->{queue_name} }{stored}++;
+    $h->{queues}{ $queue->{queue_name} }{total_stored}++;
+    $h->{queues}{ $queue->{queue_name} }{avg_secs_stored} = 0;
+    $h->{queues}{ $queue->{queue_name} }{avg_size_received} = 0;
+}
+
+
+sub message_handled
+{
+	my ($self, $data) = @_;
+
+	my $info = $data->{message} || $data->{message_info};
+
+	my $stats = $self->{statistics}{queues}{ $data->{queue}->{queue_name} };
+
+	$stats->{stored}--;
+	
+	my $secs_stored = (time() - $info->{timestamp});
+
+	# recalc the average
+	$stats->{avg_secs_stored} = (($stats->{avg_secs_stored} * ($stats->{total_stored} - 1)) + $secs_stored) / $stats->{total_stored};
 }
 
 sub notify_dispatch
@@ -69,7 +91,7 @@ sub notify_dispatch
     }
 
     if ($sub->{ack_type} eq 'auto') {
-        $self->{statistics}{queues}{ $data->{queue}->{queue_name} }{stored}--;
+        $self->message_handled($data);
     }
 }
 
@@ -90,7 +112,7 @@ sub notify_ack {
     }
 
     if ($sub->{ack_type} eq 'client') {
-        $self->{statistics}{queues}{ $data->{queue}->{queue_name} }{stored}--;
+        $self->message_handled($data);
     }
 }
 
@@ -110,7 +132,9 @@ sub dump_as_string
     print $output "QUEUES:\n";
     foreach my $name (sort keys %$queues) {
         my $queue = $queues->{$name};
-        print $output " + $name: $queue->{stored}\n";
+        print $output " + $name\n";
+		print $output "   - Stored: $queue->{stored}\n";
+		print $output "   - Avg. secs stored: $queue->{avg_secs_stored}\n";
     }
 }
 
