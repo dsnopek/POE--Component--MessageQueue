@@ -47,6 +47,8 @@ my $background = 0;
 my $pidfile;
 my $show_version = 0;
 my $show_usage   = 0;
+my $statistics   = 0;
+my $stat_class   = "POE::Component::MessageQueue::Statistics";
 
 GetOptions(
 	"port|p=i"     => \$port,
@@ -55,6 +57,8 @@ GetOptions(
 	"throttle|T=i" => \$throttle_max,
 	"data-dir=s"   => \$DATA_DIR,
 	"log-conf=s"   => \$CONF_LOG,
+	"stats!"       => \$statistics,
+	"stats_class=s"=> \$stat_class,
 	"background|b" => \$background,
 	"pidfile|p=s"  => \$pidfile,
 	"version|v"    => \$show_version,
@@ -155,7 +159,7 @@ else
 	print STDERR "LOGGER: Will send all messages to STDERR\n";
 }
 
-POE::Component::MessageQueue->new({
+my %args = (
 	port     => $port,
 	hostname => $hostname,
 
@@ -166,8 +170,15 @@ POE::Component::MessageQueue->new({
 	}),
 
 	logger_alias => $logger_alias,
-});
+);
+if ($statistics) {
+	eval "require $stat_class";
+	$args{observers} = [
+		$stat_class->new()
+	]
+}
 
+POE::Component::MessageQueue->new(\%args);
 POE::Kernel->run();
 exit;
 
