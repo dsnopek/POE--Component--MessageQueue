@@ -7,6 +7,7 @@ use POE::Component::MessageQueue::Client;
 use POE::Component::MessageQueue::Queue;
 use POE::Component::MessageQueue::Message;
 use Net::Stomp;
+use Event::Notify;
 use vars qw($VERSION);
 use strict;
 
@@ -28,6 +29,7 @@ sub new
 
 	my $storage;
 	my $logger_alias;
+	my $observers;
 
 	if ( ref($args) eq 'HASH' )
 	{
@@ -39,6 +41,7 @@ sub new
 		
 		$storage      = $args->{storage};
 		$logger_alias = $args->{logger_alias};
+		$observers    = $args->{observers};
 	}
 
 	if ( not defined $storage )
@@ -57,8 +60,14 @@ sub new
 		clients   => { },
 		queues    => { },
 		needs_ack => { },
+		notify    => Event::Notify->new(),
 	};
 	bless $self, $class;
+
+	if ($observers) {
+		# Register the observers
+		$_->register($self) for (@$observers);
+	}
 
 	# setup the storage callbacks
 	$self->{storage}->set_message_stored_handler(  $self->__closure('_message_stored') );
@@ -105,6 +114,9 @@ sub new
 
 	return $self;
 }
+
+sub register_event { shift->{notify}->register_event(@_) }
+sub unregister_event { shift->{notify}->unregister_event(@_) }
 
 sub get_storage { return shift->{storage}; }
 
@@ -228,6 +240,8 @@ sub _message_stored
 		$queue = $self->get_queue( $queue_name );
 	}
 
+	$self->{notify}->notify( 'store', { queue => $queue } );
+
 	# pump the queue for good luck!
 	$queue->pump();
 }
@@ -251,6 +265,11 @@ sub _dispatch_from_store
 		#print "MESSAGE FROM STORE\n";
 		#print Dumper $message;
 
+		$self->{notify}->notify( 'dispatch', {
+			queue => $queue,
+			message => $message,
+			client => $client
+		});
 		$queue->dispatch_message_to( $message, $client );
 	}
 	else
@@ -523,6 +542,12 @@ sub ack_message
 		# Must check if subscriber is still connected before setting!
 		$sub->set_done_with_message();
 	}
+
+	$self->{notify}->notify('ack', {
+		queue => $queue,
+		client => $client,
+		message => $unacked
+	});
 
 	# pump the queue, so that this subscriber will get another message
 	$queue->pump();
