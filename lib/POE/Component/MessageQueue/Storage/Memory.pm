@@ -49,7 +49,7 @@ sub store
 	# call the message_stored handler
 	if ( defined $self->{message_stored} )
 	{
-		$self->{message_stored}->( $message->{destination} );
+		$self->{message_stored}->( $message );
 	}
 }
 

@@ -230,9 +230,11 @@ sub _client_error
 
 sub _message_stored
 {
-	my ($self, $destination) = @_;
+	my ($self, $message) = @_;
 	
+	my $destination = $message->{destination};
 	my $queue;
+
 	if ( $destination =~ /\/queue\/(.*)/ )
 	{
 		my $queue_name = $1;
@@ -240,7 +242,7 @@ sub _message_stored
 		$queue = $self->get_queue( $queue_name );
 	}
 
-	$self->{notify}->notify( 'store', { queue => $queue } );
+	$self->{notify}->notify( 'store', { queue => $queue, message => $message } );
 
 	# pump the queue for good luck!
 	$queue->pump();
@@ -399,6 +401,12 @@ sub route_frame
 				stored      => 0
 			});
 
+			$self->{notify}->notify( 'recv', {
+				message => $message,
+				queue   => $queue,
+				client  => $client,
+			});
+
 			$queue->enqueue( $message );
 		}
 		else
@@ -486,7 +494,9 @@ sub push_unacked_message
 	my $unacked = {
 		client     => $client,
 		message_id => $message->{message_id},
-		queue_name => $message->get_queue_name()
+		queue_name => $message->get_queue_name(),
+		timestamp  => $message->{timestamp},
+		size       => $message->{size}
 	};
 	
 	$self->{needs_ack}->{$message->{message_id}} = $unacked;
@@ -546,7 +556,11 @@ sub ack_message
 	$self->{notify}->notify('ack', {
 		queue => $queue,
 		client => $client,
-		message => $unacked
+		message_info => {
+			message_id => $unacked->{message_id},
+			timestamp  => $unacked->{timestamp},
+			size       => $unacked->{size},
+		}
 	});
 
 	# pump the queue, so that this subscriber will get another message
