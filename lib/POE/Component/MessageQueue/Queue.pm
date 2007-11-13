@@ -169,6 +169,7 @@ sub pump
 	$self->{pumping} = 1;
 	
 	$self->_log( 'debug', " -- PUMP QUEUE: $self->{queue_name} -- " );
+	$self->get_parent->{notify}->notify('pump');
 
 	# attempt to get a pending message and pass it the the 'send_queue' action.
 	if ( $self->{has_pending_messages} )
