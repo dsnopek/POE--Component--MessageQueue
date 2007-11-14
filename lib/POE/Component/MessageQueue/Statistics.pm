@@ -216,4 +216,8 @@ To enable outputs, you need to create a separate Publish object:
 Please refer to POE::Component::MessageQueue::Statistics::Publish for details
 on how to enable output
 
+=head1 AUTHOR
+
+Daisuke Maki E<lt>daisuke@endeworks.jpE<gt>
+
 =cut

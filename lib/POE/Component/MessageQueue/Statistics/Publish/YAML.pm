@@ -66,7 +66,16 @@ POE::Component::MessageQueue::Statistics::Publish::YAML - Publish Statistics In 
 
   my $publish = POE::Component::MessageQueue::Statistics::Publish::YAML->new(
     output => \*STDOUT, 
+    statistics => $stats
   );
-  $publish->publish($stats);
+  $publish->publish();
+
+=head1 DESCRIPTION
+
+This module dumps the statistics information in YAML format
+
+=head1 AUTHOR
+
+Daisuke Maki E<lt>daisuke@endeworks.jpE<gt>
 
 =cut

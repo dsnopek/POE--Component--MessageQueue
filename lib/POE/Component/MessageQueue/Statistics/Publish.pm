@@ -136,4 +136,8 @@ output to $code and execute it:
     $code->( $output );
   }
 
+=head1 AUTHOR
+
+Daisuke Maki E<lt>daisuke@endeworks.jpE<gt>
+
 =cut
