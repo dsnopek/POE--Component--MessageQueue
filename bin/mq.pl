@@ -173,9 +173,17 @@ my %args = (
 );
 if ($statistics) {
 	eval "require $stat_class";
-	$args{observers} = [
-		$stat_class->new()
-	]
+    die if $@;
+	my $stat = $stat_class->new();
+	$args{observers} = [ $stat ];
+
+    # XXX - FIXME This is hardcoded right now
+    require POE::Component::MessageQueue::Statistics::Publish::YAML;
+    my $publish = POE::Component::MessageQueue::Statistics::Publish::YAML->spawn(
+        statistics => $stat,
+        output => \*STDERR,
+        interval => 2
+    );
 }
 
 POE::Component::MessageQueue->new(\%args);

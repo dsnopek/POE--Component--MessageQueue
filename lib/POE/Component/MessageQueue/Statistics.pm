@@ -2,6 +2,19 @@
 #
 # Copyright (c) 2007 Daisuke Maki <daisuke@endeworks.jp>
 # All rights reserved.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 package POE::Component::MessageQueue::Statistics;
 use strict;
@@ -12,11 +25,13 @@ use Data::Dumper;
 sub new
 {
     my $class = shift;
-    my $self  = bless {}, $class;
-    $self->{statistics} = {
-        total_stored => 0,
-        queues => {},
-    };
+    my $self  = bless {
+        statistics => {
+            total_stored => 0,
+            queues => {},
+        }
+    }, $class;
+
     $self;
 }
 
@@ -171,3 +186,38 @@ sub dump_as_string
 }
 
 1;
+
+__END__
+
+=head1 NAME
+
+POE::Component::MessageQueue::Statistics - Gather MQ Usage Statistics 
+
+=head1 SYNOPSIS
+
+  my $statistics = POE::Component::MessageQueue::Statistics->new();
+  $mq->register( $statistics );
+
+=head1 DESCRIPTION
+
+POE::Component::MessageQueue::Statistics is a simple observer that receives
+events from the main POE::Component::MessageQueue object to collect usage
+statistics.
+
+By itself it will only *gather* statistics, and will not output anything.
+
+To enable outputs, you need to create a separate Publish object:
+
+  POE::Component::MessageQueue::Statistics::Publish::YAML->new(
+    output => \*STDERR,
+    statistics => $statistics
+  );
+
+Please refer to POE::Component::MessageQueue::Statistics::Publish for details
+on how to enable output
+
+=head1 AUTHOR
+
+Daisuke Maki E<lt>daisuke@endeworks.jpE<gt>
+
+=cut
