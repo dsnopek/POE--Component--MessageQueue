@@ -12,11 +12,13 @@ use Data::Dumper;
 sub new
 {
     my $class = shift;
-    my $self  = bless {}, $class;
-    $self->{statistics} = {
-        total_stored => 0,
-        queues => {},
-    };
+    my $self  = bless {
+        statistics => {
+            total_stored => 0,
+            queues => {},
+        }
+    }, $class;
+
     $self;
 }
 
@@ -171,3 +173,34 @@ sub dump_as_string
 }
 
 1;
+
+__END__
+
+=head1 NAME
+
+POE::Component::MessageQueue::Statistics - Gather MQ Usage Statistics 
+
+=head1 SYNOPSIS
+
+  my $statistics = POE::Component::MessageQueue::Statistics->new();
+  $mq->register( $statistics );
+
+=head1 DESCRIPTION
+
+POE::Component::MessageQueue::Statistics is a simple observer that receives
+events from the main POE::Component::MessageQueue object to collect usage
+statistics.
+
+By itself it will only *gather* statistics, and will not output anything.
+
+To enable outputs, you need to create a separate Publish object:
+
+  POE::Component::MessageQueue::Statistics::Publish::YAML->new(
+    output => \*STDERR,
+    statistics => $statistics
+  );
+
+Please refer to POE::Component::MessageQueue::Statistics::Publish for details
+on how to enable output
+
+=cut
