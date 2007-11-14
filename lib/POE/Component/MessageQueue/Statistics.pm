@@ -38,7 +38,7 @@ sub new
 sub register
 {
     my ($self, $mq) = @_;
-    $mq->register_event( $_, $self ) for qw(store dispatch ack pump);
+    $mq->register_event( $_, $self ) for qw(store recv dispatch ack pump);
 }
 
 my %METHODS = (
@@ -163,7 +163,8 @@ sub notify_ack {
 
 sub notify_pump {
     my ($self, $data) = @_;
-    $self->dump_as_string;
+    # Now dumped as via PoCo::MQ::Statistics::Publish
+    #$self->dump_as_string;
 }
 
 sub dump_as_string
@@ -179,9 +180,9 @@ sub dump_as_string
         my $queue = $queues->{$name};
         print $output " + $name\n";
 		print $output "   - Stored: $queue->{stored}\n";
-		#print $output "   - Recv'd: $queue->{total_recvd}\n";
+		print $output "   - Recv'd: $queue->{total_recvd}\n";
 		print $output "   - Avg. secs stored: $queue->{avg_secs_stored}\n";
-		#print $output "   - Avg. size recv'd: $queue->{avg_size_recvd}\n";
+		print $output "   - Avg. size recv'd: $queue->{avg_size_recvd}\n";
     }
 }
 
