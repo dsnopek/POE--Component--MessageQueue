@@ -38,7 +38,7 @@ sub new
 sub register
 {
     my ($self, $mq) = @_;
-    $mq->register_event( $_, $self ) for qw(store dispatch ack pump);
+    $mq->register_event( $_, $self ) for qw(store dispatch ack);
 }
 
 my %METHODS = (
@@ -46,7 +46,6 @@ my %METHODS = (
     'recv'   => 'notify_recv',
     dispatch => 'notify_dispatch',
     ack      => 'notify_ack',
-    pump     => 'notify_pump',
 );
 
 sub get_queue
@@ -158,30 +157,6 @@ sub notify_ack {
 
     if ($sub->{ack_type} eq 'client') {
         $self->message_handled($data);
-    }
-}
-
-sub notify_pump {
-    my ($self, $data) = @_;
-    $self->dump_as_string;
-}
-
-sub dump_as_string
-{
-    my ($self, $output) = @_;
-
-    $output ||= \*STDERR;
-    print $output "TOTAL STORED (cumul): $self->{statistics}{total_stored}\n";
-    my $queues = $self->{statistics}{queues};
-
-    print $output "QUEUES:\n";
-    foreach my $name (sort keys %$queues) {
-        my $queue = $queues->{$name};
-        print $output " + $name\n";
-		print $output "   - Stored: $queue->{stored}\n";
-		#print $output "   - Recv'd: $queue->{total_recvd}\n";
-		print $output "   - Avg. secs stored: $queue->{avg_secs_stored}\n";
-		#print $output "   - Avg. size recv'd: $queue->{avg_size_recvd}\n";
     }
 }
 
