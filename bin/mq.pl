@@ -39,6 +39,7 @@ $SIG{__DIE__} = sub {
 	print STDERR $trace->as_string;
 };
 
+
 my $port     = 61613;
 my $hostname = undef;
 my $timeout  = 4;
@@ -48,7 +49,7 @@ my $pidfile;
 my $show_version = 0;
 my $show_usage   = 0;
 my $statistics   = 0;
-my $stat_class   = "POE::Component::MessageQueue::Statistics";
+my $stat_interval = 10;
 
 GetOptions(
 	"port|p=i"     => \$port,
@@ -58,7 +59,7 @@ GetOptions(
 	"data-dir=s"   => \$DATA_DIR,
 	"log-conf=s"   => \$CONF_LOG,
 	"stats!"       => \$statistics,
-	"stats_class=s"=> \$stat_class,
+	"stats-interval" => \$stat_interval,
 	"background|b" => \$background,
 	"pidfile|p=s"  => \$pidfile,
 	"version|v"    => \$show_version,
@@ -86,17 +87,20 @@ sub usage
 	print "  --hostname -h <host>   The hostname of the interface to listen on (Default: localhost)\n";
 
 	print "\nSTORAGE OPTIONS:\n";
-	print "  --timeout  -i <secs>   The number of seconds to keep messages in the front-store (Default: 4)\n";
-	print "  --throttle -T <count>  The number of messages that can be stored at once before throttling (Default: 2)\n";
-	print "  --data-dir <path>      The path to the directory to store data (Default: /var/lib/perl_mq)\n";
-	print "  --log-conf <path>      The path to the log configuration file (Default: /etc/perl_mq/log.conf\n";
+	print "  --timeout  -i <secs>    The number of seconds to keep messages in the front-store (Default: 4)\n";
+	print "  --throttle -T <count>   The number of messages that can be stored at once before throttling (Default: 2)\n";
+	print "  --data-dir <path>       The path to the directory to store data (Default: /var/lib/perl_mq)\n";
+	print "  --log-conf <path>       The path to the log configuration file (Default: /etc/perl_mq/log.conf\n";
+	print "\nSTATISTICS OPTIONS:\n";
+	print "  --stats                 If specified the, statistics information will be written to \$DATA_DIR/stats.yml\n";
+	print "  --stats-interval <secs> Specifies the number of seconds to wait before dumping statistics (Default: 10)\n";
 	print "\nDAEMON OPTIONS:\n";
-	print "  --background -b        If specified the script will daemonize and run in the background\n";
-	print "  --pidfile    -p <path> The path to a file to store the PID of the process\n";
+	print "  --background -b         If specified the script will daemonize and run in the background\n";
+	print "  --pidfile    -p <path>  The path to a file to store the PID of the process\n";
 
 	print "\nOTHER OPTIONS:\n";
-	print "  --version    -v        Show the current version.\n";
-	print "  --help       -h        Show this usage message\n";
+	print "  --version    -v         Show the current version.\n";
+	print "  --help       -h         Show this usage message\n";
 }
 
 if ( $show_version )
@@ -172,18 +176,15 @@ my %args = (
 	logger_alias => $logger_alias,
 );
 if ($statistics) {
-	eval "require $stat_class";
-    die if $@;
-	my $stat = $stat_class->new();
+	require POE::Component::MessageQueue::Statistics;
+	require POE::Component::MessageQueue::Statistics::Publish::YAML;
+	my $stat = POE::Component::MessageQueue::Statistics->new();
+	my $publish = POE::Component::MessageQueue::Statistics::Publish::YAML->spawn(
+		statistics => $stat,
+		output => "$DATA_DIR/stats.yml",
+		interval => $stat_interval,
+	);
 	$args{observers} = [ $stat ];
-
-    # XXX - FIXME This is hardcoded right now
-    require POE::Component::MessageQueue::Statistics::Publish::YAML;
-    my $publish = POE::Component::MessageQueue::Statistics::Publish::YAML->spawn(
-        statistics => $stat,
-        output => \*STDERR,
-        interval => 2
-    );
 }
 
 POE::Component::MessageQueue->new(\%args);
