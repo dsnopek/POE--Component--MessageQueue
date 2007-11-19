@@ -59,7 +59,7 @@ GetOptions(
 	"data-dir=s"   => \$DATA_DIR,
 	"log-conf=s"   => \$CONF_LOG,
 	"stats!"       => \$statistics,
-	"stats-interval" => \$stat_interval,
+	"stats-interval=i" => \$stat_interval,
 	"background|b" => \$background,
 	"pidfile|p=s"  => \$pidfile,
 	"version|v"    => \$show_version,
