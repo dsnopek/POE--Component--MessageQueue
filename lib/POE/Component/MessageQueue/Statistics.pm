@@ -58,7 +58,9 @@ sub get_queue
 	{
 		$queue = $self->{statistics}{queues}{$name} = {
 			stored          => 0,
+			sent            => 0,
 			total_stored    => 0,
+			total_sent      => 0,
 			total_recvd     => 0,
 			avg_secs_stored => 0,
 			avg_size_recvd  => 0,
@@ -86,6 +88,7 @@ sub notify_store
 	my $stats = $self->get_queue($data->{queue}->{queue_name});
 	$stats->{stored}++;
 	$stats->{total_stored}++;
+	$stats->{last_stored} = scalar localtime();
 }
 
 sub notify_recv
@@ -110,6 +113,9 @@ sub message_handled
 	my $stats = $self->get_queue( $data->{queue}->{queue_name} );
 
 	$stats->{stored}--;
+	$stats->{sent}++;
+	$stats->{total_sent}++;
+	$stats->{last_sent} = scalar localtime();
 	
 	my $secs_stored = (time() - $info->{timestamp});
 
