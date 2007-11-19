@@ -38,7 +38,7 @@ sub new
 sub register
 {
     my ($self, $mq) = @_;
-    $mq->register_event( $_, $self ) for qw(store dispatch ack);
+    $mq->register_event( $_, $self ) for qw(store recv dispatch ack pump);
 }
 
 my %METHODS = (
@@ -159,6 +159,8 @@ sub notify_ack {
         $self->message_handled($data);
     }
 }
+
+sub notify_pump {}
 
 1;
 
