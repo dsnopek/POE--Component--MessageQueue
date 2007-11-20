@@ -24,28 +24,32 @@ use Data::Dumper;
 
 sub new
 {
-    my $class = shift;
-    my $self  = bless {
-        statistics => {
-            total_stored => 0,
-            queues => {},
-        }
-    }, $class;
+	my $class = shift;
+	my $self  = bless {
+		statistics => {
+		    total_stored  => 0,
+		    total_sent    => 0,
+		    subscriptions => 0,
+		    queues        => {},
+		}
+	}, $class;
 
-    $self;
+	$self;
 }
 
 sub register
 {
-    my ($self, $mq) = @_;
-    $mq->register_event( $_, $self ) for qw(store dispatch ack);
+	my ($self, $mq) = @_;
+	$mq->register_event( $_, $self ) for qw(store dispatch ack recv subscribe unsubscribe);
 }
 
 my %METHODS = (
-    store    => 'notify_store',
-    'recv'   => 'notify_recv',
-    dispatch => 'notify_dispatch',
-    ack      => 'notify_ack',
+	store    => 'notify_store',
+	'recv'   => 'notify_recv',
+	dispatch => 'notify_dispatch',
+	ack      => 'notify_ack',
+	subscribe => 'notify_subscribe',
+	unsubscribe => 'notify_unsubscribe',
 );
 
 sub get_queue
@@ -72,19 +76,22 @@ sub get_queue
 
 sub notify
 {
-    my ($self, $event, $data) = @_;
+	my ($self, $event, $data) = @_;
 
-    my $method = $METHODS{ $event };
-    return unless $method;
-    $self->$method($data);
+	my $method = $METHODS{ $event };
+	return unless $method;
+	$self->$method($data);
 }
 
 sub notify_store
 {
-    my ($self, $data) = @_;
-    my $h = $self->{statistics};
-    $h->{total_stored}++;
+	my ($self, $data) = @_;
 
+	# Global
+	my $h = $self->{statistics};
+	$h->{total_stored}++;
+
+	# Per-queue
 	my $stats = $self->get_queue($data->{queue}->{queue_name});
 	$stats->{stored}++;
 	$stats->{total_stored}++;
@@ -110,6 +117,11 @@ sub message_handled
 
 	my $info = $data->{message} || $data->{message_info};
 
+	# Global
+	my $h = $self->{statistics};
+	$h->{total_sent}++;
+
+	# Per-queue
 	my $stats = $self->get_queue( $data->{queue}->{queue_name} );
 
 	$stats->{stored}--;
@@ -125,45 +137,71 @@ sub message_handled
 
 sub notify_dispatch
 {
-    my ($self, $data) = @_;
+	my ($self, $data) = @_;
 
-    my $receiver = $data->{client};
+	my $receiver = $data->{client};
 
-    my $sub;
-    if ( ref($receiver) eq 'POE::Component::MessageQueue::Client' )
-    {
-        # automatically convert clients to subscribers!
-        $sub = $data->{queue}->get_subscription( $receiver );
-    }
-    else
-    {
-        $sub = $receiver;
-    }
+	my $sub;
+	if ( ref($receiver) eq 'POE::Component::MessageQueue::Client' )
+	{
+		# automatically convert clients to subscribers!
+		$sub = $data->{queue}->get_subscription( $receiver );
+	}
+	else
+	{
+		$sub = $receiver;
+	}
 
-    if ($sub->{ack_type} eq 'auto') {
-        $self->message_handled($data);
-    }
+	if ($sub->{ack_type} eq 'auto') {
+		$self->message_handled($data);
+	}
 }
 
 sub notify_ack {
-    my ($self, $data) = @_;
+	my ($self, $data) = @_;
 
-    my $receiver = $data->{client};
+	my $receiver = $data->{client};
 
-    my $sub;
-    if ( ref($receiver) eq 'POE::Component::MessageQueue::Client' )
-    {
-        # automatically convert clients to subscribers!
-        $sub = $data->{queue}->get_subscription( $receiver );
-    }
-    else
-    {
-        $sub = $receiver;
-    }
+	my $sub;
+	if ( ref($receiver) eq 'POE::Component::MessageQueue::Client' )
+	{
+		# automatically convert clients to subscribers!
+		$sub = $data->{queue}->get_subscription( $receiver );
+	}
+	else
+	{
+		$sub = $receiver;
+	}
 
-    if ($sub->{ack_type} eq 'client') {
-        $self->message_handled($data);
-    }
+	if ($sub->{ack_type} eq 'client') {
+		$self->message_handled($data);
+	}
+}
+
+sub notify_subscribe
+{
+	my ($self, $data) = @_;
+
+	# Global
+	my $h = $self->{statistics};
+	$h->{subscriptions}++;
+
+	# Per-queue
+	my $stats = $self->get_queue( $data->{queue}->{queue_name} );
+	$stats->{subscriptions}++;
+}
+
+sub notify_unsubscribe
+{
+	my ($self, $data) = @_;
+
+	# Global
+	my $h = $self->{statistics};
+	$h->{subscriptions}--;
+
+	# Per-queue
+	my $stats = $self->get_queue( $data->{queue}->{queue_name} );
+	$stats->{subscriptions}--;
 }
 
 1;
