@@ -171,7 +171,8 @@ sub remove_client
 	my $client = $self->get_client( $client_id );
 
 	# remove subscriptions to all queues
-	foreach my $queue_name ( @{$client->{queue_names}} )
+	my @queue_names = $client->get_subscribed_queue_names();
+	foreach my $queue_name ( @queue_names )
 	{
 		my $queue = $self->get_queue( $queue_name );
 		$queue->remove_subscription( $client );
