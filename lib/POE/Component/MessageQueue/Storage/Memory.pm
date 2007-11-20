@@ -131,11 +131,11 @@ sub claim_and_retrieve
 		$client_id   = shift;
 	}
 
-	my $messages = $self->{messages}{$destination} || [];
-	my $max = scalar @$messages;
+	my @messages = @{ $self->{messages}{$destination} || [] };
+	my $max = scalar @messages;
 
 	# look for an unclaimed message and take it
-	foreach my $message (@$messages)
+	foreach my $message (@messages)
 	{
 		if ( not defined $message->{in_use_by} )
 		{
