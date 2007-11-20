@@ -112,7 +112,10 @@ sub notify_recv
 	my $size = $data->{message}->{size};
 
 	# recalc the average
-	$stats->{avg_size_recvd} = (($stats->{avg_size_recvd} * ($stats->{total_recvd} - 1)) + $size) / $stats->{total_recvd};
+	$stats->{avg_size_recvd} = 
+		$stats->{total_recvd} <= 0 ?
+		0 :
+		(($stats->{avg_size_recvd} * ($stats->{total_recvd} - 1)) + $size) / $stats->{total_recvd};
 }
 
 sub message_handled
@@ -136,7 +139,10 @@ sub message_handled
 	my $secs_stored = (time() - $info->{timestamp});
 
 	# recalc the average
-	$stats->{avg_secs_stored} = (($stats->{avg_secs_stored} * ($stats->{total_stored} - 1)) + $secs_stored) / $stats->{total_stored};
+	$stats->{avg_secs_stored} = 
+		$stats->{total_stored} <= 0 ?
+		0 :
+		(($stats->{avg_secs_stored} * ($stats->{total_stored} - 1)) + $secs_stored) / $stats->{total_stored};
 }
 
 sub notify_dispatch
