@@ -10,7 +10,7 @@ use Net::Stomp;
 use vars qw($VERSION);
 use strict;
 
-$VERSION = '0.1.6';
+$VERSION = '0.1.7';
 
 use Carp qw(croak);
 use Data::Dumper;
@@ -487,7 +487,6 @@ sub pop_unacked_message
 		$self->_log( 'alert', "message id: $message_id" );;
 		$self->_log( 'alert', "needs_ack says $unacked->{client}->{client_id}" );
 		$self->_log( 'alert', "but we got a message from $client->{client_id}" );
-		exit 1;
 		return undef;
 	}
 	else
@@ -507,7 +506,7 @@ sub ack_message
 
 	if ( not defined $unacked )
 	{
-		$self->_log( 'alert', "Attempting to ACK a message not in our needs_ack list" );
+		$self->_log( 'alert', "Error ACK'ing message: $message_id" );
 		return;
 	}
 	
