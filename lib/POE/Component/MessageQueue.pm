@@ -1,3 +1,19 @@
+#
+# Copyright 2007 David Snopek <dsnopek@gmail.com>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
 
 package POE::Component::MessageQueue;
 
@@ -743,6 +759,29 @@ L<http://www.activemq.org/> -- ActiveMQ is a popular Java-based message queue
 
 =back
 
+=head1 CONTACT
+
+For support, please check out the Google Group at:
+
+L<http://groups.google.com/group/pocomq>
+
+Or just send an e-mail to: pocomq@googlegroups.com
+
+=head1 DEVELOPMENT
+
+If you find any bugs, have feature requests, or wish to contribute, please
+contact us at our Google Group mentioned above.  We'll do our best to help you
+out!
+
+Development is coordinated via Bazaar (See L<http://bazaar-vcs.org>).  The main
+Bazaar branch can be found here:
+
+L<http://code.hackyourlife.org/bzr/dsnopek/perl_mq>
+
+We prefer that contributions come in the form of a published Bazaar branch with the
+changes.  This helps facilitate the back-and-forth in the review process to get
+any new code merged into the main branch.
+
 =head1 FUTURE
 
 The goal of this module is not to support every possible feature but rather to be
@@ -802,7 +841,7 @@ fragmentation or the load being so high that the number of throttled messages is
 out of control.
 
 I am unable to recreate this in testing, making it difficult to debug.  It only turns up
-under our production load.  If anyone else experiences this problem and can recreate in an
+undea our production load.  If anyone else experiences this problem and can recreate in an
 reliable way (preferably with something automated like a script), I<let me know>!
 
 That said, we are using this in production in a commercial application for
@@ -812,7 +851,22 @@ to "release early -- release often."
 
 =head1 AUTHOR
 
-Copyright 2007 David Snopek <dsnopek@gmail.com>
+Copyright 2007 David Snopek (L<http://www.hackyourlife.org/>)
+
+=head1 LICENSE
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 =cut
 
