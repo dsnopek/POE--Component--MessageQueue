@@ -27,6 +27,10 @@ sub new
 	my $class = shift;
 	my $self  = bless {
 		statistics => {
+            ID            => sprintf(
+                "POE::Component::MessageQueue version %s (PID: $$)",
+                eval join('::', '$POE', 'Component', 'MessageQueue', 'VERSION') # hide from PAUSE
+            ),
 		    total_stored  => 0,
 		    total_sent    => 0,
 		    subscriptions => 0,
@@ -152,7 +156,7 @@ sub notify_dispatch
 		$sub = $receiver;
 	}
 
-	if ($sub->{ack_type} eq 'auto') {
+	if (($sub->{ack_type} || '') eq 'auto') {
 		$self->message_handled($data);
 	}
 }
@@ -173,7 +177,7 @@ sub notify_ack {
 		$sub = $receiver;
 	}
 
-	if ($sub->{ack_type} eq 'client') {
+	if (($sub->{ack_type} || '') eq 'client') {
 		$self->message_handled($data);
 	}
 }

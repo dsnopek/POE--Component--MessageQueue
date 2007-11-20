@@ -169,7 +169,7 @@ sub disown
 	my $messages = $self->{messages}{$destination} || [];
 	foreach my $message ( @{$messages} )
 	{
-		if ( $message->{destination} eq $destination and $message->{in_use_by} == $client_id )
+		if ( $message->{in_use_by} == $client_id )
 		{
 			$message->{in_use_by} = undef;
 		}
