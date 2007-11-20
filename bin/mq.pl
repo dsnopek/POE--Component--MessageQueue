@@ -161,7 +161,23 @@ if ($statistics) {
 	);
 	$args{observers} = [ $stat ];
 }
-POE::Component::MessageQueue->new(\%args);
+my $mq = POE::Component::MessageQueue->new(\%args);
+
+sub shutdown
+{
+	$mq->shutdown();
+}
+
+# install signal handlers to initiate graceful shutdown
+# TODO: I copied this list from the kill(1) man page.  I chose all signals
+# that had an "Action" of exit or core.  Is this right?
+foreach my $signal (
+	'ALRM', 'HUP', 'INT', 'KILL', 'PIPE', 'POLL', 'PROF', 'TERM', 'USR1', 'USR2',
+	'VTALRM', 'STKFLT', 'PWR', 'ABRT', 'FPE', 'ILL', 'QUIT', 'SEGV', 'TRAP',
+	'SYS', 'EMT', 'BUS', 'XCPU', 'XFSZ' )
+{
+	$SIG{$signal} = \&shutdown;
+}
 
 # install a die handler so we can catch crashes and log them
 $SIG{__DIE__} = sub {

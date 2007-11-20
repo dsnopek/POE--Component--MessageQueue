@@ -89,6 +89,7 @@ sub new
 	$self->{storage}->set_message_stored_handler(  $self->__closure('_message_stored') );
 	$self->{storage}->set_dispatch_message_handler(  $self->__closure('_dispatch_from_store') );
 	$self->{storage}->set_destination_ready_handler( $self->__closure('_destination_store_ready') );
+	$self->{storage}->set_shutdown_complete_handler( $self->__closure('_shutdown_complete') );
 
 	# get the storage object using our logger
 	$self->{storage}->set_logger( $self->{logger} );
@@ -319,6 +320,15 @@ sub _destination_store_ready
 
 		$queue->pump();
 	}
+}
+
+sub _shutdown_complete
+{
+	my ($self) = @_;
+
+	$self->_log('alert', 'Storage engine has finished shutting down');
+
+	# TODO: Really, really take us down!
 }
 
 sub _pump
@@ -581,6 +591,24 @@ sub ack_message
 
 	# pump the queue, so that this subscriber will get another message
 	$queue->pump();
+}
+
+sub shutdown
+{
+	my $self = shift;
+
+	if ( $self->{shutdown} )
+	{
+		# TODO: Probably this isn't the right thing to do, but right now, during
+		# development, this is necessary because the graceful shutdown doesn't work
+		# at all.
+		$self->_log('emergency', 'Shutdown called twice!  Forcing ungraceful quit.');
+		$poe_kernel->stop();
+		return;
+	}
+	$self->{shutdown} = 1;
+
+	$self->_log('alert', 'Initiating message queue shutdown...');
 }
 
 1;
