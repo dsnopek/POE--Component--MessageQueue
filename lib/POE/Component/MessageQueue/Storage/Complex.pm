@@ -111,6 +111,7 @@ sub new
 	$self->{timeout}     = $timeout;
 	$self->{delay}       = $delay;
 	$self->{timestamps}  = { };
+	$self->{shutdown}    = 0;
 
 	# our session that does the timed message check-up.
 	my $session = POE::Session->create(
@@ -159,6 +160,12 @@ sub set_destination_ready_handler
 
 	$self->{front_store}->set_destination_ready_handler( $handler );
 	$self->{back_store}->set_destination_ready_handler( $handler );
+}
+
+sub set_shutdown_complete_handler
+{
+	my ($self, $handler) = @_;
+	$self->{back_store}->set_shutdown_complete_handler( $handler );
 }
 
 sub set_logger
@@ -242,6 +249,12 @@ sub _check_messages
 {
 	my ($self, $kernel) = @_[ OBJECT, KERNEL ];
 
+	if ( $self->{shutdown} )
+	{
+		# don't do anything and get out of here!
+		return;
+	}
+
 	$self->_log( 'debug', 'STORE: COMPLEX: Checking for outdated messages' );
 
 	my $threshold = time() - $self->{timeout};
@@ -274,6 +287,32 @@ sub _check_messages
 
 	# keep us alive
 	$kernel->delay( '_check_messages', $self->{delay} );
+}
+
+sub shutdown
+{
+	my $self = shift;
+
+	if ( $self->{shutdown} )
+	{
+		return;
+	}
+	$self->{shutdown} = 1;
+
+	# shutdown our check messages session
+	$poe_kernel->signal( $self->{session}, 'TERM' );
+
+	$self->_log('alert', 'Forcing all messages from the front-store into the back-store...');
+	foreach my $message ( @{$self->{front_store}->empty_all()} )
+	{
+		$self->{back_store}->store($message);
+	}
+
+	# call the front-stores shutdown, just in case.  This really shouldn't do anything.
+	$self->{front_store}->shutdown();
+
+	# this should finish the job
+	$self->{back_store}->shutdown();
 }
 
 1;

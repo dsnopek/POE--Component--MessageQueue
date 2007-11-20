@@ -53,7 +53,7 @@ sub usage
 
 	print "$0 [--port|-p <num>] [--hostname|-h <host>]\n";
 	print "$X [--timeout|-i <seconds>]   [--throttle|-T <count>]\n";
-	print "$X [--data-dir <path_to_dir>] [--log-cont <path_to_file>]\n";
+	print "$X [--data-dir <path_to_dir>] [--log-conf <path_to_file>]\n";
 	print "$X [--background|-b] [--pidfile|-p <path_to_file>]\n";
 	print "$X [--version|-v] [--help|-h]\n";
 

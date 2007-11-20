@@ -129,6 +129,10 @@ sub new
 		],
 	);
 
+	# stash our session aliases for later
+	$self->{server_alias} = $alias;
+	$self->{master_alias} = "$alias-master";
+
 	return $self;
 }
 
@@ -599,16 +603,33 @@ sub shutdown
 
 	if ( $self->{shutdown} )
 	{
-		# TODO: Probably this isn't the right thing to do, but right now, during
-		# development, this is necessary because the graceful shutdown doesn't work
-		# at all.
-		$self->_log('emergency', 'Shutdown called twice!  Forcing ungraceful quit.');
-		$poe_kernel->stop();
+		$self->{shutdown}++;
+		if ( $self->{shutdown} >= 3 )
+		{
+			# TODO: Probably this isn't the right thing to do, but right now, during
+			# development, this is necessary because the graceful shutdown doesn't work
+			# at all.
+			$self->_log('emergency', "Shutdown called $self->{shutdown} times!  Forcing ungraceful quit.");
+			$poe_kernel->stop();
+		}
 		return;
 	}
 	$self->{shutdown} = 1;
 
 	$self->_log('alert', 'Initiating message queue shutdown...');
+
+	# stop listening for connections
+	$poe_kernel->post( $self->{server_alias} => 'shutdown' );
+
+	# shutdown all client connections
+	my @client_ids = keys %{$self->{clients}};
+	foreach my $client_id ( @client_ids )
+	{
+		$poe_kernel->post( $client_id => 'shutdown' );
+	}
+
+	# shutdown the storage
+	$self->{storage}->shutdown();
 }
 
 1;

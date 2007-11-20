@@ -31,7 +31,9 @@ my $LEVELS = {
 	emergency => 7
 };
 
-our $LEVEL = 3;
+# TODO: Restore this value!  DO IT!  DON'T FORGET!
+#our $LEVEL = 3;
+our $LEVEL = 0;
 
 sub new
 {

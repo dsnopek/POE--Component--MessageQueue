@@ -57,6 +57,23 @@ sub has_message
 	return 0;
 }
 
+# this function will clear out the engine and return an array reference
+# with all the messages on it.
+sub empty_all
+{
+	my $self = shift;
+
+	my @ret;
+
+	foreach my $messages ( values %{$self->{messages}} )
+	{
+		@ret = ( @ret, @$messages );
+	}
+	$self->{messages} = {};
+
+	return \@ret;
+}
+
 sub store
 {
 	my ($self, $message) = @_;
@@ -193,9 +210,15 @@ sub disown
 
 sub shutdown
 {
+	my $self = shift;
+
 	# this storage engine is so simple, it has nothing to do to
 	# shutdown!  Since its purely in memory, it can't even persist
 	# any messages.
+	if ( defined $self->{shutdown_complete} )
+	{
+		$self->{shutdown_complete}->();
+	}
 }
 
 1;
