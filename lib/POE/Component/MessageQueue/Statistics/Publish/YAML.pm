@@ -24,6 +24,7 @@ use Best
     [ qw(YAML::Syck YAML) ], qw(Dump)
 ;
 use File::Temp;
+use File::Copy qw(move);
 
 sub publish_file
 {
@@ -31,10 +32,11 @@ sub publish_file
 
     # Be friendly to people who might be reading the file
     my $fh = File::Temp->new(UNLINK => 0);
+    my %h = %{ $self->{statistics}->{statistics} };
     eval {
-        $fh->print( Dump( $self->{statistics}->{statistics} ) );
-        # I want to use system's rename(). Don't know how portable that is
-        rename($fh->filename, $filename) or die "Failed to rename $fh to $filename";
+        $fh->print( Dump( { %h, generated => scalar localtime } ) );
+        $fh->flush;
+        move($fh->filename, $filename) or die "Failed to rename $fh to $filename: $!";
     };
     if (my $e = $@) {
         $fh->unlink_on_destroy( 1 ) if $fh;

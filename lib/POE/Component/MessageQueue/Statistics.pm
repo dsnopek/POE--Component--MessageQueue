@@ -5,7 +5,7 @@
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
+# the Free Software Foundation, either version 2 of the License, or
 # (at your option) any later version.
 #
 # This program is distributed in the hope that it will be useful,
@@ -24,29 +24,36 @@ use Data::Dumper;
 
 sub new
 {
-    my $class = shift;
-    my $self  = bless {
-        statistics => {
-            total_stored => 0,
-            queues => {},
-        }
-    }, $class;
+	my $class = shift;
+	my $self  = bless {
+		statistics => {
+            ID            => sprintf(
+                "POE::Component::MessageQueue version %s (PID: $$)",
+                eval join('::', '$POE', 'Component', 'MessageQueue', 'VERSION') # hide from PAUSE
+            ),
+		    total_stored  => 0,
+		    total_sent    => 0,
+		    subscriptions => 0,
+		    queues        => {},
+		}
+	}, $class;
 
-    $self;
+	$self;
 }
 
 sub register
 {
-    my ($self, $mq) = @_;
-    $mq->register_event( $_, $self ) for qw(store recv dispatch ack pump);
+	my ($self, $mq) = @_;
+	$mq->register_event( $_, $self ) for qw(store dispatch ack recv subscribe unsubscribe);
 }
 
 my %METHODS = (
-    store    => 'notify_store',
-    'recv'   => 'notify_recv',
-    dispatch => 'notify_dispatch',
-    ack      => 'notify_ack',
-    pump     => 'notify_pump',
+	store    => 'notify_store',
+	'recv'   => 'notify_recv',
+	dispatch => 'notify_dispatch',
+	ack      => 'notify_ack',
+	subscribe => 'notify_subscribe',
+	unsubscribe => 'notify_unsubscribe',
 );
 
 sub get_queue
@@ -59,7 +66,9 @@ sub get_queue
 	{
 		$queue = $self->{statistics}{queues}{$name} = {
 			stored          => 0,
+			sent            => 0,
 			total_stored    => 0,
+			total_sent      => 0,
 			total_recvd     => 0,
 			avg_secs_stored => 0,
 			avg_size_recvd  => 0,
@@ -71,22 +80,26 @@ sub get_queue
 
 sub notify
 {
-    my ($self, $event, $data) = @_;
+	my ($self, $event, $data) = @_;
 
-    my $method = $METHODS{ $event };
-    return unless $method;
-    $self->$method($data);
+	my $method = $METHODS{ $event };
+	return unless $method;
+	$self->$method($data);
 }
 
 sub notify_store
 {
-    my ($self, $data) = @_;
-    my $h = $self->{statistics};
-    $h->{total_stored}++;
+	my ($self, $data) = @_;
 
+	# Global
+	my $h = $self->{statistics};
+	$h->{total_stored}++;
+
+	# Per-queue
 	my $stats = $self->get_queue($data->{queue}->{queue_name});
 	$stats->{stored}++;
 	$stats->{total_stored}++;
+	$stats->{last_stored} = scalar localtime();
 }
 
 sub notify_recv
@@ -99,7 +112,10 @@ sub notify_recv
 	my $size = $data->{message}->{size};
 
 	# recalc the average
-	$stats->{avg_size_recvd} = (($stats->{avg_size_recvd} * ($stats->{total_recvd} - 1)) + $size) / $stats->{total_recvd};
+	$stats->{avg_size_recvd} = 
+		$stats->{total_recvd} <= 0 ?
+		0 :
+		(($stats->{avg_size_recvd} * ($stats->{total_recvd} - 1)) + $size) / $stats->{total_recvd};
 }
 
 sub message_handled
@@ -108,83 +124,97 @@ sub message_handled
 
 	my $info = $data->{message} || $data->{message_info};
 
+	# Global
+	my $h = $self->{statistics};
+	$h->{total_sent}++;
+
+	# Per-queue
 	my $stats = $self->get_queue( $data->{queue}->{queue_name} );
 
 	$stats->{stored}--;
+	$stats->{sent}++;
+	$stats->{total_sent}++;
+	$stats->{last_sent} = scalar localtime();
 	
 	my $secs_stored = (time() - $info->{timestamp});
 
 	# recalc the average
-	$stats->{avg_secs_stored} = (($stats->{avg_secs_stored} * ($stats->{total_stored} - 1)) + $secs_stored) / $stats->{total_stored};
+	$stats->{avg_secs_stored} = 
+		$stats->{total_stored} <= 0 ?
+		0 :
+		(($stats->{avg_secs_stored} * ($stats->{total_stored} - 1)) + $secs_stored) / $stats->{total_stored};
 }
 
 sub notify_dispatch
 {
-    my ($self, $data) = @_;
+	my ($self, $data) = @_;
 
-    my $receiver = $data->{client};
+	my $receiver = $data->{client};
 
-    my $sub;
-    if ( ref($receiver) eq 'POE::Component::MessageQueue::Client' )
-    {
-        # automatically convert clients to subscribers!
-        $sub = $data->{queue}->get_subscription( $receiver );
-    }
-    else
-    {
-        $sub = $receiver;
-    }
+	my $sub;
+	if ( ref($receiver) eq 'POE::Component::MessageQueue::Client' )
+	{
+		# automatically convert clients to subscribers!
+		$sub = $data->{queue}->get_subscription( $receiver );
+	}
+	else
+	{
+		$sub = $receiver;
+	}
 
-    if ($sub->{ack_type} eq 'auto') {
-        $self->message_handled($data);
-    }
+	if (($sub->{ack_type} || '') eq 'auto') {
+		$self->message_handled($data);
+	}
 }
 
 sub notify_ack {
-    my ($self, $data) = @_;
+	my ($self, $data) = @_;
 
-    my $receiver = $data->{client};
+	my $receiver = $data->{client};
 
-    my $sub;
-    if ( ref($receiver) eq 'POE::Component::MessageQueue::Client' )
-    {
-        # automatically convert clients to subscribers!
-        $sub = $data->{queue}->get_subscription( $receiver );
-    }
-    else
-    {
-        $sub = $receiver;
-    }
+	my $sub;
+	if ( ref($receiver) eq 'POE::Component::MessageQueue::Client' )
+	{
+		# automatically convert clients to subscribers!
+		$sub = $data->{queue}->get_subscription( $receiver );
+	}
+	else
+	{
+		$sub = $receiver;
+	}
 
-    if ($sub->{ack_type} eq 'client') {
-        $self->message_handled($data);
-    }
+	if (($sub->{ack_type} || '') eq 'client') {
+		$self->message_handled($data);
+	}
 }
 
-sub notify_pump {
-    my ($self, $data) = @_;
-    # Now dumped as via PoCo::MQ::Statistics::Publish
-    #$self->dump_as_string;
-}
-
-sub dump_as_string
+sub notify_subscribe
 {
-    my ($self, $output) = @_;
+	my ($self, $data) = @_;
 
-    $output ||= \*STDERR;
-    print $output "TOTAL STORED (cumul): $self->{statistics}{total_stored}\n";
-    my $queues = $self->{statistics}{queues};
+	# Global
+	my $h = $self->{statistics};
+	$h->{subscriptions}++;
 
-    print $output "QUEUES:\n";
-    foreach my $name (sort keys %$queues) {
-        my $queue = $queues->{$name};
-        print $output " + $name\n";
-		print $output "   - Stored: $queue->{stored}\n";
-		print $output "   - Recv'd: $queue->{total_recvd}\n";
-		print $output "   - Avg. secs stored: $queue->{avg_secs_stored}\n";
-		print $output "   - Avg. size recv'd: $queue->{avg_size_recvd}\n";
-    }
+	# Per-queue
+	my $stats = $self->get_queue( $data->{queue}->{queue_name} );
+	$stats->{subscriptions}++;
 }
+
+sub notify_unsubscribe
+{
+	my ($self, $data) = @_;
+
+	# Global
+	my $h = $self->{statistics};
+	$h->{subscriptions}--;
+
+	# Per-queue
+	my $stats = $self->get_queue( $data->{queue}->{queue_name} );
+	$stats->{subscriptions}--;
+}
+
+sub notify_pump {}
 
 1;
 
