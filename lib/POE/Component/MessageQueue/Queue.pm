@@ -50,8 +50,9 @@ sub _log
 
 sub add_subscription
 {
-	my $self = shift;
-	my $sub  = POE::Component::MessageQueue::Subscription->new( @_ );
+	my $self   = shift;
+	my $client = shift;
+	my $sub    = POE::Component::MessageQueue::Subscription->new( $client );
 	push @{$self->{subscriptions}}, $sub;
 
 	# add the subscription to the sub_map.
@@ -60,6 +61,7 @@ sub add_subscription
 	# add to the client's list of subscriptions
 	$sub->{client}->_add_queue_name( $self->{queue_name} );
 
+	$self->get_parent->{notify}->notify('subscribe', { queue => $self, client => $client });
 	# pump the queue now that we have a new subscriber
 	$self->pump();
 }
@@ -88,6 +90,7 @@ sub remove_subscription
 			$self->get_parent()->get_storage()->disown(
 				"/queue/$self->{queue_name}", $client->{client_id} );
 
+			$self->get_parent->{notify}->notify('unsubscribe', { queue => $self, client => $client });
 			return;
 		}
 	}
