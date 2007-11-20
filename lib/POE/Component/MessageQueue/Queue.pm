@@ -52,7 +52,8 @@ sub add_subscription
 {
 	my $self   = shift;
 	my $client = shift;
-	my $sub    = POE::Component::MessageQueue::Subscription->new( $client );
+	my $ack_type = shift;
+	my $sub    = POE::Component::MessageQueue::Subscription->new( $client, $ack_type );
 	push @{$self->{subscriptions}}, $sub;
 
 	# add the subscription to the sub_map.
