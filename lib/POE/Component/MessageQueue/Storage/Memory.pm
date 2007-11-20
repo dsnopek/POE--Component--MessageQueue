@@ -63,7 +63,7 @@ sub remove
 	while (my($dest, $messages) = each %{ $self->{messages} }) {
 		my $max = scalar @{$messages};
 		# find the message and remove it
-		for my $i (0..$max)
+		for my $i (0..$max-1)
 		{
 			if ( $messages->[$i]->{message_id} == $message_id )
 			{
@@ -87,7 +87,7 @@ sub remove_multiple
 		my $max = scalar @{$messages};
 
 		# find the message and remove it
-		for my $i (0..$max)
+		for my $i (0..$max-1)
 		{
 			my $message = $messages->[$i];
 
@@ -132,7 +132,6 @@ sub claim_and_retrieve
 	}
 
 	my @messages = @{ $self->{messages}{$destination} || [] };
-	my $max = scalar @messages;
 
 	# look for an unclaimed message and take it
 	foreach my $message (@messages)
