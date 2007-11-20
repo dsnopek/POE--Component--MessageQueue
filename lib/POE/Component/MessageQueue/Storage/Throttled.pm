@@ -51,6 +51,9 @@ sub new
 	$self->{throttle_max}    = $throttle_max;
 	$self->{throttle_count}  = 0;
 
+	# a flag for shutting down
+	$self->{shutdown} = 0;
+
 	# we have to intercept the message_stored handler.
 	$self->{storage}->set_message_stored_handler(sub { return $self->_message_stored(@_); });
 
@@ -63,17 +66,19 @@ sub new
 sub set_dispatch_message_handler
 {
 	my ($self, $handler) = @_;
-	# We never need to call this directly, storage will!
-	#$self->SUPER::set_dispatch_message_handler( $handler );
 	$self->{storage}->set_dispatch_message_handler( $handler );
 }
 
 sub set_destination_ready_handler
 {
 	my ($self, $handler) = @_;
-	# We never need to call this directly, storage will!
-	#$self->SUPER::set_destination_ready_handler( $handler );
 	$self->{storage}->set_destination_ready_handler( $handler );
+}
+
+sub set_shutdown_complete_handler
+{
+	my ($self, $handler) = @_;
+	$self->{storage}->set_shutdown_complete_handler( $handler );
 }
 
 sub set_logger
@@ -118,6 +123,13 @@ sub _throttle_remove
 	if ( exists $self->{throttle_buffer}->{$message_id} )
 	{
 		delete $self->{throttle_buffer}->{$message_id};
+		
+		if ( $self->{shutdown} )
+		{
+			# TODO: if there are no more message throttled, then 
+			# call $self->{storage}->shutdown()
+		}
+
 		return 1;
 	}
 
@@ -145,6 +157,12 @@ sub _message_stored
 		{
 			# else, simple decrease the throttle count
 			$self->{throttle_count} --;
+
+			if ( $self->{shutdown} )
+			{
+				# TODO: if there are no more message throttled, then 
+				# call $self->{storage}->shutdown()
+			}
 		}
 	}
 
@@ -214,6 +232,18 @@ sub claim_and_retrieve
 sub disown
 {
 	return shift->{storage}->disown(@_);
+}
+
+sub shutdown
+{
+	my $self = shift;
+
+	# we mark that we are shutting down.
+	$self->{shutdown} = 1;
+	# TODO: check if any messages are still throttled, if so we chill
+	# until all throttled messages are passed to the underlying storage
+	# TODO: Otherwise, we call shutdown() method on the underlying
+	# storage.
 }
 
 1;

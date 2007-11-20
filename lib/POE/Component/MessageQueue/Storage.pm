@@ -33,6 +33,7 @@ sub new
 		message_stored    => undef,
 		dispatch_message  => undef,
 		destination_ready => undef,
+		shutdown_complete => undef,
 		# TODO: do something with this.
 		started           => 0
 	};
@@ -65,6 +66,13 @@ sub set_destination_ready_handler
 {
 	my ($self, $handler) = @_;
 	$self->{destination_ready} = $handler;
+	undef;
+}
+
+sub set_shutdown_complete_handler
+{
+	my ($self, $handler) = @_;
+	$self->{shutdown_complete} = $handler;
 	undef;
 }
 
@@ -141,6 +149,13 @@ sub disown
 	die "Abstract.";
 }
 
+sub shutdown
+{
+	my $self = shift;
+
+	die "Abstract.";
+}
+
 1;
 
 __END__
@@ -167,11 +182,17 @@ Takes a CODEREF which will get called back when a message has been successfully 
 
 Takes a CODEREF which will get called back when a message has been retrieved from the store.  This will be called with three arguments: the message, the destination string, and the client id.  If no message could be retrieved the function will still be called but with the message undefined.
 
-=item set_destination_ready_header I<CODEREF>
+=item set_destination_ready_handler I<CODEREF>
 
 Takes a CODEREF which will get called back when a destination is ready to be claimed from again.  This is necessary for storage engines that will lock a destination while attempting to retrieve a message.  This handler will be called when the destination is unlocked so that message queue knows that it can claim more messages.  If your storage engine doesn't lock anything, you B<must> call this handler immediately after called the above handler.  
 
 It will be called with a single argument: the destination string.
+
+=item set_shutdown_complete_handler I<CODEREF>
+
+Takes a CODEREF which will get called when the storage engine has finished shutting down.  The shutdown process is started by calling I<shutdown()> on the storage engine (see below).
+
+It will be called without any arguments.
 
 =item set_logger I<SCALAR>
 
@@ -196,6 +217,10 @@ Takes the destination string and client id (or a HASHREF with keys "destination"
 =item disown I<SCALAR>, I<SCALAR>
 
 Takes a destination and client id.  All messages which are owned by this client id on this destination should be marked as owned by nobody.
+
+=item shutdown
+
+Will start shutting down the storage engine.  The I<shutdown_complete> handler will be called when the storage engine has finished shutting down.  This should be a graceful operation.  Ie., The storage engine will attempt to clean-up and push messages to persistent storage if possible before calling the I<shutdown_complete> handler.
 
 =back
 

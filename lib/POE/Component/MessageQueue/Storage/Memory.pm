@@ -191,6 +191,13 @@ sub disown
 	}
 }
 
+sub shutdown
+{
+	# this storage engine is so simple, it has nothing to do to
+	# shutdown!  Since its purely in memory, it can't even persist
+	# any messages.
+}
+
 1;
 
 __END__
