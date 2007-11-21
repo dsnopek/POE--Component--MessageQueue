@@ -149,6 +149,14 @@ sub disown
 	die "Abstract.";
 }
 
+# a semi-hidden alias that we need when using a storage engine
+# behind POE::Component::MessageQueue::Storage::Generic!
+sub storage_shutdown
+{
+	my $self = shift;
+	$self->shutdown();
+}
+
 sub shutdown
 {
 	my $self = shift;

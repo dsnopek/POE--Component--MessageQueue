@@ -244,9 +244,12 @@ sub claim_and_retrieve
 		# claim away!
 		$self->_claim( $message );
 
-		# after it is claimed, we declare the destination ready for 
-		# more action!
-		$self->{destination_ready}->( $destination );
+		if ( defined $self->{destination_ready} )
+		{
+			# after it is claimed, we declare the destination ready for 
+			# more action!
+			$self->{destination_ready}->( $destination );
+		}
 	}
 
 	undef;
@@ -276,6 +279,24 @@ sub disown
 	}
 
 	undef;
+}
+
+sub shutdown
+{
+	my ($self) = @_;
+
+	$self->_log('alert', 'Shutting down DBI storage engine...');
+
+	# close the database handle.
+	$self->{dbh}->disconnect();
+
+	# call the shutdown handler.
+	if ( defined $self->{shutdown_complete} )
+	{
+		$self->{shutdown_complete}->();
+	}
+
+	return undef;
 }
 
 1;

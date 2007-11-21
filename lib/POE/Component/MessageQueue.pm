@@ -609,7 +609,9 @@ sub shutdown
 			# TODO: Probably this isn't the right thing to do, but right now, during
 			# development, this is necessary because the graceful shutdown doesn't work
 			# at all.
-			$self->_log('emergency', "Shutdown called $self->{shutdown} times!  Forcing ungraceful quit.");
+			my $msg = "Shutdown called $self->{shutdown} times!  Forcing ungraceful quit.";
+			$self->_log('emergency', $msg);
+			print STDERR "$msg\n";
 			$poe_kernel->stop();
 		}
 		return;

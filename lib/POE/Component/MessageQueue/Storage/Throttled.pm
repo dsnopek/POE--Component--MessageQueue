@@ -124,12 +124,6 @@ sub _throttle_remove
 	{
 		delete $self->{throttle_buffer}->{$message_id};
 		
-		if ( $self->{shutdown} )
-		{
-			# TODO: if there are no more message throttled, then 
-			# call $self->{storage}->shutdown()
-		}
-
 		return 1;
 	}
 
@@ -157,12 +151,6 @@ sub _message_stored
 		{
 			# else, simple decrease the throttle count
 			$self->{throttle_count} --;
-
-			if ( $self->{shutdown} )
-			{
-				# TODO: if there are no more message throttled, then 
-				# call $self->{storage}->shutdown()
-			}
 		}
 	}
 
@@ -170,6 +158,13 @@ sub _message_stored
 	if ( defined $self->{message_stored} )
 	{
 		$self->{message_stored}->( $destination );
+	}
+
+	# if we are shutting down and there are no more message throttled, then
+	# we shutdown the underlying engine.
+	if ( $self->{shutdown} and $self->{throttle_count} == 0 )
+	{
+		$self->{storage}->shutdown();
 	}
 }
 
@@ -240,10 +235,16 @@ sub shutdown
 
 	# we mark that we are shutting down.
 	$self->{shutdown} = 1;
-	# TODO: check if any messages are still throttled, if so we chill
-	# until all throttled messages are passed to the underlying storage
-	# TODO: Otherwise, we call shutdown() method on the underlying
-	# storage.
+
+	if ( $self->{throttle_count} == 0 )
+	{
+		# if there are no throttled messages, then we can just start
+		# shutting down the underlying storage engine.
+		$self->{storage}->shutdown();
+	}
+
+	# otherwise, we will wait until we have none throttled, then we
+	# will call the underlying shutdown.
 }
 
 1;
