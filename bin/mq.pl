@@ -20,6 +20,7 @@ my $hostname = undef;
 my $timeout  = 4;
 my $throttle_max = 2;
 my $background = 0;
+my $debug_shell = 0;
 my $pidfile;
 my $show_version = 0;
 my $show_usage   = 0;
@@ -36,6 +37,7 @@ GetOptions(
 	"stats!"       => \$statistics,
 	"stats-interval=i" => \$stat_interval,
 	"background|b" => \$background,
+	"debug-shell"  => \$debug_shell,
 	"pidfile|p=s"  => \$pidfile,
 	"version|v"    => \$show_version,
 	"help|h"       => \$show_usage,
@@ -162,6 +164,13 @@ if ($statistics) {
 	$args{observers} = [ $stat ];
 }
 my $mq = POE::Component::MessageQueue->new(\%args);
+
+# install the debug shell if requested
+if ( $debug_shell )
+{
+	require POE::Component::DebugShell;
+	POE::Component::DebugShell->spawn();
+}
 
 sub shutdown
 {

@@ -77,10 +77,12 @@ sub new
 		#verbose => 1
 	);
 
+	$self->{session_alias} = 'MQ-Storage-Generic';
+
 	my $session = POE::Session->create(
 		inline_states => {
 			_start => sub {
-				$_[KERNEL]->alias_set('MQ-Storage-Generic')
+				$_[KERNEL]->alias_set($self->{session_alias})
 			},
 		},
 		object_states => [
@@ -335,7 +337,8 @@ sub _shutdown_complete
 	# shutdown the generic object
 	$self->{generic}->shutdown();
 
-	# TODO: clean-up our session
+	# clear our alias, so this session should end.
+	$poe_kernel->alias_remove($self->{session_alias});
 
 	$self->_log('alert', 'Generic storage engine is shutdown!');
 

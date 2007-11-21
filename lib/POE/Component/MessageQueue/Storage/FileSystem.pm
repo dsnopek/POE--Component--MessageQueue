@@ -46,6 +46,7 @@ sub new
 	# for storing message properties
 	$self->{info_storage} = $info_storage;
 	$self->{info_storage}->set_dispatch_message_handler( $self->__closure('_dispatch_message') );
+	$self->{info_storage}->set_shutdown_complete_handler( $self->__closure('_shutdown_complete') );
 
 	# for keeping the message body on the FS
 	$self->{data_dir}    = $data_dir;
@@ -93,7 +94,8 @@ sub __closure
 	return $func;
 }
 
-# set_dispatch_message_handler() -- We maintain the parents version.
+# set_dispatch_message_handler()  -- We maintain the parents version.
+# set_shutdown_complete_handler() -- We maintain the parents version.
 
 sub set_message_stored_handler
 {
@@ -113,13 +115,6 @@ sub set_destination_ready_handler
 	#$self->SUPER::set_destination_ready_handler( $handler );
 
 	$self->{info_storage}->set_destination_ready_handler( $handler );
-}
-
-sub set_shutdown_complete_handler
-{
-	my ($self, $handler) = @_;
-
-	$self->{info_storage}->set_shutdown_complete_handler( $handler );
 }
 
 sub set_logger
@@ -293,6 +288,20 @@ sub _dispatch_message
 	else
 	{
 		$self->{dispatch_message}->( undef, $destination, $client_id );
+	}
+}
+
+sub _shutdown_complete
+{
+	my $self = shift;
+
+	# Ok!  This means that the info storage is totally shutdown, so we
+	# are ready to kill our internal session.
+	$poe_kernel->signal( $self->{session}, 'TERM' );
+
+	if ( defined $self->{shutdown_complete} )
+	{
+		$self->{shutdown_complete}->();
 	}
 }
 

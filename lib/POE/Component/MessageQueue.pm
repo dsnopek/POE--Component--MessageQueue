@@ -94,6 +94,12 @@ sub new
 	# get the storage object using our logger
 	$self->{storage}->set_logger( $self->{logger} );
 
+	# to name the session for master tasks
+	if ( not defined $alias )
+	{
+		$alias = "MQ";
+	}
+
 	# setup our stomp server
 	POE::Component::Server::Stomp->new(
 		Alias    => $alias,
@@ -110,12 +116,6 @@ sub new
 			$self => [ '_pump' ]
 		],
 	);
-
-	# to name the session for master tasks
-	if ( not defined $alias )
-	{
-		$alias = "MQ";
-	}
 
 	# a custom session for non-STOMP responsive tasks
 	$self->{session} = POE::Session->create(
@@ -332,7 +332,14 @@ sub _shutdown_complete
 
 	$self->_log('alert', 'Storage engine has finished shutting down');
 
-	# TODO: Really, really take us down!
+	# Really, really take us down!
+	$self->_log('alert', 'Sending TERM signal to master sessions');
+	$poe_kernel->signal( $self->{server_alias}, 'TERM' );
+	$poe_kernel->signal( $self->{master_alias}, 'TERM' );
+
+	# shutdown the logger
+	$self->_log('alert', 'Shutting down the logger');
+	$self->{logger}->shutdown();
 }
 
 sub _pump
