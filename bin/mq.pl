@@ -52,32 +52,44 @@ sub version
 sub usage
 {
 	my $X = ' ' x (length $0);
+  print <<"ENDUSAGE";
+$0 [--port|-p <num>] [--hostname|-h <host>]
+$X [--timeout|-i <seconds>]   [--throttle|-T <count>]
+$X [--data-dir <path_to_dir>] [--log-conf <path_to_file>]
+$X [--background|-b] [--pidfile|-p <path_to_file>]
+$X [--version|-v] [--help|-h]
 
-	print "$0 [--port|-p <num>] [--hostname|-h <host>]\n";
-	print "$X [--timeout|-i <seconds>]   [--throttle|-T <count>]\n";
-	print "$X [--data-dir <path_to_dir>] [--log-conf <path_to_file>]\n";
-	print "$X [--background|-b] [--pidfile|-p <path_to_file>]\n";
-	print "$X [--version|-v] [--help|-h]\n";
+SERVER OPTIONS:
+  --port     -p <num>     The port number to listen on (Default: 61613)
+  --hostname -h <host>    The hostname of the interface to listen on 
+                          (Default: localhost)
 
-	print "\nSERVER OPTIONS:\n";
-	print "  --port     -p <num>    The port number to listen on (Default: 61613)\n";
-	print "  --hostname -h <host>   The hostname of the interface to listen on (Default: localhost)\n";
+STORAGE OPTIONS:
+  --timeout  -i <secs>    The number of seconds to keep messages in the 
+                          front-store (Default: 4)
+  --throttle -T <count>   The number of messages that can be stored at once 
+                          before throttling (Default: 2)
+  --data-dir <path>       The path to the directory to store data 
+                          (Default: /var/lib/perl_mq)
+  --log-conf <path>       The path to the log configuration file 
+                          (Default: /etc/perl_mq/log.conf
 
-	print "\nSTORAGE OPTIONS:\n";
-	print "  --timeout  -i <secs>    The number of seconds to keep messages in the front-store (Default: 4)\n";
-	print "  --throttle -T <count>   The number of messages that can be stored at once before throttling (Default: 2)\n";
-	print "  --data-dir <path>       The path to the directory to store data (Default: /var/lib/perl_mq)\n";
-	print "  --log-conf <path>       The path to the log configuration file (Default: /etc/perl_mq/log.conf\n";
-	print "\nSTATISTICS OPTIONS:\n";
-	print "  --stats                 If specified the, statistics information will be written to \$DATA_DIR/stats.yml\n";
-	print "  --stats-interval <secs> Specifies the number of seconds to wait before dumping statistics (Default: 10)\n";
-	print "\nDAEMON OPTIONS:\n";
-	print "  --background -b         If specified the script will daemonize and run in the background\n";
-	print "  --pidfile    -p <path>  The path to a file to store the PID of the process\n";
+STATISTICS OPTIONS:
+  --stats                 If specified the, statistics information will be 
+                          written to \$DATA_DIR/stats.yml
+  --stats-interval <secs> Specifies the number of seconds to wait before 
+                          dumping statistics (Default: 10)
 
-	print "\nOTHER OPTIONS:\n";
-	print "  --version    -v         Show the current version.\n";
-	print "  --help       -h         Show this usage message\n";
+DAEMON OPTIONS:
+  --background -b         If specified the script will daemonize and run in the
+                          background
+  --pidfile    -p <path>  The path to a file to store the PID of the process
+
+OTHER OPTIONS:
+  --version    -v         Show the current version.
+  --help       -h         Show this usage message
+
+ENDUSAGE
 }
 
 if ( $show_version )
@@ -170,22 +182,6 @@ if ( $debug_shell )
 {
 	require POE::Component::DebugShell;
 	POE::Component::DebugShell->spawn();
-}
-
-sub shutdown
-{
-	$mq->shutdown();
-}
-
-# install signal handlers to initiate graceful shutdown
-# TODO: I copied this list from the kill(1) man page.  I chose all signals
-# that had an "Action" of exit or core.  Is this right?
-foreach my $signal (
-	'ALRM', 'HUP', 'INT', 'KILL', 'PIPE', 'POLL', 'PROF', 'TERM', 'USR1', 'USR2',
-	'VTALRM', 'STKFLT', 'PWR', 'ABRT', 'FPE', 'ILL', 'QUIT', 'SEGV', 'TRAP',
-	'SYS', 'EMT', 'BUS', 'XCPU', 'XFSZ' )
-{
-	$SIG{$signal} = \&shutdown;
 }
 
 # install a die handler so we can catch crashes and log them

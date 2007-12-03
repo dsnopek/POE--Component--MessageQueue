@@ -32,6 +32,8 @@ $VERSION = '0.1.7';
 use Carp qw(croak);
 use Data::Dumper;
 
+use constant SHUTDOWN_SIGNALS => ('TERM', 'HUP', 'INT');
+
 sub new
 {
 	my $class = shift;
@@ -121,11 +123,19 @@ sub new
 	$self->{session} = POE::Session->create(
 		inline_states => {
 			_start => sub { 
-				$_[ KERNEL ]->alias_set("$alias-master");
-			}
+        my $kernel = $_[ KERNEL ];
+        $kernel->alias_set("$alias-master");
+        # install signal handlers to initiate graceful shutdown.
+        # We only respond to user-type signals - crash signals like 
+        # SEGV and BUS should behave normally
+        foreach my $signal ( SHUTDOWN_SIGNALS )
+        {
+          $kernel->sig($signal => '_shutdown'); 
+        }
+			},
 		},
 		object_states => [
-			$self => [ '_pump' ]
+			$self => [ '_pump', '_shutdown' ]
 		],
 	);
 
@@ -602,6 +612,14 @@ sub ack_message
 
 	# pump the queue, so that this subscriber will get another message
 	$queue->pump();
+}
+
+sub _shutdown 
+{
+	my ($self, $kernel, $signal) = @_[ OBJECT, KERNEL, ARG0 ];
+  $self->_log('alert', "Got SIG$signal. Shutting down.");
+  $kernel->sig_handled();
+  $self->shutdown(); 
 }
 
 sub shutdown
