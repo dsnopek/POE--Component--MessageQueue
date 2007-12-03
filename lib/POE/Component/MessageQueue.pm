@@ -123,15 +123,15 @@ sub new
 	$self->{session} = POE::Session->create(
 		inline_states => {
 			_start => sub { 
-        my $kernel = $_[ KERNEL ];
-        $kernel->alias_set("$alias-master");
-        # install signal handlers to initiate graceful shutdown.
-        # We only respond to user-type signals - crash signals like 
-        # SEGV and BUS should behave normally
-        foreach my $signal ( SHUTDOWN_SIGNALS )
-        {
-          $kernel->sig($signal => '_shutdown'); 
-        }
+				my $kernel = $_[ KERNEL ];
+				$kernel->alias_set("$alias-master");
+				# install signal handlers to initiate graceful shutdown.
+				# We only respond to user-type signals - crash signals like 
+				# SEGV and BUS should behave normally
+				foreach my $signal ( SHUTDOWN_SIGNALS )
+				{
+					$kernel->sig($signal => '_shutdown'); 
+				}
 			},
 		},
 		object_states => [
@@ -617,9 +617,9 @@ sub ack_message
 sub _shutdown 
 {
 	my ($self, $kernel, $signal) = @_[ OBJECT, KERNEL, ARG0 ];
-  $self->_log('alert', "Got SIG$signal. Shutting down.");
-  $kernel->sig_handled();
-  $self->shutdown(); 
+	$self->_log('alert', "Got SIG$signal. Shutting down.");
+	$kernel->sig_handled();
+	$self->shutdown(); 
 }
 
 sub shutdown

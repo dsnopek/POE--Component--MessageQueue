@@ -52,7 +52,7 @@ sub version
 sub usage
 {
 	my $X = ' ' x (length $0);
-  print <<"ENDUSAGE";
+    print <<"ENDUSAGE";
 $0 [--port|-p <num>] [--hostname|-h <host>]
 $X [--timeout|-i <seconds>]   [--throttle|-T <count>]
 $X [--data-dir <path_to_dir>] [--log-conf <path_to_file>]
