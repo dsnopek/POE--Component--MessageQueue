@@ -35,7 +35,9 @@ CREATE TABLE messages
 	destination varchar(255) not null,
 	persistent  char(1) default 'Y' not null,
 	in_use_by   int,
-	body        text
+	body        text,
+	timestamp   int,
+	size        int
 );
 
 CREATE INDEX destination_index ON messages ( destination );
@@ -135,7 +137,8 @@ sub set_message_stored_handler
 	$self->SUPER::set_message_stored_handler( $handler );
 
 	$self->{front_store}->set_message_stored_handler( $handler );
-	$self->{back_store}->set_message_stored_handler( $handler );
+	# DRS:  I don't know yet if this is safe!
+	#$self->{back_store}->set_message_stored_handler( $handler );
 }
 
 sub set_dispatch_message_handler

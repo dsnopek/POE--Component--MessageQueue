@@ -139,7 +139,8 @@ sub store
 		destination => $message->{destination},
 		persistent  => $message->{persistent},
 		in_use_by   => $message->{in_use_by},
-		body        => undef
+		size        => $message->{size},
+		body        => undef,
 	});
 	$message = $temp;
 

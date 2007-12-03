@@ -19,11 +19,16 @@ requires 'POE::Wheel::ReadWrite';
 requires 'Net::Stomp';
 requires 'Exception::Class::DBI';
 requires 'Exception::Class::TryCatch';
+requires 'Event::Notify';
 requires 'DBI';
 requires 'DBD::SQLite' => 1.13;
 requires 'IO::String';
 requires 'IO::File';
 requires 'Carp';
+requires 'Best';
+requires 'YAML';
+
+recommends 'YAML::Syck';
 
 no_index directory => 'test';
 no_index directory => 'examples';

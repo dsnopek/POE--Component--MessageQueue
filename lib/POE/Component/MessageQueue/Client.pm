@@ -50,6 +50,13 @@ sub new
 	return $self;
 }
 
+sub get_subscribed_queue_names
+{
+	my $self = shift;
+	my @queues = @{ $self->{queue_names} || [] };
+	return @queues;
+}
+
 sub _add_queue_name
 {
 	my ($self, $queue_name) = @_;

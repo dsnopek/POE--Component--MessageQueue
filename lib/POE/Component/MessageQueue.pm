@@ -23,6 +23,7 @@ use POE::Component::MessageQueue::Client;
 use POE::Component::MessageQueue::Queue;
 use POE::Component::MessageQueue::Message;
 use Net::Stomp;
+use Event::Notify;
 use vars qw($VERSION);
 use strict;
 
@@ -44,6 +45,7 @@ sub new
 
 	my $storage;
 	my $logger_alias;
+	my $observers;
 
 	if ( ref($args) eq 'HASH' )
 	{
@@ -55,6 +57,7 @@ sub new
 		
 		$storage      = $args->{storage};
 		$logger_alias = $args->{logger_alias};
+		$observers    = $args->{observers};
 	}
 
 	if ( not defined $storage )
@@ -73,8 +76,14 @@ sub new
 		clients   => { },
 		queues    => { },
 		needs_ack => { },
+		notify    => Event::Notify->new(),
 	};
 	bless $self, $class;
+
+	if ($observers) {
+		# Register the observers
+		$_->register($self) for (@$observers);
+	}
 
 	# setup the storage callbacks
 	$self->{storage}->set_message_stored_handler(  $self->__closure('_message_stored') );
@@ -121,6 +130,9 @@ sub new
 
 	return $self;
 }
+
+sub register_event { shift->{notify}->register_event(@_) }
+sub unregister_event { shift->{notify}->unregister_event(@_) }
 
 sub get_storage { return shift->{storage}; }
 
@@ -175,7 +187,8 @@ sub remove_client
 	my $client = $self->get_client( $client_id );
 
 	# remove subscriptions to all queues
-	foreach my $queue_name ( @{$client->{queue_names}} )
+	my @queue_names = $client->get_subscribed_queue_names();
+	foreach my $queue_name ( @queue_names )
 	{
 		my $queue = $self->get_queue( $queue_name );
 		$queue->remove_subscription( $client );
@@ -234,15 +247,19 @@ sub _client_error
 
 sub _message_stored
 {
-	my ($self, $destination) = @_;
+	my ($self, $message) = @_;
 	
+	my $destination = $message->{destination};
 	my $queue;
+
 	if ( $destination =~ /\/queue\/(.*)/ )
 	{
 		my $queue_name = $1;
 
 		$queue = $self->get_queue( $queue_name );
 	}
+
+	$self->{notify}->notify( 'store', { queue => $queue, message => $message } );
 
 	# pump the queue for good luck!
 	$queue->pump();
@@ -267,6 +284,11 @@ sub _dispatch_from_store
 		#print "MESSAGE FROM STORE\n";
 		#print Dumper $message;
 
+		$self->{notify}->notify( 'dispatch', {
+			queue => $queue,
+			message => $message,
+			client => $client
+		});
 		$queue->dispatch_message_to( $message, $client );
 	}
 	else
@@ -396,6 +418,12 @@ sub route_frame
 				stored      => 0
 			});
 
+			$self->{notify}->notify( 'recv', {
+				message => $message,
+				queue   => $queue,
+				client  => $client,
+			});
+
 			$queue->enqueue( $message );
 		}
 		else
@@ -483,7 +511,9 @@ sub push_unacked_message
 	my $unacked = {
 		client     => $client,
 		message_id => $message->{message_id},
-		queue_name => $message->get_queue_name()
+		queue_name => $message->get_queue_name(),
+		timestamp  => $message->{timestamp},
+		size       => $message->{size}
 	};
 	
 	$self->{needs_ack}->{$message->{message_id}} = $unacked;
@@ -538,6 +568,16 @@ sub ack_message
 		# Must check if subscriber is still connected before setting!
 		$sub->set_done_with_message();
 	}
+
+	$self->{notify}->notify('ack', {
+		queue => $queue,
+		client => $client,
+		message_info => {
+			message_id => $unacked->{message_id},
+			timestamp  => $unacked->{timestamp},
+			size       => $unacked->{size},
+		}
+	});
 
 	# pump the queue, so that this subscriber will get another message
 	$queue->pump();

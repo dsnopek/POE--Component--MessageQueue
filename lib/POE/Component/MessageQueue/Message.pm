@@ -30,6 +30,8 @@ sub new
 	my $body;
 	my $persistent;
 	my $in_use_by;
+	my $size;
+	my $timestamp;
 
 	if ( ref($args) eq 'HASH' )
 	{
@@ -38,6 +40,8 @@ sub new
 		$body        = $args->{body};
 		$persistent  = $args->{persistent};
 		$in_use_by   = $args->{in_use_by};
+		$timestamp   = $args->{timestamp};
+		$size        = $args->{size};
 	}
 	else
 	{
@@ -47,6 +51,11 @@ sub new
 		$persistent  = shift;
 	}
 
+	if ( not defined $size )
+	{
+		$size = ($body) ? length $body : 0;
+	}
+
 	my $self =
 	{
 		message_id  => $message_id,
@@ -54,6 +63,8 @@ sub new
 		body        => $body       || '',
 		persistent  => $persistent || 0,
 		in_use_by   => $in_use_by  || undef,
+		timestamp   => $timestamp  || time(),
+		size        => $size,
 	};
 
 	bless  $self, $class;
@@ -65,6 +76,8 @@ sub get_destination { return shift->{destination}; }
 sub get_body        { return shift->{body}; }
 sub get_persistent  { return shift->{persistent}; }
 sub get_in_use_by   { return shift->{in_use_by}; }
+sub get_timestamp   { return shift->{timestamp}; }
+sub get_size        { return shift->{size}; }
 
 sub is_in_queue
 {
