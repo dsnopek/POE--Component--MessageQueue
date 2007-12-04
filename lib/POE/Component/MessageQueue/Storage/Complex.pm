@@ -76,13 +76,28 @@ sub new
 	my $db_password = "";
 
 	# setup sqlite for backstore
-	if ( not -f $db_file )
+	my $create_db = (not -f $db_file);
+	my $dbh = DBI->connect($db_dsn, $db_username, $db_password, { RaiseError => 1 });
+	if ( $create_db )
 	{
 		# create initial database
-		my $dbh = DBI->connect($db_dsn, $db_username, $db_password);
 		$dbh->do( $DB_CREATE );
-		$dbh->disconnect();
 	}
+	else
+	{
+		eval
+		{
+			$dbh->selectrow_array("SELECT timestamp, size FROM messages LIMIT 1");
+		};
+		if ( $@ )
+		{
+			print STDERR "WARNING: User has pre-0.1.7 database format.\n";
+			print STDERR "WARNING: Performing in place upgrade.\n";
+			$dbh->do("ALTER TABLE messages ADD COLUMN timestamp INT");
+			$dbh->do("ALTER TABLE messages ADD COLUMN size      INT");
+		}
+	}
+	$dbh->disconnect();
 
 	# our memory-based front store
 	my $front_store = POE::Component::MessageQueue::Storage::Memory->new();
