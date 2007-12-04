@@ -1,6 +1,6 @@
 
 package POE::Component::MessageQueue::Storage::Generic::DBI;
-use base qw(POE::Component::MessageQueue::Storage);
+use base qw(POE::Component::MessageQueue::Storage::Generic::Base);
 
 use DBI;
 use Exception::Class::DBI;
