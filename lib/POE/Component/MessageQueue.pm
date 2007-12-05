@@ -725,8 +725,9 @@ some predetermined defaults, you can use the included command line script.
   mq.pl [--port|-p <num>] [--hostname|-h <host>]
         [--timeout|-i <seconds>]   [--throttle|-T <count>]
         [--data-dir <path_to_dir>] [--log-conf <path_to_file>]
+        [--stats] [--stats-interval|-i <seconds>]
         [--background|-b] [--pidfile|-p <path_to_file>]
-        [--version|-v] [--help|-h]
+        [--debug-shell] [--version|-v] [--help|-h]
 
   SERVER OPTIONS:
     --port     -p <num>     The port number to listen on (Default: 61613)
@@ -876,6 +877,14 @@ to AF_INET.
 Opitionally set the alias of the POE::Component::Logger object that you want the message
 queue to log to.  If no value is given, log information is simply printed to STDERR.
 
+=item observers => ARRAYREF
+
+Optionally pass in a number of objects that will receive information about events inside
+of the message queue.
+
+Currently, only one observer is provided with the PoCo::MQ distribution:
+L<POE::Component::MessageQueue::Statistics>.  Please see its documentation for more information.
+
 =back
 
 =head1 REFERENCES
@@ -896,9 +905,33 @@ L<http://www.activemq.org/> -- ActiveMQ is a popular Java-based message queue
 
 =back
 
+=head1 UPGRADING FROM 0.1.6 OR OLDER
+
+If you used any of the following storage engines with PoCo::MQ 0.1.6 or older:
+
+=over 4
+
+=item *
+
+L<POE::Component::MessageQueue::Storage::DBI>
+
+=back
+
+The database format has changed.
+
+B<Note:> When using L<POE::Component::MessageQueue::Storage::Complex> (meaning mq.pl)
+the database will be automatically updated in place, so you don't need to worry
+about this.
+
+You will need to execute the following ALTER statements on your database to allow
+PoCo::MQ to keep working:
+
+  ALTER TABLE messages ADD COLUMN timestamp INT;
+  ALTER TABLE messages ADD COLUMN size      INT;
+
 =head1 CONTACT
 
-For support, please check out the Google Group at:
+Please check out the Google Group at:
 
 L<http://groups.google.com/group/pocomq>
 
@@ -953,7 +986,7 @@ I<External modules:>
 L<POE>, L<POE::Component::Server::Stomp>, L<Net::Stomp>, L<POE::Component::Logger>, L<DBD::SQLite>,
 L<POE::Component::Generic>
 
-I<Internal modules:>
+I<Storage modules:>
 
 L<POE::Component::MessageQueue::Storage>,
 L<POE::Component::MessageQueue::Storage::Memory>,
@@ -963,6 +996,12 @@ L<POE::Component::MessageQueue::Storage::Generic>,
 L<POE::Component::MessageQueue::Storage::Generic::DBI>,
 L<POE::Component::MessageQueue::Storage::Throttled>,
 L<POE::Component::MessageQueue::Storage::Complex>
+
+I<Statistics modules:>
+
+L<POE::Component::MessageQueue::Statistics>,
+L<POE::Component::MessageQueue::Statistics::Publish>,
+L<POE::Component::MessageQueue::Statistics::Publish::YAML>
 
 =head1 BUGS
 
@@ -982,7 +1021,7 @@ undea our production load.  If anyone else experiences this problem and can recr
 reliable way (preferably with something automated like a script), I<let me know>!
 
 That said, we are using this in production in a commercial application for
-thousands of large messages daily and it takes quite awhile to get unreasonably bloated.
+thousands of large messages daily and we experience very few issues.
 Despite its problems, in the true spirit of Open Source and Free Software, I've decided
 to "release early -- release often."
 

@@ -56,8 +56,9 @@ sub usage
 $0 [--port|-p <num>] [--hostname|-h <host>]
 $X [--timeout|-i <seconds>]   [--throttle|-T <count>]
 $X [--data-dir <path_to_dir>] [--log-conf <path_to_file>]
+$X [--stats] [--stats-interval|-i <seconds>]
 $X [--background|-b] [--pidfile|-p <path_to_file>]
-$X [--version|-v] [--help|-h]
+$X [--debug-shell] [--version|-v] [--help|-h]
 
 SERVER OPTIONS:
   --port     -p <num>     The port number to listen on (Default: 61613)
