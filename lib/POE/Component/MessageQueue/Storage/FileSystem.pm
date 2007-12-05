@@ -46,11 +46,15 @@ sub new
 	# for storing message properties
 	$self->{info_storage} = $info_storage;
 	$self->{info_storage}->set_dispatch_message_handler( $self->__closure('_dispatch_message') );
+	$self->{info_storage}->set_shutdown_complete_handler( $self->__closure('_shutdown_complete') );
 
 	# for keeping the message body on the FS
 	$self->{data_dir}    = $data_dir;
 	$self->{file_wheels} = { };
 	$self->{wheel_to_message_map} = { };
+
+	# marks when we are shutting down
+	$self->{shutdown} = 0;
 
 	my $session = POE::Session->create(
 		inline_states => {
@@ -90,7 +94,8 @@ sub __closure
 	return $func;
 }
 
-# set_dispatch_message_handler() -- We maintain the parents version.
+# set_dispatch_message_handler()  -- We maintain the parents version.
+# set_shutdown_complete_handler() -- We maintain the parents version.
 
 sub set_message_stored_handler
 {
@@ -213,6 +218,43 @@ sub disown
 	return $self->{info_storage}->disown( $destination, $client_id );
 }
 
+sub shutdown
+{
+	my $self = shift;
+
+	$self->{shutdown} = 1;
+
+	# stop ALL message reading (at this point we only care
+	# about finishing writing messages).
+	my @message_ids = keys %{$self->{file_wheels}};
+	foreach my $message_id ( @message_ids )
+	{
+		my $wheel = $self->{file_wheels}->{$message_id}->{read_wheel};
+
+		if ( $wheel )
+		{
+			# stop the wheel
+			$wheel->shutdown_input();
+			$wheel->shutdown_output();
+
+			# remove from the list, so that we can get a count
+			# of how much writing is still left to do.
+			delete $self->{file_wheels}->{$message_id};
+		}
+	}
+
+	my $wheel_count = scalar keys %{$self->{file_wheels}};
+	if ( $wheel_count == 0 )
+	{
+		# send shutdown to the info storage!
+		$self->{info_storage}->shutdown();
+	}
+	else
+	{
+		$self->_log('alert', 'Waiting for messages to finish writing to disk...');
+	}
+}
+
 #
 # For handling responses from database:
 #
@@ -246,6 +288,20 @@ sub _dispatch_message
 	else
 	{
 		$self->{dispatch_message}->( undef, $destination, $client_id );
+	}
+}
+
+sub _shutdown_complete
+{
+	my $self = shift;
+
+	# Ok!  This means that the info storage is totally shutdown, so we
+	# are ready to kill our internal session.
+	$poe_kernel->signal( $self->{session}, 'TERM' );
+
+	if ( defined $self->{shutdown_complete} )
+	{
+		$self->{shutdown_complete}->();
 	}
 }
 
@@ -345,6 +401,12 @@ sub _read_input
 {
 	my ($self, $kernel, $input, $wheel_id) = @_[ OBJECT, KERNEL, ARG0, ARG1 ];
 
+	if ( $self->{shutdown} )
+	{
+		# when shutting down, we don't care about reading.
+		return;
+	}
+
 	my $message_id = $self->{wheel_to_message_map}->{$wheel_id};
 	my $message    = $self->{file_wheels}->{$message_id}->{message};
 
@@ -354,6 +416,12 @@ sub _read_input
 sub _read_error
 {
 	my ($self, $op, $errnum, $errstr, $wheel_id) = @_[ OBJECT, ARG0..ARG3 ];
+
+	if ( $self->{shutdown} )
+	{
+		# when shutting down, we don't care about reading.
+		return;
+	}
 
 	if ( $op eq 'read' and $errnum == 0 )
 	{
@@ -412,6 +480,16 @@ sub _write_flushed_event
 		my $fn = "$self->{data_dir}/msg-$message_id.txt";
 		$self->_log( 'debug', "STORE: FILE: Actually deleting $fn (on write flush)" );
 		unlink $fn || $self->_log( 'error', "Unable to remove $fn: $!" );
+	}
+
+	if ( $self->{shutdown} )
+	{
+		my $wheel_count = scalar keys %{$self->{file_wheels}};
+		if ( $wheel_count == 0 )
+		{
+			# send shutdown to the info storage!
+			$self->{info_storage}->shutdown();
+		}
 	}
 }
 

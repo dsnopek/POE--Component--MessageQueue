@@ -96,5 +96,15 @@ sub log
 	}
 }
 
+sub shutdown
+{
+	my $self = shift;
+
+	if ( defined $self->{logger_alias} )
+	{
+		$poe_kernel->signal( $self->{logger_alias}, 'TERM' );
+	}
+}
+
 1;
 

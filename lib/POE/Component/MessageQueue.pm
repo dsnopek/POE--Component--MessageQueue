@@ -32,6 +32,8 @@ $VERSION = '0.1.7';
 use Carp qw(croak);
 use Data::Dumper;
 
+use constant SHUTDOWN_SIGNALS => ('TERM', 'HUP', 'INT');
+
 sub new
 {
 	my $class = shift;
@@ -77,6 +79,7 @@ sub new
 		queues    => { },
 		needs_ack => { },
 		notify    => Event::Notify->new(),
+		observers => $observers,
 	};
 	bless $self, $class;
 
@@ -89,9 +92,16 @@ sub new
 	$self->{storage}->set_message_stored_handler(  $self->__closure('_message_stored') );
 	$self->{storage}->set_dispatch_message_handler(  $self->__closure('_dispatch_from_store') );
 	$self->{storage}->set_destination_ready_handler( $self->__closure('_destination_store_ready') );
+	$self->{storage}->set_shutdown_complete_handler( $self->__closure('_shutdown_complete') );
 
 	# get the storage object using our logger
 	$self->{storage}->set_logger( $self->{logger} );
+
+	# to name the session for master tasks
+	if ( not defined $alias )
+	{
+		$alias = "MQ";
+	}
 
 	# setup our stomp server
 	POE::Component::Server::Stomp->new(
@@ -110,23 +120,29 @@ sub new
 		],
 	);
 
-	# to name the session for master tasks
-	if ( not defined $alias )
-	{
-		$alias = "MQ";
-	}
-
 	# a custom session for non-STOMP responsive tasks
 	$self->{session} = POE::Session->create(
 		inline_states => {
 			_start => sub { 
-				$_[ KERNEL ]->alias_set("$alias-master");
-			}
+				my $kernel = $_[ KERNEL ];
+				$kernel->alias_set("$alias-master");
+				# install signal handlers to initiate graceful shutdown.
+				# We only respond to user-type signals - crash signals like 
+				# SEGV and BUS should behave normally
+				foreach my $signal ( SHUTDOWN_SIGNALS )
+				{
+					$kernel->sig($signal => '_shutdown'); 
+				}
+			},
 		},
 		object_states => [
-			$self => [ '_pump' ]
+			$self => [ '_pump', '_shutdown' ]
 		],
 	);
+
+	# stash our session aliases for later
+	$self->{server_alias} = $alias;
+	$self->{master_alias} = "$alias-master";
 
 	return $self;
 }
@@ -318,6 +334,29 @@ sub _destination_store_ready
 		my $queue = $self->get_queue( $queue_name );
 
 		$queue->pump();
+	}
+}
+
+sub _shutdown_complete
+{
+	my ($self) = @_;
+
+	$self->_log('alert', 'Storage engine has finished shutting down');
+
+	# Really, really take us down!
+	$self->_log('alert', 'Sending TERM signal to master sessions');
+	$poe_kernel->signal( $self->{server_alias}, 'TERM' );
+	$poe_kernel->signal( $self->{master_alias}, 'TERM' );
+
+	# shutdown the logger
+	$self->_log('alert', 'Shutting down the logger');
+	$self->{logger}->shutdown();
+
+	# Shutdown anyone watching us
+	my $oref = $self->{observers};
+	if ($oref)
+	{
+		$_->shutdown() for (@$oref);
 	}
 }
 
@@ -581,6 +620,51 @@ sub ack_message
 
 	# pump the queue, so that this subscriber will get another message
 	$queue->pump();
+}
+
+sub _shutdown 
+{
+	my ($self, $kernel, $signal) = @_[ OBJECT, KERNEL, ARG0 ];
+	$self->_log('alert', "Got SIG$signal. Shutting down.");
+	$kernel->sig_handled();
+	$self->shutdown(); 
+}
+
+sub shutdown
+{
+	my $self = shift;
+
+	if ( $self->{shutdown} )
+	{
+		$self->{shutdown}++;
+		if ( $self->{shutdown} >= 3 )
+		{
+			# TODO: Probably this isn't the right thing to do, but right now, during
+			# development, this is necessary because the graceful shutdown doesn't work
+			# at all.
+			my $msg = "Shutdown called $self->{shutdown} times!  Forcing ungraceful quit.";
+			$self->_log('emergency', $msg);
+			print STDERR "$msg\n";
+			$poe_kernel->stop();
+		}
+		return;
+	}
+	$self->{shutdown} = 1;
+
+	$self->_log('alert', 'Initiating message queue shutdown...');
+
+	# stop listening for connections
+	$poe_kernel->post( $self->{server_alias} => 'shutdown' );
+
+	# shutdown all client connections
+	my @client_ids = keys %{$self->{clients}};
+	foreach my $client_id ( @client_ids )
+	{
+		$poe_kernel->post( $client_id => 'shutdown' );
+	}
+
+	# shutdown the storage
+	$self->{storage}->shutdown();
 }
 
 1;
