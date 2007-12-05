@@ -79,7 +79,7 @@ sub new
 		queues    => { },
 		needs_ack => { },
 		notify    => Event::Notify->new(),
-    observers => $observers,
+		observers => $observers,
 	};
 	bless $self, $class;
 
