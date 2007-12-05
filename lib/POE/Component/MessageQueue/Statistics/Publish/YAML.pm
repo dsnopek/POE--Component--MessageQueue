@@ -20,34 +20,32 @@ package POE::Component::MessageQueue::Statistics::Publish::YAML;
 use strict;
 use warnings;
 use base qw(POE::Component::MessageQueue::Statistics::Publish);
-use Best
-    [ qw(YAML::Syck YAML) ], qw(Dump)
-;
+use Best [ qw(YAML::Syck YAML) ], qw(Dump);
 use File::Temp;
 use File::Copy qw(move);
 
 sub publish_file
 {
-    my ($self, $filename) = @_;
+	my ($self, $filename) = @_;
 
-    # Be friendly to people who might be reading the file
-    my $fh = File::Temp->new(UNLINK => 0);
-    my %h = %{ $self->{statistics}->{statistics} };
-    eval {
-        $fh->print( Dump( { %h, generated => scalar localtime } ) );
-        $fh->flush;
-        move($fh->filename, $filename) or die "Failed to rename $fh to $filename: $!";
-    };
-    if (my $e = $@) {
-        $fh->unlink_on_destroy( 1 ) if $fh;
-        die $e;
-    }
+	# Be friendly to people who might be reading the file
+	my $fh = File::Temp->new(UNLINK => 0);
+	my %h = %{ $self->{statistics}->{statistics} };
+	eval {
+		$fh->print( Dump( { %h, generated => scalar localtime } ) );
+		$fh->flush;
+		move($fh->filename, $filename) or die "Failed to rename $fh to $filename: $!";
+	};
+	if (my $e = $@) {
+		$fh->unlink_on_destroy( 1 ) if $fh;
+		die $e;
+	}
 }
 
 sub publish_handle
 {
-    my ($self, $handle) = @_;
-    $handle->print( Dump( $self->{statistics}->{statistics} ) );
+	my ($self, $handle) = @_;
+	$handle->print( Dump( $self->{statistics}->{statistics} ) );
 }
 
 1;
@@ -60,17 +58,17 @@ POE::Component::MessageQueue::Statistics::Publish::YAML - Publish Statistics In 
 
 =head1 SYNOPSIS
 
-  use POE::Component::MessageQueue::Statistics;
-  use POE::Component::MessageQueue::Statistics::Publish::YAML;
+	use POE::Component::MessageQueue::Statistics;
+	use POE::Component::MessageQueue::Statistics::Publish::YAML;
 
-  # This is initialized elsewhere
-  my $stats   = POE::Component::MessageQueue::Statistics->new();
+	# This is initialized elsewhere
+	my $stats   = POE::Component::MessageQueue::Statistics->new();
 
-  my $publish = POE::Component::MessageQueue::Statistics::Publish::YAML->new(
-    output => \*STDOUT, 
-    statistics => $stats
-  );
-  $publish->publish();
+	my $publish = POE::Component::MessageQueue::Statistics::Publish::YAML->new(
+		output => \*STDOUT, 
+		statistics => $stats
+	);
+	$publish->publish();
 
 =head1 DESCRIPTION
 

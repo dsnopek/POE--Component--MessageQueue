@@ -79,6 +79,7 @@ sub new
 		queues    => { },
 		needs_ack => { },
 		notify    => Event::Notify->new(),
+    observers => $observers,
 	};
 	bless $self, $class;
 
@@ -350,6 +351,13 @@ sub _shutdown_complete
 	# shutdown the logger
 	$self->_log('alert', 'Shutting down the logger');
 	$self->{logger}->shutdown();
+
+	# Shutdown anyone watching us
+	my $oref = $self->{observers};
+	if ($oref)
+	{
+		$_->shutdown() for (@$oref);
+	}
 }
 
 sub _pump

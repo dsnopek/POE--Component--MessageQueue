@@ -24,65 +24,78 @@ use IO::Handle;
 
 sub spawn
 {
-    my $class = shift;
-    my $self = $class->new(
-        alias    => 'MQ-Publish',
-        interval => 10,
-        @_
-    );
+	my $class = shift;
+	my $self = $class->new(
+		alias    => 'MQ-Publish',
+		interval => 10,
+		@_
+	);
 
-    POE::Session->create(
-        heap => { self => $self },
-        inline_states => {
-            '_start' => sub {
-                $_[KERNEL]->alias_set( $_[HEAP]->{self}->{alias} );
-                $_[KERNEL]->yield('publish');
-            },
-            'publish' => sub {
-                # gets called on a regular interval
-                my($kernel, $heap) = @_[KERNEL, HEAP];
+	$self->{statistics}->add_publisher($self);
+	$self->{session} = POE::Session->create(
+		heap => {},
+		inline_states => {
+			'_start' => sub {
+				$_[KERNEL]->alias_set( $self->{alias} );
+				$_[KERNEL]->yield('publish');
+			},
+			'publish' => sub {
+				# gets called on a regular interval
+				my ($kernel, $heap) = @_[KERNEL, HEAP];
+				my $alarm = $heap->{publish_alarm};
+				$kernel->alarm_remove($alarm) if $alarm;
 
-                $kernel->alarm_remove( $heap->{publish_alarm} )
-                    if $heap->{publish_alarm};
+				$self->publish();
 
-                my $self = $heap->{self};
-
-                $self->publish();
-                $heap->{publish_alarm} = 
-                    $kernel->alarm_set('publish', time() + $self->{interval});
-            }
-        }
-    );
+				$heap->{publish_alarm} = 
+					$kernel->alarm_set('publish', time() + $self->{interval});
+			},
+			'shutdown' => sub {
+				my ($kernel, $heap) = @_[KERNEL, HEAP];
+				my $alarm = $heap->{publish_alarm};
+				$kernel->alarm_remove($alarm) if $alarm;
+        # Cut off circular references. 
+        $self->{statistics} = undef;
+        $self->{session} = undef;
+			},
+		}
+	);
 }
 
 sub new
 {
-    my $class = shift;
-    my $self  = bless { @_ }, $class; # XXX - hack
-    $self;
+	my $class = shift;
+	my $self  = bless { @_ }, $class; # XXX - hack
+	$self;
 }
-    
+
 sub publish
 {
-    my $self = shift;
-    my $output = $self->{output};
-    my $ref = ref $output;
+	my $self = shift;
+	my $output = $self->{output};
+	my $ref = ref $output;
 
-    if (! $ref) { # simple string. a filename
-        $self->publish_file( $output );
-    } elsif ($ref eq 'GLOB' || $output->can('print')) {
-        $self->publish_handle( $output );
-    } elsif ($ref eq 'CODE') {
-        $self->publish_code( $output );
-    } else {
-        # don't know what it is. subclasses may detect that we were
-        # unable to determine the output type by checking for flase
-        # return values from this subroutine
-        return ();
-    }
+	if (! $ref) { # simple string. a filename
+		$self->publish_file( $output );
+	} elsif ($ref eq 'GLOB' || $output->can('print')) {
+		$self->publish_handle( $output );
+	} elsif ($ref eq 'CODE') {
+		$self->publish_code( $output );
+	} else {
+		# don't know what it is. subclasses may detect that we were
+		# unable to determine the output type by checking for flase
+		# return values from this subroutine
+		return ();
+	}
 
-    return 1;
+	return 1;
 }
+
+sub shutdown
+{
+	my $self = shift;
+	POE::Kernel->post($self->{session}, 'shutdown');
+} 
 
 1;
 
@@ -98,14 +111,14 @@ POE::Component::MessageQueue::Statistics::Publish - Base Statistics Publish Clas
 
 Creates a new instance. You must pass in an instance of POE::Component::MessageQueue::Statistics, and an output destination
 
-  # initialized elsewhere
-  my $stats   = POE::Component::MessageQueue::Statistics->new;
+	# initialized elsewhere
+	my $stats   = POE::Component::MessageQueue::Statistics->new;
 
-  my $publish = POE::Component::MessageQueue::Statistics::Publish::YAML->new(
-    output => \*STDERR,
-    statistics => $stats,
-    interval => 10, # dump every 10 seconds
-  );
+	my $publish = POE::Component::MessageQueue::Statistics::Publish::YAML->new(
+		output => \*STDERR,
+		statistics => $stats,
+		interval => 10, # dump every 10 seconds
+	);
 
 =head2 publish()
 
@@ -129,12 +142,12 @@ Receives a handle to dump the statistics.
 Receives a subroutine reference. Your code should simply pass the result
 output to $code and execute it:
 
-  sub publish_code
-  {
-    my ($self, $code) = @_;
-    my $output = ....; # generate output here
-    $code->( $output );
-  }
+	sub publish_code
+	{
+		my ($self, $code) = @_;
+		my $output = ....; # generate output here
+		$code->( $output );
+	}
 
 =head1 AUTHOR
 
