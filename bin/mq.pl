@@ -86,6 +86,7 @@ DAEMON OPTIONS:
   --pidfile    -p <path>  The path to a file to store the PID of the process
 
 OTHER OPTIONS:
+  --debug-shell           Run with POE::Component::DebugShell
   --version    -v         Show the current version.
   --help       -h         Show this usage message
 
