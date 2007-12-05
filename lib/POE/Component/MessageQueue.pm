@@ -718,33 +718,46 @@ POE::Component::MessageQueue - A POE message queue that uses STOMP for the commu
 If you are only interested in running with the recommended storage backend and
 some predetermined defaults, you can use the included command line script.
 
-  user$ mq.pl --usage
-  POE::Component::MessageQueue version 0.1.4
+  user$ mq.pl --help
+  POE::Component::MessageQueue version 0.1.7
   Copyright 2007 David Snopek
-  
+
   mq.pl [--port|-p <num>] [--hostname|-h <host>]
         [--timeout|-i <seconds>]   [--throttle|-T <count>]
-        [--data-dir <path_to_dir>] [--log-cont <path_to_file>]
+        [--data-dir <path_to_dir>] [--log-conf <path_to_file>]
         [--background|-b] [--pidfile|-p <path_to_file>]
         [--version|-v] [--help|-h]
-  
+
   SERVER OPTIONS:
-    --port     -p <num>    The port number to listen on (Default: 61613)
-    --hostname -h <host>   The hostname of the interface to listen on (Default: localhost)
-  
+    --port     -p <num>     The port number to listen on (Default: 61613)
+    --hostname -h <host>    The hostname of the interface to listen on 
+                            (Default: localhost)
+
   STORAGE OPTIONS:
-    --timeout  -i <secs>   The number of seconds to keep messages in the front-store (Default: 4)
-    --throttle -T <count>  The number of messages that can be stored at once before throttling (Default: 2)
-    --data-dir <path>      The path to the directory to store data (Default: /var/lib/perl_mq)
-    --log-conf <path>      The path to the log configuration file (Default: /etc/perl_mq/log.conf
-  
+    --timeout  -i <secs>    The number of seconds to keep messages in the 
+                            front-store (Default: 4)
+    --throttle -T <count>   The number of messages that can be stored at once 
+                            before throttling (Default: 2)
+    --data-dir <path>       The path to the directory to store data 
+                            (Default: /var/lib/perl_mq)
+    --log-conf <path>       The path to the log configuration file 
+                            (Default: /etc/perl_mq/log.conf
+
+  STATISTICS OPTIONS:
+    --stats                 If specified the, statistics information will be 
+                            written to $DATA_DIR/stats.yml
+    --stats-interval <secs> Specifies the number of seconds to wait before 
+                            dumping statistics (Default: 10)
+
   DAEMON OPTIONS:
-    --background -b        If specified the script will daemonize and run in the background
-    --pidfile    -p <path> The path to a file to store the PID of the process
-  
+    --background -b         If specified the script will daemonize and run in the
+                            background
+    --pidfile    -p <path>  The path to a file to store the PID of the process
+
   OTHER OPTIONS:
-    --version    -v        Show the current version.
-    --help       -h        Show this usage message
+    --debug-shell           Run with POE::Component::DebugShell
+    --version    -v         Show the current version.
+    --help       -h         Show this usage message
 
 =head1 DESCRIPTION
 
