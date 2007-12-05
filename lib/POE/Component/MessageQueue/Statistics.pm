@@ -122,7 +122,7 @@ sub notify_store
 sub reaverage {
 	my ($total, $average, $size) = @_;
 	return 0 if ($total <= 0);
-	return ($average * ($total - 1)) / $total;
+	return ($average * ($total - 1) + $size) / $total;
 }
 
 sub notify_recv
