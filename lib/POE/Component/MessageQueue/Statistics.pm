@@ -158,12 +158,17 @@ sub message_handled
 	$stats->{total_sent}++;
 	$stats->{last_sent} = scalar localtime();
 
-	# recalc the average
-	$stats->{avg_secs_stored} = reaverage(
-		$stats->{total_stored},
-		$stats->{avg_secs_stored},
-		(time() - $info->{timestamp}),
-	);
+	# We check if timestamp is set, because it might not be, in the specific
+	# case where the database was upgraded from pre-0.1.6.
+	if ( $info->{timestamp} )
+	{
+		# recalc the average
+		$stats->{avg_secs_stored} = reaverage(
+			$stats->{total_stored},
+			$stats->{avg_secs_stored},
+			(time() - $info->{timestamp}),
+		);
+	}
 }
 
 sub notify_dispatch
