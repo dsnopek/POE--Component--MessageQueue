@@ -95,7 +95,7 @@ sub send_frame
 		# Check to see if the socket's Wheel is still around
 		if ( defined $client )
 		{
-			$client->put( $frame->as_string() . "\n" );
+			$client->put($frame);
 
 			return 1;
 		}
