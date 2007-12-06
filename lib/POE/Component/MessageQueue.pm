@@ -32,6 +32,8 @@ $VERSION = '0.1.7';
 use Carp qw(croak);
 use Data::Dumper;
 
+use constant SHUTDOWN_SIGNALS => ('TERM', 'HUP', 'INT');
+
 sub new
 {
 	my $class = shift;
@@ -77,6 +79,7 @@ sub new
 		queues    => { },
 		needs_ack => { },
 		notify    => Event::Notify->new(),
+		observers => $observers,
 	};
 	bless $self, $class;
 
@@ -89,9 +92,16 @@ sub new
 	$self->{storage}->set_message_stored_handler(  $self->__closure('_message_stored') );
 	$self->{storage}->set_dispatch_message_handler(  $self->__closure('_dispatch_from_store') );
 	$self->{storage}->set_destination_ready_handler( $self->__closure('_destination_store_ready') );
+	$self->{storage}->set_shutdown_complete_handler( $self->__closure('_shutdown_complete') );
 
 	# get the storage object using our logger
 	$self->{storage}->set_logger( $self->{logger} );
+
+	# to name the session for master tasks
+	if ( not defined $alias )
+	{
+		$alias = "MQ";
+	}
 
 	# setup our stomp server
 	POE::Component::Server::Stomp->new(
@@ -110,23 +120,29 @@ sub new
 		],
 	);
 
-	# to name the session for master tasks
-	if ( not defined $alias )
-	{
-		$alias = "MQ";
-	}
-
 	# a custom session for non-STOMP responsive tasks
 	$self->{session} = POE::Session->create(
 		inline_states => {
 			_start => sub { 
-				$_[ KERNEL ]->alias_set("$alias-master");
-			}
+				my $kernel = $_[ KERNEL ];
+				$kernel->alias_set("$alias-master");
+				# install signal handlers to initiate graceful shutdown.
+				# We only respond to user-type signals - crash signals like 
+				# SEGV and BUS should behave normally
+				foreach my $signal ( SHUTDOWN_SIGNALS )
+				{
+					$kernel->sig($signal => '_shutdown'); 
+				}
+			},
 		},
 		object_states => [
-			$self => [ '_pump' ]
+			$self => [ '_pump', '_shutdown' ]
 		],
 	);
+
+	# stash our session aliases for later
+	$self->{server_alias} = $alias;
+	$self->{master_alias} = "$alias-master";
 
 	return $self;
 }
@@ -318,6 +334,29 @@ sub _destination_store_ready
 		my $queue = $self->get_queue( $queue_name );
 
 		$queue->pump();
+	}
+}
+
+sub _shutdown_complete
+{
+	my ($self) = @_;
+
+	$self->_log('alert', 'Storage engine has finished shutting down');
+
+	# Really, really take us down!
+	$self->_log('alert', 'Sending TERM signal to master sessions');
+	$poe_kernel->signal( $self->{server_alias}, 'TERM' );
+	$poe_kernel->signal( $self->{master_alias}, 'TERM' );
+
+	# shutdown the logger
+	$self->_log('alert', 'Shutting down the logger');
+	$self->{logger}->shutdown();
+
+	# Shutdown anyone watching us
+	my $oref = $self->{observers};
+	if ($oref)
+	{
+		$_->shutdown() for (@$oref);
 	}
 }
 
@@ -583,6 +622,51 @@ sub ack_message
 	$queue->pump();
 }
 
+sub _shutdown 
+{
+	my ($self, $kernel, $signal) = @_[ OBJECT, KERNEL, ARG0 ];
+	$self->_log('alert', "Got SIG$signal. Shutting down.");
+	$kernel->sig_handled();
+	$self->shutdown(); 
+}
+
+sub shutdown
+{
+	my $self = shift;
+
+	if ( $self->{shutdown} )
+	{
+		$self->{shutdown}++;
+		if ( $self->{shutdown} >= 3 )
+		{
+			# TODO: Probably this isn't the right thing to do, but right now, during
+			# development, this is necessary because the graceful shutdown doesn't work
+			# at all.
+			my $msg = "Shutdown called $self->{shutdown} times!  Forcing ungraceful quit.";
+			$self->_log('emergency', $msg);
+			print STDERR "$msg\n";
+			$poe_kernel->stop();
+		}
+		return;
+	}
+	$self->{shutdown} = 1;
+
+	$self->_log('alert', 'Initiating message queue shutdown...');
+
+	# stop listening for connections
+	$poe_kernel->post( $self->{server_alias} => 'shutdown' );
+
+	# shutdown all client connections
+	my @client_ids = keys %{$self->{clients}};
+	foreach my $client_id ( @client_ids )
+	{
+		$poe_kernel->post( $client_id => 'shutdown' );
+	}
+
+	# shutdown the storage
+	$self->{storage}->shutdown();
+}
+
 1;
 
 __END__
@@ -634,33 +718,47 @@ POE::Component::MessageQueue - A POE message queue that uses STOMP for the commu
 If you are only interested in running with the recommended storage backend and
 some predetermined defaults, you can use the included command line script.
 
-  user$ mq.pl --usage
-  POE::Component::MessageQueue version 0.1.4
+  user$ mq.pl --help
+  POE::Component::MessageQueue version 0.1.7
   Copyright 2007 David Snopek
-  
+
   mq.pl [--port|-p <num>] [--hostname|-h <host>]
         [--timeout|-i <seconds>]   [--throttle|-T <count>]
-        [--data-dir <path_to_dir>] [--log-cont <path_to_file>]
+        [--data-dir <path_to_dir>] [--log-conf <path_to_file>]
+        [--stats] [--stats-interval|-i <seconds>]
         [--background|-b] [--pidfile|-p <path_to_file>]
-        [--version|-v] [--help|-h]
-  
+        [--debug-shell] [--version|-v] [--help|-h]
+
   SERVER OPTIONS:
-    --port     -p <num>    The port number to listen on (Default: 61613)
-    --hostname -h <host>   The hostname of the interface to listen on (Default: localhost)
-  
+    --port     -p <num>     The port number to listen on (Default: 61613)
+    --hostname -h <host>    The hostname of the interface to listen on 
+                            (Default: localhost)
+
   STORAGE OPTIONS:
-    --timeout  -i <secs>   The number of seconds to keep messages in the front-store (Default: 4)
-    --throttle -T <count>  The number of messages that can be stored at once before throttling (Default: 2)
-    --data-dir <path>      The path to the directory to store data (Default: /var/lib/perl_mq)
-    --log-conf <path>      The path to the log configuration file (Default: /etc/perl_mq/log.conf
-  
+    --timeout  -i <secs>    The number of seconds to keep messages in the 
+                            front-store (Default: 4)
+    --throttle -T <count>   The number of messages that can be stored at once 
+                            before throttling (Default: 2)
+    --data-dir <path>       The path to the directory to store data 
+                            (Default: /var/lib/perl_mq)
+    --log-conf <path>       The path to the log configuration file 
+                            (Default: /etc/perl_mq/log.conf
+
+  STATISTICS OPTIONS:
+    --stats                 If specified the, statistics information will be 
+                            written to $DATA_DIR/stats.yml
+    --stats-interval <secs> Specifies the number of seconds to wait before 
+                            dumping statistics (Default: 10)
+
   DAEMON OPTIONS:
-    --background -b        If specified the script will daemonize and run in the background
-    --pidfile    -p <path> The path to a file to store the PID of the process
-  
+    --background -b         If specified the script will daemonize and run in the
+                            background
+    --pidfile    -p <path>  The path to a file to store the PID of the process
+
   OTHER OPTIONS:
-    --version    -v        Show the current version.
-    --help       -h        Show this usage message
+    --debug-shell           Run with POE::Component::DebugShell
+    --version    -v         Show the current version.
+    --help       -h         Show this usage message
 
 =head1 DESCRIPTION
 
@@ -779,6 +877,14 @@ to AF_INET.
 Opitionally set the alias of the POE::Component::Logger object that you want the message
 queue to log to.  If no value is given, log information is simply printed to STDERR.
 
+=item observers => ARRAYREF
+
+Optionally pass in a number of objects that will receive information about events inside
+of the message queue.
+
+Currently, only one observer is provided with the PoCo::MQ distribution:
+L<POE::Component::MessageQueue::Statistics>.  Please see its documentation for more information.
+
 =back
 
 =head1 REFERENCES
@@ -799,9 +905,33 @@ L<http://www.activemq.org/> -- ActiveMQ is a popular Java-based message queue
 
 =back
 
+=head1 UPGRADING FROM 0.1.6 OR OLDER
+
+If you used any of the following storage engines with PoCo::MQ 0.1.6 or older:
+
+=over 4
+
+=item *
+
+L<POE::Component::MessageQueue::Storage::DBI>
+
+=back
+
+The database format has changed.
+
+B<Note:> When using L<POE::Component::MessageQueue::Storage::Complex> (meaning mq.pl)
+the database will be automatically updated in place, so you don't need to worry
+about this.
+
+You will need to execute the following ALTER statements on your database to allow
+PoCo::MQ to keep working:
+
+  ALTER TABLE messages ADD COLUMN timestamp INT;
+  ALTER TABLE messages ADD COLUMN size      INT;
+
 =head1 CONTACT
 
-For support, please check out the Google Group at:
+Please check out the Google Group at:
 
 L<http://groups.google.com/group/pocomq>
 
@@ -856,7 +986,7 @@ I<External modules:>
 L<POE>, L<POE::Component::Server::Stomp>, L<Net::Stomp>, L<POE::Component::Logger>, L<DBD::SQLite>,
 L<POE::Component::Generic>
 
-I<Internal modules:>
+I<Storage modules:>
 
 L<POE::Component::MessageQueue::Storage>,
 L<POE::Component::MessageQueue::Storage::Memory>,
@@ -866,6 +996,12 @@ L<POE::Component::MessageQueue::Storage::Generic>,
 L<POE::Component::MessageQueue::Storage::Generic::DBI>,
 L<POE::Component::MessageQueue::Storage::Throttled>,
 L<POE::Component::MessageQueue::Storage::Complex>
+
+I<Statistics modules:>
+
+L<POE::Component::MessageQueue::Statistics>,
+L<POE::Component::MessageQueue::Statistics::Publish>,
+L<POE::Component::MessageQueue::Statistics::Publish::YAML>
 
 =head1 BUGS
 
@@ -885,7 +1021,7 @@ undea our production load.  If anyone else experiences this problem and can recr
 reliable way (preferably with something automated like a script), I<let me know>!
 
 That said, we are using this in production in a commercial application for
-thousands of large messages daily and it takes quite awhile to get unreasonably bloated.
+thousands of large messages daily and we experience very few issues.
 Despite its problems, in the true spirit of Open Source and Free Software, I've decided
 to "release early -- release often."
 

@@ -17,7 +17,9 @@ CREATE TABLE messages
 	destination varchar(255) not null,
 	persistent  char(1) default 'Y' not null,
 	in_use_by   int,
-	body        text
+	body        text,
+	timestamp   int,
+	size        int
 );
 EOF
 
@@ -82,8 +84,8 @@ sub testStoreRemove : Test(9)
 
 	my $handler = sub
 	{
-		my ($destination) = @_;
-		is( $destination, '/queue/a_wicked_cool.queue_name' );
+		my ($message) = @_;
+		is( $message->{destination}, '/queue/a_wicked_cool.queue_name' );
 	};
 
 	is( $self->{storage}->set_message_stored_handler($handler), undef );
@@ -179,6 +181,13 @@ sub testDisown : Test(15)
 	is( $r->{body},        'trzy' );
 	is( $r->{persistent},  1 );
 	is( $r->{in_use_by},   27 );
+}
+
+sub testShutdown : Test(1)
+{
+	my $self = shift;
+	$self->{storage}->storage_shutdown();
+	ok( 1 );
 }
 
 Test::Class->runtests;

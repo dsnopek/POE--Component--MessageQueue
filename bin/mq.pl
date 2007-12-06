@@ -20,6 +20,7 @@ my $hostname = undef;
 my $timeout  = 4;
 my $throttle_max = 2;
 my $background = 0;
+my $debug_shell = 0;
 my $pidfile;
 my $show_version = 0;
 my $show_usage   = 0;
@@ -36,6 +37,7 @@ GetOptions(
 	"stats!"       => \$statistics,
 	"stats-interval=i" => \$stat_interval,
 	"background|b" => \$background,
+	"debug-shell"  => \$debug_shell,
 	"pidfile|p=s"  => \$pidfile,
 	"version|v"    => \$show_version,
 	"help|h"       => \$show_usage,
@@ -50,32 +52,46 @@ sub version
 sub usage
 {
 	my $X = ' ' x (length $0);
+    print <<"ENDUSAGE";
+$0 [--port|-p <num>] [--hostname|-h <host>]
+$X [--timeout|-i <seconds>]   [--throttle|-T <count>]
+$X [--data-dir <path_to_dir>] [--log-conf <path_to_file>]
+$X [--stats] [--stats-interval|-i <seconds>]
+$X [--background|-b] [--pidfile|-p <path_to_file>]
+$X [--debug-shell] [--version|-v] [--help|-h]
 
-	print "$0 [--port|-p <num>] [--hostname|-h <host>]\n";
-	print "$X [--timeout|-i <seconds>]   [--throttle|-T <count>]\n";
-	print "$X [--data-dir <path_to_dir>] [--log-cont <path_to_file>]\n";
-	print "$X [--background|-b] [--pidfile|-p <path_to_file>]\n";
-	print "$X [--version|-v] [--help|-h]\n";
+SERVER OPTIONS:
+  --port     -p <num>     The port number to listen on (Default: 61613)
+  --hostname -h <host>    The hostname of the interface to listen on 
+                          (Default: localhost)
 
-	print "\nSERVER OPTIONS:\n";
-	print "  --port     -p <num>    The port number to listen on (Default: 61613)\n";
-	print "  --hostname -h <host>   The hostname of the interface to listen on (Default: localhost)\n";
+STORAGE OPTIONS:
+  --timeout  -i <secs>    The number of seconds to keep messages in the 
+                          front-store (Default: 4)
+  --throttle -T <count>   The number of messages that can be stored at once 
+                          before throttling (Default: 2)
+  --data-dir <path>       The path to the directory to store data 
+                          (Default: /var/lib/perl_mq)
+  --log-conf <path>       The path to the log configuration file 
+                          (Default: /etc/perl_mq/log.conf
 
-	print "\nSTORAGE OPTIONS:\n";
-	print "  --timeout  -i <secs>    The number of seconds to keep messages in the front-store (Default: 4)\n";
-	print "  --throttle -T <count>   The number of messages that can be stored at once before throttling (Default: 2)\n";
-	print "  --data-dir <path>       The path to the directory to store data (Default: /var/lib/perl_mq)\n";
-	print "  --log-conf <path>       The path to the log configuration file (Default: /etc/perl_mq/log.conf\n";
-	print "\nSTATISTICS OPTIONS:\n";
-	print "  --stats                 If specified the, statistics information will be written to \$DATA_DIR/stats.yml\n";
-	print "  --stats-interval <secs> Specifies the number of seconds to wait before dumping statistics (Default: 10)\n";
-	print "\nDAEMON OPTIONS:\n";
-	print "  --background -b         If specified the script will daemonize and run in the background\n";
-	print "  --pidfile    -p <path>  The path to a file to store the PID of the process\n";
+STATISTICS OPTIONS:
+  --stats                 If specified the, statistics information will be 
+                          written to \$DATA_DIR/stats.yml
+  --stats-interval <secs> Specifies the number of seconds to wait before 
+                          dumping statistics (Default: 10)
 
-	print "\nOTHER OPTIONS:\n";
-	print "  --version    -v         Show the current version.\n";
-	print "  --help       -h         Show this usage message\n";
+DAEMON OPTIONS:
+  --background -b         If specified the script will daemonize and run in the
+                          background
+  --pidfile    -p <path>  The path to a file to store the PID of the process
+
+OTHER OPTIONS:
+  --debug-shell           Run with POE::Component::DebugShell
+  --version    -v         Show the current version.
+  --help       -h         Show this usage message
+
+ENDUSAGE
 }
 
 if ( $show_version )
@@ -161,7 +177,14 @@ if ($statistics) {
 	);
 	$args{observers} = [ $stat ];
 }
-POE::Component::MessageQueue->new(\%args);
+my $mq = POE::Component::MessageQueue->new(\%args);
+
+# install the debug shell if requested
+if ( $debug_shell )
+{
+	require POE::Component::DebugShell;
+	POE::Component::DebugShell->spawn();
+}
 
 # install a die handler so we can catch crashes and log them
 $SIG{__DIE__} = sub {

@@ -27,15 +27,17 @@ sub new
 	my $class = shift;
 	my $self  = bless {
 		statistics => {
-            ID            => sprintf(
-                "POE::Component::MessageQueue version %s (PID: $$)",
-                eval join('::', '$POE', 'Component', 'MessageQueue', 'VERSION') # hide from PAUSE
-            ),
-		    total_stored  => 0,
-		    total_sent    => 0,
-		    subscriptions => 0,
-		    queues        => {},
-		}
+			ID => sprintf(
+				"POE::Component::MessageQueue version %s (PID: $$)",
+				# hide from PAUSE
+				eval join('::', '$POE', 'Component', 'MessageQueue', 'VERSION') 
+			),
+			total_stored  => 0,
+			total_sent    => 0,
+			subscriptions => 0,
+			queues        => {},
+		},
+		publishers => [],
 	}, $class;
 
 	$self;
@@ -44,15 +46,21 @@ sub new
 sub register
 {
 	my ($self, $mq) = @_;
-	$mq->register_event( $_, $self ) for qw(store dispatch ack recv subscribe unsubscribe);
+	$mq->register_event( $_, $self ) 
+		for qw(store dispatch ack recv subscribe unsubscribe);
+}
+
+sub add_publisher {
+  my ($self, $pub) = @_; 
+  push(@{$self->{publishers}}, $pub);
 }
 
 my %METHODS = (
-	store    => 'notify_store',
-	'recv'   => 'notify_recv',
-	dispatch => 'notify_dispatch',
-	ack      => 'notify_ack',
-	subscribe => 'notify_subscribe',
+	store       => 'notify_store',
+	'recv'      => 'notify_recv',
+	dispatch    => 'notify_dispatch',
+	ack         => 'notify_ack',
+	subscribe   => 'notify_subscribe',
 	unsubscribe => 'notify_unsubscribe',
 );
 
@@ -76,6 +84,15 @@ sub get_queue
 	}
 
 	return $queue;
+}
+
+sub shutdown 
+{
+	my $self = shift;
+	foreach my $pub (@{$self->{publishers}}) 
+	{
+		$pub->shutdown();
+	}
 }
 
 sub notify
@@ -102,6 +119,12 @@ sub notify_store
 	$stats->{last_stored} = scalar localtime();
 }
 
+sub reaverage {
+	my ($total, $average, $size) = @_;
+	return 0 if ($total <= 0);
+	return ($average * ($total - 1) + $size) / $total;
+}
+
 sub notify_recv
 {
 	my ($self, $data) = @_;
@@ -109,13 +132,12 @@ sub notify_recv
 	my $stats = $self->get_queue( $data->{queue}->{queue_name} );
 	$stats->{total_recvd}++;
 
-	my $size = $data->{message}->{size};
-
 	# recalc the average
-	$stats->{avg_size_recvd} = 
-		$stats->{total_recvd} <= 0 ?
-		0 :
-		(($stats->{avg_size_recvd} * ($stats->{total_recvd} - 1)) + $size) / $stats->{total_recvd};
+	$stats->{avg_size_recvd} = reaverage(
+		$stats->{total_recvd},
+		$stats->{avg_size_recvd},
+		$data->{message}->{size},
+	);
 }
 
 sub message_handled
@@ -135,14 +157,18 @@ sub message_handled
 	$stats->{sent}++;
 	$stats->{total_sent}++;
 	$stats->{last_sent} = scalar localtime();
-	
-	my $secs_stored = (time() - $info->{timestamp});
 
-	# recalc the average
-	$stats->{avg_secs_stored} = 
-		$stats->{total_stored} <= 0 ?
-		0 :
-		(($stats->{avg_secs_stored} * ($stats->{total_stored} - 1)) + $secs_stored) / $stats->{total_stored};
+	# We check if timestamp is set, because it might not be, in the specific
+	# case where the database was upgraded from pre-0.1.6.
+	if ( $info->{timestamp} )
+	{
+		# recalc the average
+		$stats->{avg_secs_stored} = reaverage(
+			$stats->{total_stored},
+			$stats->{avg_secs_stored},
+			(time() - $info->{timestamp}),
+		);
+	}
 }
 
 sub notify_dispatch
@@ -226,8 +252,8 @@ POE::Component::MessageQueue::Statistics - Gather MQ Usage Statistics
 
 =head1 SYNOPSIS
 
-  my $statistics = POE::Component::MessageQueue::Statistics->new();
-  $mq->register( $statistics );
+	my $statistics = POE::Component::MessageQueue::Statistics->new();
+	$mq->register( $statistics );
 
 =head1 DESCRIPTION
 
@@ -239,10 +265,10 @@ By itself it will only *gather* statistics, and will not output anything.
 
 To enable outputs, you need to create a separate Publish object:
 
-  POE::Component::MessageQueue::Statistics::Publish::YAML->new(
-    output => \*STDERR,
-    statistics => $statistics
-  );
+	POE::Component::MessageQueue::Statistics::Publish::YAML->new(
+		output => \*STDERR,
+		statistics => $statistics
+	);
 
 Please refer to POE::Component::MessageQueue::Statistics::Publish for details
 on how to enable output

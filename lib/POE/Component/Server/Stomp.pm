@@ -32,8 +32,6 @@ sub new
 {
 	my $class = shift;
 
-	# NOTE: Quite a bit of code lifted from POE::Component::Server::Stomp ...
-
 	croak "$class->new() requires an even number of arguments" if (@_ & 1);
 
 	my $args = { @_ };
