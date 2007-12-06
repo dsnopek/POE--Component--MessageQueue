@@ -813,10 +813,6 @@ L<POE::Component::MessageQueue::Storage::DBI> -- Uses Perl L<DBI> to store messa
 
 =item *
 
-L<POE::Component::MessageQueue::Storage::EasyDBI> -- An alternative L<DBI> storage engine based on L<POE::Component::EasyDBI>.  Its use is B<not recommend> because of inexplicable memory problems.  This will remain in the distribution for the time being but will probably be removed in the future.  All messages are stored persistently.
-
-=item *
-
 L<POE::Component::MessageQueue::Storage::FileSystem> -- Wraps around another storage engine to store the message bodies on the filesystem.  This can be used in conjunction with the DBI storage engine so that message properties are stored in DBI, but the message bodies are stored on disk.  All messages are stored persistently regardless of whether a message has the persistent flag set or not.
 
 =item *
@@ -1005,25 +1001,11 @@ L<POE::Component::MessageQueue::Statistics::Publish::YAML>
 
 =head1 BUGS
 
-A ton of debugging work went into the 0.1.3 release.
-
-I recieved a script from a user that would cause a memory leak in 0.1.2.  By switching to
-L<POE::Component::Generic> for the L<POE::Component::MessageQueue::Storage::DBI> module,
-I was able to eliminate this memory leak.
-
-However!  Our message queue in production still appears to steadily increase its memory 
-usage.  This could be another memory leak but it is also possible that its just memory
-fragmentation or the load being so high that the number of throttled messages is getting
-out of control.
-
-I am unable to recreate this in testing, making it difficult to debug.  It only turns up
-undea our production load.  If anyone else experiences this problem and can recreate in an
-reliable way (preferably with something automated like a script), I<let me know>!
+We are serious about squashing bugs!  Currently, there are no known bugs, but
+some probably do exist.  If you find any, please let us know at the Google group.
 
 That said, we are using this in production in a commercial application for
 thousands of large messages daily and we experience very few issues.
-Despite its problems, in the true spirit of Open Source and Free Software, I've decided
-to "release early -- release often."
 
 =head1 AUTHOR
 
