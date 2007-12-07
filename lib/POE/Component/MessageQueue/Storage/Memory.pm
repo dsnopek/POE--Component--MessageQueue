@@ -43,8 +43,9 @@ sub has_message
 {
 	my ($self, $message_id) = @_;
 
-	# find the message and remove it
-	while (my ($dest, $messages) = each %{ $self->{messages} } ) {
+	foreach my $dest ( keys %{$self->{messages}} )
+	{
+		my $messages = $self->{messages}->{$dest};
 		foreach my $message ( @{$messages} )
 		{
 			if ( $message->{message_id} == $message_id )
@@ -93,10 +94,13 @@ sub remove
 {
 	my ($self, $message_id) = @_;
 
-	while (my($dest, $messages) = each %{ $self->{messages} }) {
+	foreach my $dest ( keys %{$self->{messages}} )
+	{
+		my $messages = $self->{messages}->{$dest};
 		my $max = scalar @{$messages};
+
 		# find the message and remove it
-		for my $i (0..$max-1)
+		for ( my $i = 0; $i < $max; $i++ )
 		{
 			if ( $messages->[$i]->{message_id} == $message_id )
 			{
@@ -120,7 +124,7 @@ sub remove_multiple
 		my $max = scalar @{$messages};
 
 		# find the message and remove it
-		for my $i (0..$max-1)
+		for ( my $i = 0; $i < $max; $i++ )
 		{
 			my $message = $messages->[$i];
 

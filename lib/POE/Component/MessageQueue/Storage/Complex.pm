@@ -320,7 +320,11 @@ sub shutdown
 	$self->_log('alert', 'Forcing all messages from the front-store into the back-store...');
 	foreach my $message ( @{$self->{front_store}->empty_all()} )
 	{
-		$self->{back_store}->store($message);
+		if ( $message->{persistent} )
+		{
+			$self->_log( "STORE: COMPLEX: Moving message $message->{message_id} into backing store" );
+			$self->{back_store}->store($message);
+		}
 	}
 
 	# call the front-stores shutdown, just in case.  This really shouldn't do anything.
