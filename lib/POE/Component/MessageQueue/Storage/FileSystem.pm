@@ -322,7 +322,7 @@ sub _write_message_to_disk
 	{
 		$self->_log( 'debug', "STORE: FILE: Abort write of message $message->{message_id} to disk" );
 
-		delete $self->{file_wheels}->{$message->{message_id}}->{write_message};
+		delete $self->{file_wheels}->{$message->{message_id}};
 
 		return;
 	}
