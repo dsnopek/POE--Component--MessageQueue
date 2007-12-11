@@ -529,7 +529,8 @@ sub route_frame
 		$self->_log( 'error', "ERROR: Don't know how to handle frame: " . $frame->as_string );
 	}
 
-	if ($frame->command ne 'CONNECT' && (my $receipt = $frame->headers->{receipt})) {
+	if ($frame->command ne 'CONNECT' && $frame->headers && (my $receipt = $frame->headers->{receipt}))
+	{
 		$client->send_frame( Net::Stomp::Frame->new( {
 			command => 'RECEIPT',
 			headers => {
