@@ -300,20 +300,7 @@ sub enqueue
 {
 	my ($self, $message) = @_;
 
-	my $sub = $self->get_available_subscriber();
-
-	# if we already have a subscriber in mind, be sure to set that right away.
-	if ( defined $sub )
-	{
-		$message->set_in_use_by( $sub->{client}->{client_id} );
-	}
-	# store it as soon as possible!
 	$self->get_parent()->get_storage()->store( $message );
-	# actually send it to the subscriber that we had in mind
-	if ( defined $sub )
-	{
-		$self->dispatch_message_to( $message, $sub );
-	}
 }
 
 1;
