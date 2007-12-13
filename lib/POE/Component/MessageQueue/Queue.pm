@@ -300,20 +300,19 @@ sub enqueue
 {
 	my ($self, $message) = @_;
 
-	my $sub = $self->get_available_subscriber();
-
-	# if we already have a subscriber in mind, be sure to set that right away.
-	if ( defined $sub )
+	# If we already have a ready subscriber, we'll claim and dispatch before we
+	# store to give the subscriber a headstart on processing.
+	if ( my $sub = $self->get_available_subscriber() )
 	{
-		$message->set_in_use_by( $sub->{client}->{client_id} );
-	}
-	# store it as soon as possible!
-	$self->get_parent()->get_storage()->store( $message );
-	# actually send it to the subscriber that we had in mind
-	if ( defined $sub )
-	{
+		my $client_id = $sub->{client}->{client_id};
+		$message->set_in_use_by( $client_id );
+		$self->_log('info', 
+			"QUEUE: Message $message->{message_id} ".
+			"claimed by client $client_id during enqueue"
+		);
 		$self->dispatch_message_to( $message, $sub );
 	}
+	$self->get_parent()->get_storage()->store( $message );
 }
 
 1;
