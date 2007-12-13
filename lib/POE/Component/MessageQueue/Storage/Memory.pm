@@ -82,6 +82,9 @@ sub store
 	# push onto our array
 	$self->{messages}{ $message->{destination} } ||= [];
 	push @{$self->{messages}{$message->{destination}}}, $message;
+	$self->_log( 
+		"STORE: MEMORY: Added $message->{message_id} to in-memory store" 
+	);
 
 	# call the message_stored handler
 	if ( defined $self->{message_stored} )
@@ -182,6 +185,10 @@ sub claim_and_retrieve
 
 			# claim it, yo!
 			$message->{in_use_by} = $client_id;
+			$self->_log('info',
+				"STORE: MEMORY: Message $message->{message_id} ".
+				"claimed by client $client_id."
+			);
 
 			# dispatch message
 			$self->{dispatch_message}->( $message, $destination, $client_id );

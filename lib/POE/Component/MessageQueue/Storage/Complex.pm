@@ -153,8 +153,7 @@ sub set_message_stored_handler
 	$self->SUPER::set_message_stored_handler( $handler );
 
 	$self->{front_store}->set_message_stored_handler( $handler );
-	# DRS:  I don't know yet if this is safe!
-	#$self->{back_store}->set_message_stored_handler( $handler );
+	$self->{back_store}->set_message_stored_handler( $handler );
 }
 
 sub set_dispatch_message_handler
@@ -212,8 +211,6 @@ sub store
 		# never considered for adding to the backing store.
 		$self->{timestamps}->{$message->{message_id}} = time();
 	}
-
-	$self->_log( "STORE: MEMORY: Added $message->{message_id} to in-memory store" );
 }
 
 sub remove
