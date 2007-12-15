@@ -23,6 +23,7 @@ use POE::Component::MessageQueue::Storage::Throttled;
 use POE::Component::MessageQueue::Storage::DBI;
 use POE::Component::MessageQueue::Storage::FileSystem;
 use POE::Component::MessageQueue::Storage::Memory;
+use POE::Component::MessageQueue::Storage::BigMemory;
 use DBI;
 use strict;
 
@@ -51,6 +52,7 @@ sub new
 
 	my $data_dir;
 	my $timeout;
+	my $front_store;
 
 	# we default to 2 because I think its a good idea
 	my $throttle_max = 2;
@@ -62,6 +64,10 @@ sub new
 
 		# only set if the user set to preserve default
 		$throttle_max = $args->{throttle_max} if exists $args->{throttle_max};
+
+  	# our memory-based front store
+		$front_store = $args->{front_store} || 
+			POE::Component::MessageQueue::Storage::Memory->new();
 	}
 
 	# create the datadir
@@ -98,9 +104,6 @@ sub new
 		}
 	}
 	$dbh->disconnect();
-
-	# our memory-based front store
-	my $front_store = POE::Component::MessageQueue::Storage::Memory->new();
 
 	# setup the DBI backing store
 	my $back_store = POE::Component::MessageQueue::Storage::Throttled->new({
