@@ -3,34 +3,34 @@ use strict;
 use warnings;
 
 use POE::Component::MessageQueue::Storage::Structure::DLList::Cell;
-use constant FIRST => 
+use constant FIRST =>
 	POE::Component::MessageQueue::Storage::Structure::DLList::Cell::FIRST;
-use constant LAST => 
+use constant LAST =>
 	POE::Component::MessageQueue::Storage::Structure::DLList::Cell::LAST;
 
 sub new
 {
-  my $class = shift;
+	my $class = shift;
 	my $sentinel =
 		POE::Component::MessageQueue::Storage::Structure::DLList::Cell->new();
 
-  # Self will just be a blessed reference to a sentinel node.
-  my $self = \$sentinel;
-  return bless $self, $class;
+	# Self will just be a blessed reference to a sentinel node.
+	my $self = \$sentinel;
+	return bless $self, $class;
 
 	return $self;
 }
 
 sub shift : method
 {
-  my $self = shift;
-  $$self->_remove(FIRST);
+	my $self = shift;
+	$$self->_remove(FIRST);
 }
 
 sub pop : method
 {
-  my $self = shift;
-  $$self->_remove(LAST);
+	my $self = shift;
+	$$self->_remove(LAST);
 }
 
 sub unshift : method
@@ -59,24 +59,23 @@ sub dequeue
 sub first
 {
 	my $self = shift;
-  return $$self->next();
+	return $$self->next();
 }
 
 sub last
 {
-  my $self = shift;
+	my $self = shift;
 	return $$self->prev();
 }
 
-sub DESTROY {
-  my $self = shift;
-  my $sentinel = $$self;
+sub DESTROY 
+{
+	my $self = shift;
+	my $sentinel = $$self;
 
-  # The cells already have weakened prev pointers, so as soon as we break the
-  # circularity everything will be fine.
-
-  $sentinel->[FIRST] = undef;
-  $sentinel->[LAST] = undef; 
+	# The cells already have weakened prev pointers, so as soon as we break the
+	# circularity everything will be fine.
+	$sentinel->_break();
 }
 
 1;
@@ -108,7 +107,7 @@ know how to delete themselves from the list.  Thich lets us do some tricky
 things like having a hash that points to queue cells and doing deletion
 from lists by some arbitrary hash index in O(1).
 
-Individual cells in the list are instances of 
+Individual cells in the list are instances of
 L<POE::Component::MessageQueue::Storage::Structure::DLList::Cell>
 
 =head1 METHODS
@@ -122,13 +121,13 @@ operations on the whole list (rather than individual cells in it).
 
 Returns a DLList with nothing in it.  This is what you call list methods on.
 
-=item shift 
+=item shift
 
-=item unshift 
+=item unshift
 
-=item push 
+=item push
 
-=item pop 
+=item pop
 
 These work just like the builtins.  Pop and shift return you the data that was
 in the (now useless) list cell.  Push and unshift return you the list cell.
@@ -143,12 +142,13 @@ These work just like push/shift.  In fact, they probably are push/shift.
 
 =item last
 
-The first and last cells in the list, respectively.  
+The first and last cells in the list, respectively.
 
 =head1 BUGS AND LIMITATIONS
 
-This is fairly slow - much slower than standard perl arrays.  Only use this if
-you know what you're doing and need the advantages it offers!
+This is fairly slow for most things you'd use a list for - much slower than 
+vanilla perl arrays.  Only use this if you know what you're doing and need the 
+advantages it offers!
 
 =head1 SEE ALSO
 

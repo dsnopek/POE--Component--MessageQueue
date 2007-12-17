@@ -9,6 +9,7 @@ use constant LAST  => 1;
 use constant DATA  => 2;
 
 use Symbol;
+use Scalar::Util qw(weaken);
 
 our $NIL;
 BEGIN
@@ -16,9 +17,20 @@ BEGIN
 	$NIL = gensym();
 }
 
+# We solve our circular reference problems by always weakening our prev
+# pointers and having whoever has reference to our sentinel node call _break()
+# on it when they're done with us (usually in a DESTROY).
+
+sub _break {
+	my $self = shift;
+	$self->[FIRST] = undef;
+	$self->[LAST] = undef;
+}
+
 sub new
 {
 	my $self = bless [undef,undef,undef];
+
 	$self->[FIRST] = $self;
 	$self->[LAST] = $self;
 
@@ -54,7 +66,7 @@ sub _remove {
 	$sentinel->[$end] = $new_end;
 	$new_end->[$outward] = $sentinel;
 
-  weaken($new_end->[PREV]);
+	weaken($new_end->[PREV]);
 	return $old_end->[DATA];
 }
 
@@ -70,7 +82,7 @@ sub _add
 	$sentinel->[$end]->[$outward] = $new_cell;
 	$sentinel->[$end] = $new_cell;
 
-  weaken($new_cell->[PREV]);
+	weaken($new_cell->[PREV]);
 	return $new_cell; 
 }
 
@@ -82,7 +94,7 @@ sub delete
 	$next->[PREV] = $prev;
 	$prev->[NEXT] = $next;
 
-  weaken($next->[PREV]);
+	weaken($next->[PREV]);
 	return $cell->[DATA];
 }
 
@@ -99,11 +111,6 @@ sub next
 sub prev
 {
 	return shift->_move(PREV);
-}
-
-sub DESTROY {
-  my $self = shift;
-  print "Destroying the cell with $self->[DATA] in it.\n";
 }
 
 1;
