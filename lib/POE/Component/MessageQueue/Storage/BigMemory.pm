@@ -1,5 +1,5 @@
 #
-# Copyright 2007 David Snopek <dsnopek@gmail.com>
+# Copyright 2007 Paul Driver <frodwith@gmail.com>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -70,8 +70,8 @@ sub empty_all
 	$self->{claimed} = {};
 	$self->{unclaimed} = {};
 
-  my @messages = map { $_->data() } (values %$old);
-  return \@messages;
+	my @messages = map { $_->data() } (values %$old);
+	return \@messages;
 }
 
 sub _force_store {
@@ -122,8 +122,8 @@ sub remove
 		delete $self->{unclaimed}->{$message->{destination}};
 	}
 
-  delete $self->{messages}->{$id};
-  $self->_log('info', "STORE: BIGMEMORY: Removed $id from in-memory store");
+	delete $self->{messages}->{$id};
+	$self->_log('info', "STORE: BIGMEMORY: Removed $id from in-memory store");
 	return $message;
 }
 
