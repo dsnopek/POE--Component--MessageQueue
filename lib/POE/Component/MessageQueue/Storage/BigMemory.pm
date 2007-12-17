@@ -16,7 +16,7 @@
 #
 
 use strict;
-package POE::Component::MessageQueue::Storage::Memory;
+package POE::Component::MessageQueue::Storage::BigMemory;
 use base qw(POE::Component::MessageQueue::Storage);
 
 use POE::Component::MessageQueue::Storage::Structure::DLList;
@@ -70,7 +70,8 @@ sub empty_all
 	$self->{claimed} = {};
 	$self->{unclaimed} = {};
 
-	return map { $_->data() } (values %$old);
+  my @messages = map { $_->data() } (values %$old);
+  return \@messages;
 }
 
 sub _force_store {
@@ -109,7 +110,7 @@ sub remove
 	my ($self, $id) = @_;
 	return 0 unless ( exists $self->{messages}->{$id} );
 
-	my $message = $self->{messages}->{$id}->delete()->data();
+	my $message = $self->{messages}->{$id}->delete();
 	my $claimant = $message->{in_use_by};
 
 	if ( defined $claimant )
@@ -121,6 +122,8 @@ sub remove
 		delete $self->{unclaimed}->{$message->{destination}};
 	}
 
+  delete $self->{messages}->{$id};
+  $self->_log('info', "STORE: BIGMEMORY: Removed $id from in-memory store");
 	return $message;
 }
 
@@ -154,8 +157,7 @@ sub claim_and_retrieve
 
 	# Find an unclaimed message
 	my $q = $self->{unclaimed}->{$destination} || return 0;
-	my $cell = $q->dequeue() || return 0;
-	my $message = $cell->data();
+	my $message = $q->dequeue() || return 0;
 
 	# Claim it
 	$message->{in_use_by} = $client_id;
@@ -168,7 +170,7 @@ sub claim_and_retrieve
 	# Dispatch it
 	my $dispatcher = $self->{dispatch_message} ||
 		die "No dispatch_message handler"; 
-	$dispatcher->($message);
+	$dispatcher->($message, $destination, $client_id);
 	$self->{destination_ready}->( $destination );
 }
 

@@ -108,7 +108,9 @@ sub remove
 			if ( $messages->[$i]->{message_id} == $message_id )
 			{
 				splice @{$messages}, $i, 1;
-
+				$self->_log('info',
+					"STORE: MEMORY: Removed $message_id from in-memory store"
+				);
 				# return 1 to denote that a message was actually removed
 				return 1;
 			}

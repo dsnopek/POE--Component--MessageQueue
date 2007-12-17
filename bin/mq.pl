@@ -26,21 +26,23 @@ my $show_version = 0;
 my $show_usage   = 0;
 my $statistics   = 0;
 my $stat_interval = 10;
+my $front_store = 'memory';
 
 GetOptions(
-	"port|p=i"     => \$port,
-	"hostname|h=s" => \$hostname,
-	"timeout|i=i"  => \$timeout,
-	"throttle|T=i" => \$throttle_max,
-	"data-dir=s"   => \$DATA_DIR,
-	"log-conf=s"   => \$CONF_LOG,
-	"stats!"       => \$statistics,
+	"port|p=i"         => \$port,
+	"hostname|h=s"     => \$hostname,
+	"timeout|i=i"      => \$timeout,
+  "front-store|f=s"  => \$front_store,
+	"throttle|T=i"     => \$throttle_max,
+	"data-dir=s"       => \$DATA_DIR,
+	"log-conf=s"       => \$CONF_LOG,
+	"stats!"           => \$statistics,
 	"stats-interval=i" => \$stat_interval,
-	"background|b" => \$background,
-	"debug-shell"  => \$debug_shell,
-	"pidfile|p=s"  => \$pidfile,
-	"version|v"    => \$show_version,
-	"help|h"       => \$show_usage,
+	"background|b"     => \$background,
+	"debug-shell"      => \$debug_shell,
+	"pidfile|p=s"      => \$pidfile,
+	"version|v"        => \$show_version,
+	"help|h"           => \$show_usage,
 );
 
 sub version
@@ -68,6 +70,8 @@ SERVER OPTIONS:
 STORAGE OPTIONS:
   --timeout  -i <secs>    The number of seconds to keep messages in the 
                           front-store (Default: 4)
+  --front-store -f        Specify which in-memory storage engine to use for
+                          the front-store (can be memory or bigmemory).
   --throttle -T <count>   The number of messages that can be stored at once 
                           before throttling (Default: 2)
   --data-dir <path>       The path to the directory to store data 
@@ -154,6 +158,20 @@ else
 	print STDERR "LOGGER: Will send all messages to STDERR\n";
 }
 
+if ($front_store eq 'memory') 
+{
+	$front_store = POE::Component::MessageQueue::Storage::Memory->new();
+}
+elsif ($front_store eq 'bigmemory')
+{
+	$front_store = POE::Component::MessageQueue::Storage::BigMemory->new();
+}
+else
+{
+  die "Unknown front-store specified: $front_store";
+}
+
+
 my %args = (
 	port     => $port,
 	hostname => $hostname,
@@ -161,7 +179,8 @@ my %args = (
 	storage => POE::Component::MessageQueue::Storage::Complex->new({
 		data_dir     => $DATA_DIR,
 		timeout      => $timeout,
-		throttle_max => $throttle_max
+		throttle_max => $throttle_max,
+    front_store  => $front_store,
 	}),
 
 	logger_alias => $logger_alias,

@@ -220,14 +220,8 @@ sub remove
 {
 	my ($self, $message_id) = @_;
 
-	if ( $self->{front_store}->remove( $message_id ) )
-	{
-		$self->_log( "STORE: MEMORY: Removed $message_id from in-memory store" );
-	}
-	else
-	{
+	$self->{front_store}->remove( $message_id ) ||
 		$self->{back_store}->remove( $message_id );
-	}
 
 	# remove the timestamp
 	delete $self->{timestamps}->{$message_id};
