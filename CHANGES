@@ -1,5 +1,5 @@
 
-== 0.1.7 -- ??/??/2007 ==
+== 0.1.7 -- 12/19/2007 ==
 
  * Added support for statistics gathering.
  * Attempt to shutdown gracefully after receiving the TERM, INT or HUP signals.

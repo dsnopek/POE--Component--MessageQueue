@@ -42,6 +42,7 @@ CREATE TABLE messages
 
 CREATE INDEX destination_index ON messages ( destination );
 CREATE INDEX in_use_by_index   ON messages ( in_use_by );
+CREATE INDEX timestamp_index   ON messages ( timestamp );
 EOF
 
 sub new
@@ -95,6 +96,7 @@ sub new
 			print STDERR "WARNING: Performing in place upgrade.\n";
 			$dbh->do("ALTER TABLE messages ADD COLUMN timestamp INT");
 			$dbh->do("ALTER TABLE messages ADD COLUMN size      INT");
+			$dbh->do("CREATE INDEX timestamp_index ON messages ( timestamp )");
 		}
 	}
 	$dbh->disconnect();
