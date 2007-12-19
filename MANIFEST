@@ -40,6 +40,7 @@ lib/POE/Component/MessageQueue/Storage/Memory.pm
 lib/POE/Component/MessageQueue/Storage/Throttled.pm
 lib/POE/Component/MessageQueue/Subscription.pm
 lib/POE/Component/Server/Stomp.pm
+LICENSE
 log.conf
 Makefile
 Makefile.PL
@@ -54,6 +55,7 @@ schema/upgrade-0.1.7.sql
 t/01_load.t
 t/02_client.t
 t/03_queue.t
+t/04_message.t
 test.sh
 test/Storage/DBI.pm
 test/Storage/Generic/DBI.pm
