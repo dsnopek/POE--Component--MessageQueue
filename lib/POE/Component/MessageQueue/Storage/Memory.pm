@@ -43,8 +43,9 @@ sub has_message
 {
 	my ($self, $message_id) = @_;
 
-	# find the message and remove it
-	while (my ($dest, $messages) = each %{ $self->{messages} } ) {
+	foreach my $dest ( keys %{$self->{messages}} )
+	{
+		my $messages = $self->{messages}->{$dest};
 		foreach my $message ( @{$messages} )
 		{
 			if ( $message->{message_id} == $message_id )
@@ -81,6 +82,9 @@ sub store
 	# push onto our array
 	$self->{messages}{ $message->{destination} } ||= [];
 	push @{$self->{messages}{$message->{destination}}}, $message;
+	$self->_log( 
+		"STORE: MEMORY: Added $message->{message_id} to in-memory store" 
+	);
 
 	# call the message_stored handler
 	if ( defined $self->{message_stored} )
@@ -93,10 +97,13 @@ sub remove
 {
 	my ($self, $message_id) = @_;
 
-	while (my($dest, $messages) = each %{ $self->{messages} }) {
+	foreach my $dest ( keys %{$self->{messages}} )
+	{
+		my $messages = $self->{messages}->{$dest};
 		my $max = scalar @{$messages};
+
 		# find the message and remove it
-		for my $i (0..$max-1)
+		for ( my $i = 0; $i < $max; $i++ )
 		{
 			if ( $messages->[$i]->{message_id} == $message_id )
 			{
@@ -120,7 +127,7 @@ sub remove_multiple
 		my $max = scalar @{$messages};
 
 		# find the message and remove it
-		for my $i (0..$max-1)
+		for ( my $i = 0; $i < $max; $i++ )
 		{
 			my $message = $messages->[$i];
 
@@ -178,6 +185,10 @@ sub claim_and_retrieve
 
 			# claim it, yo!
 			$message->{in_use_by} = $client_id;
+			$self->_log('info',
+				"STORE: MEMORY: Message $message->{message_id} ".
+				"claimed by client $client_id."
+			);
 
 			# dispatch message
 			$self->{dispatch_message}->( $message, $destination, $client_id );

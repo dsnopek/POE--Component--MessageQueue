@@ -14,6 +14,10 @@ TODO for making a release.
  
  * Look over 'bzr log' and update CHANGES file.
 
+ * Run 'bzr commit'.
+
+ * Run 'bzr tag release--X.X.X'.
+
  * Run 'make dist'.
 
  * Go to: http://pause.perl.org

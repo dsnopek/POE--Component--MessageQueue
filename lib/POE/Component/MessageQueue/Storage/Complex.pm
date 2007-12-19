@@ -42,6 +42,7 @@ CREATE TABLE messages
 
 CREATE INDEX destination_index ON messages ( destination );
 CREATE INDEX in_use_by_index   ON messages ( in_use_by );
+CREATE INDEX timestamp_index   ON messages ( timestamp );
 EOF
 
 sub new
@@ -95,6 +96,7 @@ sub new
 			print STDERR "WARNING: Performing in place upgrade.\n";
 			$dbh->do("ALTER TABLE messages ADD COLUMN timestamp INT");
 			$dbh->do("ALTER TABLE messages ADD COLUMN size      INT");
+			$dbh->do("CREATE INDEX timestamp_index ON messages ( timestamp )");
 		}
 	}
 	$dbh->disconnect();
@@ -153,8 +155,7 @@ sub set_message_stored_handler
 	$self->SUPER::set_message_stored_handler( $handler );
 
 	$self->{front_store}->set_message_stored_handler( $handler );
-	# DRS:  I don't know yet if this is safe!
-	#$self->{back_store}->set_message_stored_handler( $handler );
+	$self->{back_store}->set_message_stored_handler( $handler );
 }
 
 sub set_dispatch_message_handler
@@ -212,8 +213,6 @@ sub store
 		# never considered for adding to the backing store.
 		$self->{timestamps}->{$message->{message_id}} = time();
 	}
-
-	$self->_log( "STORE: MEMORY: Added $message->{message_id} to in-memory store" );
 }
 
 sub remove
@@ -320,7 +319,11 @@ sub shutdown
 	$self->_log('alert', 'Forcing all messages from the front-store into the back-store...');
 	foreach my $message ( @{$self->{front_store}->empty_all()} )
 	{
-		$self->{back_store}->store($message);
+		if ( $message->{persistent} )
+		{
+			$self->_log( "STORE: COMPLEX: Moving message $message->{message_id} into backing store" );
+			$self->{back_store}->store($message);
+		}
 	}
 
 	# call the front-stores shutdown, just in case.  This really shouldn't do anything.
