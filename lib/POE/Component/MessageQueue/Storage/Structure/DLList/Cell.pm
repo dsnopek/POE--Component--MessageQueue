@@ -19,20 +19,22 @@ package POE::Component::MessageQueue::Storage::Structure::DLList::Cell;
 use strict;
 use warnings;
 
+use Symbol;
+use Scalar::Util qw(weaken);
+
 use constant NEXT  => 0;
 use constant FIRST => 0;
 use constant PREV  => 1;
 use constant LAST  => 1;
 use constant DATA  => 2;
 
-use Symbol;
-use Scalar::Util qw(weaken);
+use constant NIL => gensym();
 
-our $NIL;
-BEGIN
-{
-	$NIL = gensym();
-}
+use constant DIRECTIONS => (
+	# Inward, outward
+	[NEXT, PREV], # end = FIRST
+	[PREV, NEXT], # end = LAST 
+);
 
 # We solve our circular reference problems by always weakening our prev
 # pointers and having whoever has reference to our sentinel node call _break()
@@ -52,32 +54,15 @@ sub new
 	$self->[LAST] = $self;
 
 	# This is just a random unique value used to identify the sentinel
-	$self->[DATA] = $NIL;
+	$self->[DATA] = NIL;
 	return $self;
 }
 
-sub _move
-{
-	my ($cell, $direction) = @_;
-	my $next = $cell->[$direction];
-	return $next unless ($next->[DATA] == $NIL);
-	return undef;
-}
-
 # End means "which end are we stuffing this on".  Can be FIRST or LAST.
-sub _directions
-{
-	my $end = shift;
-	my $inward  = ($end == FIRST) ? NEXT : PREV;
-	my $outward = ($end == FIRST) ? PREV : NEXT;
-
-	return ($inward, $outward);
-}
-
 sub _remove {
 	my ($sentinel, $end) = @_;
 	return undef if ($sentinel->[$end] == $sentinel);
-	my ($inward, $outward) = _directions($end);
+	my ($inward, $outward) = @{(DIRECTIONS)[$end]};
 	my $old_end = $sentinel->[$end];
 	my $new_end = $old_end->[$inward];
 
@@ -91,7 +76,7 @@ sub _remove {
 sub _add
 {
 	my ($sentinel, $end, $data) = @_;
-	my ($inward, $outward) = _directions($end);
+	my ($inward, $outward) = @{(DIRECTIONS)[$end]};
 
 	my $new_cell = bless [undef, undef, $data];
 	$new_cell->[$inward] = $sentinel->[$end];
@@ -121,15 +106,16 @@ sub data
 	return shift->[DATA];
 }
 
-sub next
+sub _move
 {
-	return shift->_move(NEXT);
+	my ($cell, $direction) = @_;
+	my $next = $cell->[$direction];
+	return $next unless ($next->[DATA] == NIL);
+	return undef;
 }
 
-sub prev
-{
-	return shift->_move(PREV);
-}
+sub next {_move(@_, NEXT) }
+sub prev {_move(@_, PREV) }
 
 1;
 
