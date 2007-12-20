@@ -275,8 +275,6 @@ sub _message_stored
 		$queue = $self->get_queue( $queue_name );
 	}
 
-	$self->{notify}->notify( 'store', { queue => $queue, message => $message } );
-
 	# pump the queue for good luck!
 	$queue->pump();
 }
@@ -464,6 +462,8 @@ sub route_frame
 			});
 
 			$queue->enqueue( $message );
+
+			$self->{notify}->notify( 'store', { queue => $queue, message => $message } );
 		}
 		else
 		{

@@ -21,6 +21,7 @@ CREATE TABLE messages
 	size        int
 );
 
+CREATE INDEX timestamp_index   ON messages ( timestamp );
 CREATE INDEX destination_index ON messages ( destination );
 CREATE INDEX in_use_by_index   ON messages ( in_use_by );
 END_CREATE_DB

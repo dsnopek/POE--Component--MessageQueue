@@ -140,7 +140,7 @@ sub _retrieve
 {
 	my ($self, $destination) = @_;
 
-	my $SQL = "SELECT * FROM messages WHERE destination = ? AND in_use_by IS NULL ORDER BY message_id ASC LIMIT 1";
+	my $SQL = "SELECT * FROM messages WHERE destination = ? AND in_use_by IS NULL ORDER BY timestamp ASC LIMIT 1";
 
 	my $result;
 
