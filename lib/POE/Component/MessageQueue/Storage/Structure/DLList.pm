@@ -161,6 +161,8 @@ These work just like push/shift.  In fact, they probably are push/shift.
 
 The first and last cells in the list, respectively.
 
+=back
+
 =head1 BUGS AND LIMITATIONS
 
 This is fairly slow for most things you'd use a list for - much slower than 

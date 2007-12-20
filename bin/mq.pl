@@ -3,7 +3,9 @@
 use POE;
 use POE::Component::Logger;
 use POE::Component::MessageQueue;
-use POE::Component::MessageQueue::Storage::Complex;
+use POE::Component::MessageQueue::Storage::Complex::Default;
+use POE::Component::MessageQueue::Storage::Memory;
+use POE::Component::MessageQueue::Storage::BigMemory;
 use Getopt::Long;
 use Devel::StackTrace;
 use IO::File;
@@ -176,7 +178,7 @@ my %args = (
 	port     => $port,
 	hostname => $hostname,
 
-	storage => POE::Component::MessageQueue::Storage::Complex->new({
+	storage => POE::Component::MessageQueue::Storage::Complex::Default->new({
 		data_dir     => $DATA_DIR,
 		timeout      => $timeout,
 		throttle_max => $throttle_max,
