@@ -270,8 +270,13 @@ To enable outputs, you need to create a separate Publish object:
 		statistics => $statistics
 	);
 
-Please refer to POE::Component::MessageQueue::Statistics::Publish for details
+Please refer to L<POE::Component::MessageQueue::Statistics::Publish> for details
 on how to enable output
+
+=head1 SEE ALSO
+
+L<POE::Component::MessageQueue::Statistics::Publish>,
+L<POE::Component::MessageQueue::Statistics::Publish::YAML>
 
 =head1 AUTHOR
 
