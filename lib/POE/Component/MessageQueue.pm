@@ -22,6 +22,7 @@ use POE::Component::Server::Stomp;
 use POE::Component::MessageQueue::Client;
 use POE::Component::MessageQueue::Queue;
 use POE::Component::MessageQueue::Message;
+use POE::Component::MessageQueue::Message::ID::Generator::UUID;
 use Net::Stomp;
 use Event::Notify;
 use vars qw($VERSION);
@@ -48,6 +49,7 @@ sub new
 	my $storage;
 	my $logger_alias;
 	my $observers;
+	my $idgen;
 
 	if ( ref($args) eq 'HASH' )
 	{
@@ -57,6 +59,7 @@ sub new
 		$port     = $args->{port};
 		$domain   = $args->{domain};
 		
+		$idgen        = $args->{idgen};
 		$storage      = $args->{storage};
 		$logger_alias = $args->{logger_alias};
 		$observers    = $args->{observers};
@@ -80,6 +83,8 @@ sub new
 		needs_ack => { },
 		notify    => Event::Notify->new(),
 		observers => $observers,
+		idgen     => $idgen || 
+			POE::Component::MessageQueue::Message::ID::Generator::UUID->new(),
 	};
 	bless $self, $class;
 
@@ -547,7 +552,7 @@ sub create_message
 
 	if ( not defined $message->{message_id} )
 	{
-		$message->{message_id} = $self->{storage}->get_next_message_id();
+		$message->{message_id} = $self->{idgen}->generate($message);
 	}
 
 	return $message;

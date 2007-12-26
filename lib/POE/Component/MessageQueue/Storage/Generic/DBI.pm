@@ -5,6 +5,7 @@ use base qw(POE::Component::MessageQueue::Storage::Generic::Base);
 use DBI;
 use Exception::Class::DBI;
 use Exception::Class::TryCatch;
+use Data::UUID;
 use strict;
 
 sub new
@@ -16,6 +17,7 @@ sub new
 	my $username;
 	my $password;
 	my $options;
+	my $id_type;
 
 	if ( ref($args) eq 'HASH' )
 	{
@@ -23,6 +25,7 @@ sub new
 		$username = $args->{username};
 		$password = $args->{password};
 		$options  = $args->{options};
+		$id_type  = $args->{id_type};
 	}
 	else
 	{
@@ -30,7 +33,12 @@ sub new
 		$username = shift;
 		$password = shift;
 		$options  = shift;
+		$id_type  = shift;
 	}
+
+	my $id_type ||= 'POE::Component::MessageQueue::Message::ID::UUID';
+	eval "require $id_type";
+	die "Couldn't require $id_type: $!" if $@;
 
 	# force use of exceptions
 	$options->{'HandleError'} = Exception::Class::DBI->handler,
@@ -44,31 +52,9 @@ sub new
 
 	my $self = $class->SUPER::new( $args );
 	$self->{dbh}        = $dbh;
-	$self->{message_id} = undef;
+	$self->{id_type}    = $id_type;
 
-	bless  $self, $class;
-	return $self;
-}
-
-sub _get_max_id
-{
-	my $self = shift;
-
-	my $res = $self->{dbh}->selectrow_arrayref( "SELECT MAX(message_id) FROM messages" );
-
-	return $res->[0] || 0;
-}
-
-sub get_next_message_id
-{
-	my $self = shift;
-
-	if ( not defined $self->{message_id} )
-	{
-		$self->{message_id} = $self->_get_max_id();
-	}
-
-	return ++$self->{message_id};
+	return bless $self, $class;
 }
 
 sub store
@@ -82,7 +68,7 @@ sub store
 		my $stmt;
 		$stmt = $self->{dbh}->prepare($SQL);
 		$stmt->execute(
-			$message->{message_id},
+			$self->{id_type}->from_string($message->{message_id})->raw(),
 			$message->{destination},
 			$message->{body},
 			$message->{persistent},
@@ -160,7 +146,7 @@ sub _retrieve
 	elsif ( defined $result )
 	{
 		return POE::Component::MessageQueue::Message->new({
-			message_id  => $result->{message_id},
+			message_id  => $self->{id_type}->new($result->{message_id}),
 			destination => $result->{destination},
 			persistent  => $result->{persistent},
 			body        => $result->{body},

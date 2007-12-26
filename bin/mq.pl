@@ -182,7 +182,7 @@ my %args = (
 		data_dir     => $DATA_DIR,
 		timeout      => $timeout,
 		throttle_max => $throttle_max,
-    front_store  => $front_store,
+		front_store  => $front_store,
 	}),
 
 	logger_alias => $logger_alias,

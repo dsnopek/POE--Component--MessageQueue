@@ -12,7 +12,7 @@ use DBI;
 use constant CREATE_DB => <<'END_CREATE_DB';
 CREATE TABLE messages
 (
-	message_id  int primary key,
+	message_id  text primary key,
 	destination varchar(255) not null,
 	persistent  char(1) default 'Y' not null,
 	in_use_by   int,
@@ -76,7 +76,8 @@ sub new
 
 	_make_db($db_file, $db_dsn, $db_username, $db_password);
 
-	my $self = POE::Component::MessageQueue::Storage::Complex->new({
+	# We don't bless anything because we're just returning a Complex...
+	return POE::Component::MessageQueue::Storage::Complex->new({
 		timeout         => $args->{timeout} || 4,	
 
 		front_store     => $args->{front_store} ||
@@ -94,8 +95,6 @@ sub new
 			throttle_max    => $args->{throttle_max},
 		}),
 	});
-
-  return $self;
 }
 
 1;
