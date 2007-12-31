@@ -34,7 +34,7 @@ GetOptions(
 	"port|p=i"         => \$port,
 	"hostname|h=s"     => \$hostname,
 	"timeout|i=i"      => \$timeout,
-  "front-store|f=s"  => \$front_store,
+	"front-store|f=s"  => \$front_store,
 	"throttle|T=i"     => \$throttle_max,
 	"data-dir=s"       => \$DATA_DIR,
 	"log-conf=s"       => \$CONF_LOG,
@@ -182,7 +182,7 @@ my %args = (
 		data_dir     => $DATA_DIR,
 		timeout      => $timeout,
 		throttle_max => $throttle_max,
-    front_store  => $front_store,
+		front_store  => $front_store,
 	}),
 
 	logger_alias => $logger_alias,
