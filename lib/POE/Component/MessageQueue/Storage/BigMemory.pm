@@ -123,9 +123,6 @@ sub remove_multiple
 {
 	my ($self, $message_ids) = @_;
 
-	$self->_log('debug', "remove multiple called with this list:");
-	$self->_log('debug', "ID: $_") for (@$message_ids);
-
 	my @removed = grep {$_} map {$self->remove($_)}(@$message_ids);
 	return \@removed;
 }
