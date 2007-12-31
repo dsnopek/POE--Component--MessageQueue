@@ -17,7 +17,6 @@ sub new
 	my $username;
 	my $password;
 	my $options;
-	my $id_type;
 
 	if ( ref($args) eq 'HASH' )
 	{
@@ -25,7 +24,6 @@ sub new
 		$username = $args->{username};
 		$password = $args->{password};
 		$options  = $args->{options};
-		$id_type  = $args->{id_type};
 	}
 	else
 	{
@@ -33,12 +31,7 @@ sub new
 		$username = shift;
 		$password = shift;
 		$options  = shift;
-		$id_type  = shift;
 	}
-
-	my $id_type ||= 'POE::Component::MessageQueue::Message::ID::UUID';
-	eval "require $id_type";
-	die "Couldn't require $id_type: $!" if $@;
 
 	# force use of exceptions
 	$options->{'HandleError'} = Exception::Class::DBI->handler,
@@ -52,7 +45,6 @@ sub new
 
 	my $self = $class->SUPER::new( $args );
 	$self->{dbh}        = $dbh;
-	$self->{id_type}    = $id_type;
 
 	return bless $self, $class;
 }
@@ -68,7 +60,7 @@ sub store
 		my $stmt;
 		$stmt = $self->{dbh}->prepare($SQL);
 		$stmt->execute(
-			$self->{id_type}->from_string($message->{message_id})->raw(),
+			$message->{message_id},
 			$message->{destination},
 			$message->{body},
 			$message->{persistent},
@@ -146,7 +138,7 @@ sub _retrieve
 	elsif ( defined $result )
 	{
 		return POE::Component::MessageQueue::Message->new({
-			message_id  => $self->{id_type}->new($result->{message_id}),
+			message_id  => $result->{message_id},
 			destination => $result->{destination},
 			persistent  => $result->{persistent},
 			body        => $result->{body},

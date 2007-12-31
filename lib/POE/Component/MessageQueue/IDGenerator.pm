@@ -17,7 +17,7 @@
 
 use strict;
 use warnings;
-package POE::Component::MessageQueue::Message::ID::Generator;
+package POE::Component::MessageQueue::IDGenerator;
 
 sub new 
 {
@@ -35,7 +35,7 @@ sub generate
 
 =head1 NAME
 
-POE::Component::MessageQueue::Message::ID::Generator - Abstract base class for 
+POE::Component::MessageQueue::IDGenerator - Abstract base class for 
 id generators.
 
 =head1 DESCRIPTION
@@ -54,10 +54,9 @@ reading from persistence, or whatnot here.
 
 =item generate => SCALAR
 
-Should return a L<POE::Component::MessageQueue::Message::ID> object (or
-something conforming to that interface).  The parameter should be an
-otherwise filled-out Message object, to be used potentially as seed/unique
-data for the ID generation.
+Returns some kind of unique string.  The parameter is an an otherwise 
+filled-out Message object, to be used potentially as seed/unique data for the 
+ID generation.
 
 =back
 

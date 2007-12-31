@@ -22,7 +22,7 @@ use POE::Component::Server::Stomp;
 use POE::Component::MessageQueue::Client;
 use POE::Component::MessageQueue::Queue;
 use POE::Component::MessageQueue::Message;
-use POE::Component::MessageQueue::Message::ID::Generator::UUID;
+use POE::Component::MessageQueue::IDGenerator::UUID;
 use Net::Stomp;
 use Event::Notify;
 use vars qw($VERSION);
@@ -84,7 +84,7 @@ sub new
 		notify    => Event::Notify->new(),
 		observers => $observers,
 		idgen     => $idgen || 
-			POE::Component::MessageQueue::Message::ID::Generator::UUID->new(),
+			POE::Component::MessageQueue::IDGenerator::UUID->new(),
 	};
 	bless $self, $class;
 
