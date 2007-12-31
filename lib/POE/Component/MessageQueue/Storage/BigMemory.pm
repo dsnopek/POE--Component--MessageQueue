@@ -100,8 +100,7 @@ sub store
 	}
 
 	$self->_log('info', "STORE: BIGMEMORY: Added $message->{message_id}.");
-	my $handler = $self->{message_stored};
-	$handler->($message) if $handler;  
+	$self->call_back('message_stored');
 }
 
 # O(1)
@@ -168,10 +167,8 @@ sub claim_and_retrieve
 	);
 
 	# Dispatch it
-	my $dispatcher = $self->{dispatch_message} ||
-		die "No dispatch_message handler"; 
-	$dispatcher->($message, $destination, $client_id);
-	$self->{destination_ready}->( $destination );
+	$self->call_back('dispatch_message', $message, $destination, $client_id);
+	$self->call_back('destination_ready', $destination);
 }
 
 # unmark all messages owned by this client
@@ -197,8 +194,7 @@ sub disown
 sub shutdown
 {
 	my $self = shift;
-	my $handler = $self->{shutdown_complete};
-	$handler->() if $handler;
+	$self->call_back('shutdown_complete');
 }
 
 1;

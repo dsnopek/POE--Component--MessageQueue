@@ -27,15 +27,17 @@ sub new
 
 	# a null logger
 	my $logger = POE::Component::MessageQueue::Logger->new();
-
 	my $self = {
-		logger            => $logger,
-		message_stored    => undef,
-		dispatch_message  => undef,
-		destination_ready => undef,
-		shutdown_complete => undef,
+		logger    => $logger,
 		# TODO: do something with this.
-		started           => 0
+		started   => 0,
+		callbacks => {
+			message_stored    => undef,
+			dispatch_message  => undef,
+			destination_ready => undef,
+			shutdown_complete => undef,
+		},
+		callback_transforms => {},
 	};
 
 	bless  $self, $class;
@@ -48,32 +50,20 @@ sub _log
 	$self->{logger}->log(@_);
 }
 
-sub set_message_stored_handler
+sub call_back
 {
-	my ($self, $handler) = @_;
-	$self->{message_stored} = $handler;
-	undef;
+	my ($self, $name, @rest) = @_;
+	my $callback = $self->{callbacks}->{$name};
+	$callback->(@rest) if $callback;
 }
 
-sub set_dispatch_message_handler
+sub set_callback
 {
-	my ($self, $handler) = @_;
-	$self->{dispatch_message} = $handler;
-	undef;
-}
-
-sub set_destination_ready_handler
-{
-	my ($self, $handler) = @_;
-	$self->{destination_ready} = $handler;
-	undef;
-}
-
-sub set_shutdown_complete_handler
-{
-	my ($self, $handler) = @_;
-	$self->{shutdown_complete} = $handler;
-	undef;
+	my ($self, $name, $callback) = @_;
+	my $transformer = $self->{callback_transforms}->{$name};
+  $callback = $transformer->($callback) if $transformer;
+	$self->{callbacks}->{$name} = $callback;
+	return undef;
 }
 
 sub set_logger
