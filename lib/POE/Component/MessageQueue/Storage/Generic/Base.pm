@@ -18,8 +18,7 @@ sub new
 		$SIG{$sig} = 'IGNORE';
 	} 
 
-	bless  $self, $class;
-	return $self;
+	return bless $self, $class;
 }
 
 1;

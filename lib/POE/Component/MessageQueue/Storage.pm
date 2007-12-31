@@ -54,16 +54,19 @@ sub call_back
 {
 	my ($self, $name, @rest) = @_;
 	my $callback = $self->{callbacks}->{$name};
-	$callback->(@rest) if $callback;
+	$callback->($self, @rest) if $callback;
 }
 
 sub set_callback
 {
-	my ($self, $name, $callback) = @_;
-	my $transformer = $self->{callback_transforms}->{$name};
-  $callback = $transformer->($callback) if $transformer;
-	$self->{callbacks}->{$name} = $callback;
-	return undef;
+	my ($self, $name, $sub) = @_;
+	$self->{callbacks}->{$name} = $sub;
+}
+
+sub get_callback
+{
+	my ($self, $name) = @_;
+	return $self->{callbacks}->{$name};
 }
 
 sub set_logger
@@ -87,13 +90,6 @@ sub get_logger
 {
 	my $self = shift;
 	return $self->{logger};
-}
-
-sub get_next_message_id
-{
-	my $self = shift;
-
-	die "Abstract.";
 }
 
 sub store

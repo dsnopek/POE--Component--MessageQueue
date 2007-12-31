@@ -24,9 +24,7 @@ use POE::Component::MessageQueue::Storage::Structure::DLList;
 sub new
 {
 	my $class = shift;
-	my $self  = $class->SUPER::new( @_ );
-
-	$self->{next_id} = 0;
+	my $self  = $class->SUPER::new(@_);
 
 	# claimed messages (removed from named queues when claimed).
 	# Key: Client ID.
@@ -43,13 +41,7 @@ sub new
 	# Value: A cell in a doubly linked queue
 	$self->{messages} = {};
 
-	return $self;
-}
-
-sub get_next_message_id
-{
-	my $self = shift;
-	return ++$self->{next_id};
+	return bless $self, $class;
 }
 
 # O(1)

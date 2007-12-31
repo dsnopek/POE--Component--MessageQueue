@@ -67,7 +67,7 @@ sub new
 		],
 	);
 
-	return $self;
+	return bless $self, $class;
 }
 
 sub set_message_stored_handler 
@@ -105,12 +105,6 @@ sub set_shutdown_complete_handler
 {
 	my ($self, $handler) = @_;
 	$self->{back_store}->set_shutdown_complete_handler( $handler );
-}
-
-sub get_next_message_id
-{
-	my $self = shift;
-	return $self->{back_store}->get_next_message_id();
 }
 
 sub store

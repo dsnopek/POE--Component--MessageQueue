@@ -5,6 +5,7 @@ use base qw(POE::Component::MessageQueue::Storage::Generic::Base);
 use DBI;
 use Exception::Class::DBI;
 use Exception::Class::TryCatch;
+use Data::UUID;
 use strict;
 
 sub new
@@ -44,31 +45,8 @@ sub new
 
 	my $self = $class->SUPER::new( $args );
 	$self->{dbh}        = $dbh;
-	$self->{message_id} = undef;
 
-	bless  $self, $class;
-	return $self;
-}
-
-sub _get_max_id
-{
-	my $self = shift;
-
-	my $res = $self->{dbh}->selectrow_arrayref( "SELECT MAX(message_id) FROM messages" );
-
-	return $res->[0] || 0;
-}
-
-sub get_next_message_id
-{
-	my $self = shift;
-
-	if ( not defined $self->{message_id} )
-	{
-		$self->{message_id} = $self->_get_max_id();
-	}
-
-	return ++$self->{message_id};
+	return bless $self, $class;
 }
 
 sub store

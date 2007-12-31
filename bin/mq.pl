@@ -27,6 +27,7 @@ my $pidfile;
 my $show_version = 0;
 my $show_usage   = 0;
 my $statistics   = 0;
+my $uuids = 0;
 my $stat_interval = 10;
 my $front_store = 'memory';
 
@@ -34,11 +35,12 @@ GetOptions(
 	"port|p=i"         => \$port,
 	"hostname|h=s"     => \$hostname,
 	"timeout|i=i"      => \$timeout,
-  "front-store|f=s"  => \$front_store,
+	"front-store|f=s"  => \$front_store,
 	"throttle|T=i"     => \$throttle_max,
 	"data-dir=s"       => \$DATA_DIR,
 	"log-conf=s"       => \$CONF_LOG,
 	"stats!"           => \$statistics,
+	"uuids!"           => \$uuids,
 	"stats-interval=i" => \$stat_interval,
 	"background|b"     => \$background,
 	"debug-shell"      => \$debug_shell,
@@ -74,6 +76,7 @@ STORAGE OPTIONS:
                           front-store (Default: 4)
   --front-store -f        Specify which in-memory storage engine to use for
                           the front-store (can be memory or bigmemory).
+	--uuids                 Use UUIDs instead of normal ints for message IDs. 
   --throttle -T <count>   The number of messages that can be stored at once 
                           before throttling (Default: 2)
   --data-dir <path>       The path to the directory to store data 
@@ -173,6 +176,19 @@ else
   die "Unknown front-store specified: $front_store";
 }
 
+my $idgen;
+if ($uuids) 
+{
+	use POE::Component::MessageQueue::IDGenerator::UUID;
+	$idgen = POE::Component::MessageQueue::IDGenerator::UUID->new();
+}
+else
+{
+	use POE::Component::MessageQueue::IDGenerator::SimpleInt;
+	$idgen = POE::Component::MessageQueue::IDGenerator::SimpleInt->new(
+		"$DATA_DIR/last_id.mq",
+	);
+}
 
 my %args = (
 	port     => $port,
@@ -182,9 +198,10 @@ my %args = (
 		data_dir     => $DATA_DIR,
 		timeout      => $timeout,
 		throttle_max => $throttle_max,
-    front_store  => $front_store,
+		front_store  => $front_store,
 	}),
 
+	idgen => $idgen,
 	logger_alias => $logger_alias,
 );
 if ($statistics) {
