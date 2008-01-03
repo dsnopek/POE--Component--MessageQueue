@@ -71,19 +71,17 @@ sub empty_all
 sub store
 {
 	my ($self, $message) = @_;
+	my $destination = $message->{destination};
 
 	# push onto our array
-	$self->{messages}{ $message->{destination} } ||= [];
-	push @{$self->{messages}{$message->{destination}}}, $message;
+	$self->{messages}{ $destination } ||= [];
+	push @{$self->{messages}{$destination}}, $message;
 	$self->_log( 
 		"STORE: MEMORY: Added $message->{message_id} to in-memory store" 
 	);
 
 	# call the message_stored handler
-	if ( defined $self->{message_stored} )
-	{
-		$self->{message_stored}->( $message );
-	}
+	$self->call_back('message_stored', $message);
 }
 
 sub remove
@@ -171,10 +169,10 @@ sub claim_and_retrieve
 	{
 		if ( not defined $message->{in_use_by} )
 		{
-			if ( not defined $self->{dispatch_message} )
-			{
-				die "Pulled message from backstore, but there is no dispatch_message handler";
-			}
+			
+			die 'Pulled message from backstore, but there is no '.
+			    'dispatch_message handler' 
+				unless exists $self->{callbacks}->{'dispatch_message'};
 
 			# claim it, yo!
 			$message->{in_use_by} = $client_id;
@@ -184,10 +182,10 @@ sub claim_and_retrieve
 			);
 
 			# dispatch message
-			$self->{dispatch_message}->( $message, $destination, $client_id );
+			$self->call_back('dispatch_message', $message, $destination, $client_id);
 
 			# let it know that the destination is ready
-			$self->{destination_ready}->( $destination );
+			$self->call_back('destination_ready', $destination);
 
 			# we are always capable to attempt to claim
 			return 1;
@@ -219,10 +217,7 @@ sub shutdown
 	# this storage engine is so simple, it has nothing to do to
 	# shutdown!  Since its purely in memory, it can't even persist
 	# any messages.
-	if ( defined $self->{shutdown_complete} )
-	{
-		$self->{shutdown_complete}->();
-	}
+	$self->call_back('shutdown_complete');
 }
 
 1;

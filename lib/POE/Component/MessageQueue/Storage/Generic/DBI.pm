@@ -80,12 +80,11 @@ sub store
 		$self->_log("STORE: DBI: Message $message->{message_id} stored in $message->{destination}");
 	}
 
-	if ( defined $self->{message_stored} )
-	{
-		$self->{message_stored}->( $message );
-	}
+	# The API docs say we call message_stored exactly once, even if there's an
+	# error.
+	$self->call_back('message_stored', $message);
 
-	undef;
+	return;
 }
 
 sub remove
@@ -111,7 +110,7 @@ sub remove
 		$self->_log("STORE: DBI: Message $message_id deleted");
 	}
 
-	undef;
+	return;
 }
 
 sub _retrieve
@@ -130,25 +129,9 @@ sub _retrieve
 		$result = $stmt->fetchrow_hashref;
 	};
 	my $err = catch;
+	$self->_log("error", "STORE: DBI: $err") if $err;
 
-	if ( $err )
-	{
-		$self->_log("error", "STORE: DBI: $err");
-	}
-	elsif ( defined $result )
-	{
-		return POE::Component::MessageQueue::Message->new({
-			message_id  => $result->{message_id},
-			destination => $result->{destination},
-			persistent  => $result->{persistent},
-			body        => $result->{body},
-			in_use_by   => $result->{in_use_by},
-			timestamp   => $result->{timestamp},
-			size        => $result->{size},
-		});
-	}
-
-	undef;
+	return $result ? POE::Component::MessageQueue::Message->new($result) : undef;
 }
 
 sub _claim
@@ -177,7 +160,7 @@ sub _claim
 		);
 	}
 
-	undef;
+	return;
 }
 
 sub claim_and_retrieve
@@ -185,11 +168,9 @@ sub claim_and_retrieve
 	my $self = shift;
 	my $args = shift;
 
-	if ( not defined $self->{dispatch_message} )
-	{
-		die "Pulled message from backstore, but there is no dispatch_message handler";
-	}
-
+	die "Pulled message from backstore, but there is no dispatch_message handler"
+		unless exists $self->{callbacks}->{dispatch_message};
+		
 	my $destination;
 	my $client_id;
 
@@ -218,22 +199,18 @@ sub claim_and_retrieve
 	# one or not.
 	# NOTE: We can do this before claiming the message, so I figure, why
 	# not do it since it will give the other thread something to do.
-	$self->{dispatch_message}->( $message, $destination, $client_id );
+	$self->call_back('dispatch_message', $message, $destination, $client_id);
 
 	if ( defined $message )
 	{
 		# claim away!
 		$self->_claim( $message );
 
-		if ( defined $self->{destination_ready} )
-		{
-			# after it is claimed, we declare the destination ready for 
-			# more action!
-			$self->{destination_ready}->( $destination );
-		}
 	}
+	# declare the destination ready for more action!
+	$self->call_back('destination_ready', $destination);
 
-	undef;
+	return;
 }
 
 sub disown
@@ -259,7 +236,7 @@ sub disown
 		$self->_log("STORE: DBI: All messages on $destination disowned for client $client_id");
 	}
 
-	undef;
+	return;
 }
 
 sub shutdown
@@ -272,12 +249,9 @@ sub shutdown
 	$self->{dbh}->disconnect();
 
 	# call the shutdown handler.
-	if ( defined $self->{shutdown_complete} )
-	{
-		$self->{shutdown_complete}->();
-	}
+	$self->call_back('shutdown_complete');
 
-	return undef;
+	return;
 }
 
 1;

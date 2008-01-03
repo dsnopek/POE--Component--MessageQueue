@@ -45,8 +45,13 @@ sub new
 
 	# for storing message properties
 	$self->{info_storage} = $info_storage;
-	$self->{info_storage}->set_dispatch_message_handler( $self->__closure('_dispatch_message') );
-	$self->{info_storage}->set_shutdown_complete_handler( $self->__closure('_shutdown_complete') );
+
+	$info_storage->set_callback(
+		'dispatch_message', $self->__closure('_dispatch_message')
+	);
+	$info_storage->set_callback( 
+		'shutdown_complete', $self->__closure('_shutdown_complete') 
+	);
 
 	# for keeping the message body on the FS
 	$self->{data_dir}    = $data_dir;
@@ -94,27 +99,18 @@ sub __closure
 	return $func;
 }
 
-# set_dispatch_message_handler()  -- We maintain the parents version.
-# set_shutdown_complete_handler() -- We maintain the parents version.
-
-sub set_message_stored_handler
+sub set_callback
 {
-	my ($self, $handler) = @_;
-
-	# We never need to call this directly, info_storage will!
-	#$self->SUPER::set_message_stored_handler( $handler );
-
-	$self->{info_storage}->set_message_stored_handler( $handler );
-}
-
-sub set_destination_ready_handler
-{
-	my ($self, $handler) = @_;
-
-	# We never need to call this directly, info_storage will!
-	#$self->SUPER::set_destination_ready_handler( $handler );
-
-	$self->{info_storage}->set_destination_ready_handler( $handler );
+	my ($self, $name, $fn) = @_;
+	my $info = sub {$self->{info_storage}->set_callback($name, $fn)};
+	my $parent = sub {$self->SUPER::set_callback($name, $fn)};
+	my %setters = (
+		'message_stored'    => $info, 
+		'destination_ready' => $info,
+		'dispatch_message'  => $parent,
+		'shutdown_complete' => $parent,
+	);
+	return $setters{$name}->();
 }
 
 sub set_logger
@@ -129,33 +125,23 @@ sub store
 {
 	my ($self, $message) = @_;
 
-	# grab the masseg body
-	my $body = $message->{body};
-	
-	# remake the message, but without the body
-	my $temp = POE::Component::MessageQueue::Message->new({
-		message_id  => $message->{message_id},
-		destination => $message->{destination},
-		persistent  => $message->{persistent},
-		in_use_by   => $message->{in_use_by},
-		size        => $message->{size},
-		body        => undef,
-	});
-	$message = $temp;
+	# Grab the body and delete it from the message:
+	# Body is stored on the filesystem, everything else goes to info_store
+	my $body = delete $message->{body};
 
 	# DRS: To avaid a race condition where:
 	#
-	#  (1) We post _writer_message_to_disk
+	#  (1) We post _write_message_to_disk
 	#  (2) Message is "removed" from disk (even though it isn't there yet)
-	#  (3) We start writting message to disk
+	#  (3) We start writing message to disk
 	#
 	# Mark message as needing to be written.
 	$self->{file_wheels}->{$message->{message_id}} = { write_message => 1 };
 
-	# initiate file writting process
+	# initiate file writing process (only the body will be written)
 	$poe_kernel->post( $self->{session}, '_write_message_to_disk', $message, $body );
 
-	# hand-off to the info storage
+	# hand-off the rest of the message to the info storage
 	$self->{info_storage}->store( $message );
 }
 
@@ -167,7 +153,7 @@ sub remove
 	{
 		if ( defined $self->{file_wheels}->{$message_id}->{write_message} )
 		{
-			$self->_log( 'debug', 'STORE: FILE: Removing message before we could start writting' );
+			$self->_log( 'debug', 'STORE: FILE: Removing message before we could start writing' );
 			$self->{file_wheels}->{$message_id}->{write_message} = 0;
 		}
 		else
@@ -259,18 +245,18 @@ sub _dispatch_message
 
 	if ( defined $message )
 	{
-		# check to see if we even finished writting to disk
+		# check to see if we even finished writing to disk
 		if ( defined $self->{file_wheels}->{$message->{message_id}} )
 		{
 			$self->_log( 'debug', "STORE: FILE: Returning message before in store: $message->{message_id}" );
 			# attach the saved body to the message
 			$message->{body} = $self->{file_wheels}->{$message->{message_id}}->{body};
 
-			# NOTE: We don't stop writting, because if the message is not 
+			# NOTE: We don't stop writing, because if the message is not 
 			# removed (ie. no ACK) we want it to get saved to disk.
 
 			# distribute the message
-			$self->{dispatch_message}->( $message, $destination, $client_id );
+			$self->call_back('dispatch_message', $message, $destination, $client_id);
 		}
 		else
 		{
@@ -281,7 +267,7 @@ sub _dispatch_message
 	}
 	else
 	{
-		$self->{dispatch_message}->( undef, $destination, $client_id );
+		$self->call_back('dispatch_message', undef, $destination, $client_id);
 	}
 }
 
@@ -292,11 +278,7 @@ sub _shutdown_complete
 	# Ok!  This means that the info storage is totally shutdown, so we
 	# are ready to kill our internal session.
 	$poe_kernel->signal( $self->{session}, 'TERM' );
-
-	if ( defined $self->{shutdown_complete} )
-	{
-		$self->{shutdown_complete}->();
-	}
+	$self->call_back('shutdown_complete');
 }
 
 #
@@ -367,10 +349,9 @@ sub _read_message_from_disk
 		# we simply discard the message
 		$self->remove( $message->{message_id} );
 
-		# we need to send a null message to this client to mark it is ready again (it is
-		# waiting for a message).
-		$self->{dispatch_message}->( undef, $destination, $client_id );
-
+		# we need to send a null message to this client to mark it is ready again 
+		# (it is waiting for a message).
+		$self->call_back('dispatch_message', undef, $destination, $client_id);
 		return;
 	}
 	
@@ -430,7 +411,7 @@ sub _read_error
 		$self->_log( 'debug', "STORE: FILE: Finished reading $self->{data_dir}/msg-$message_id.txt" );
 
 		# send the message out!
-		$self->{dispatch_message}->( $message, $destination, $client_id );
+		$self->call_back('dispatch_message', $message, $destination, $client_id );
 
 		# clear our state
 		delete $self->{wheel_to_message_map}->{$wheel_id};
@@ -460,14 +441,14 @@ sub _write_flushed_event
 	# remove from the first map
 	my $message_id = delete $self->{wheel_to_message_map}->{$wheel_id};
 
-	$self->_log( 'debug', "STORE: FILE: Finished writting message $message_id to disk" );
+	$self->_log( 'debug', "STORE: FILE: Finished writing message $message_id to disk" );
 
 	# remove from the second map
 	my $infos = delete $self->{file_wheels}->{$message_id};
 
 	if ( $infos->{delete_me} )
 	{
-		# NOTE: If we were actively writting the file when the message to delete
+		# NOTE: If we were actively writing the file when the message to delete
 		# came, we cannot actually delete it until the FD gets flushed, or the FD
 		# will live until the program dies.
 

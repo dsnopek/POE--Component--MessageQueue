@@ -52,15 +52,11 @@ sub new
 		package => $package,
 		object_options => $options,
 		packages => {
-			$package =>
-			{
-				postbacks => [
-					'set_message_stored_handler',
-					'set_dispatch_message_handler',
-					'set_destination_ready_handler',
-					'set_shutdown_complete_handler',
-					'set_log_function'
-				],
+			$package => {
+				postbacks => {
+					set_callback     => 1,
+					set_log_function => 0,
+				},
 				factories => [ 'get_logger' ],
 			},
 			'POE::Component::MessageQueue::Logger' =>
@@ -102,45 +98,59 @@ sub new
 	$self->{generic} = $generic;
 	$self->{session} = $session;
 
+	sub make_postback { return { session => $session->ID(), event => shift } }
+
 	# before anything else, set the log function
-	$self->{generic}->set_log_function(
-		{ session => $session->ID(), event => '_general_handler' },
-		{ session => $session->ID(), event => '_log_proxy' });
-	# set-up the postbacks for all the handlers
-	$self->{generic}->set_message_stored_handler(
-		{ session => $session->ID(), event => '_general_handler' },
-		{ session => $session->ID(), event => '_message_stored' });
-	$self->{generic}->set_dispatch_message_handler(
-		{ session => $session->ID(), event => '_general_handler' },
-		{ session => $session->ID(), event => '_dispatch_message' });
-	$self->{generic}->set_destination_ready_handler(
-		{ session => $session->ID(), event => '_general_handler' },
-		{ session => $session->ID(), event => '_destination_ready' });
-	$self->{generic}->set_shutdown_complete_handler(
-		{ session => $session->ID(), event => '_general_handler' },
-		{ session => $session->ID(), event => '_shutdown_complete' });
+	$generic->set_log_function(
+		$self->_data_hashref(), make_postback('_log_proxy')
+	);
+
+	# set up postbacks
+	foreach my $event qw(message_stored     dispatch_message
+	                     destination_ready  shutdown_complete)
+	{
+		$generic->set_callback(
+			$self->_data_hashref(), $event, make_postback("_$event")
+		);
+	}
 
 	return bless $self, $class;
+}
+
+# Internal shortcut: second argument is extra stuff to add to the data
+# hashref, but by default it just sets up the "_general_handler" stuff.
+sub _data_hashref
+{
+	my ($self, $extras) = @_;
+	my $data_hashref = {
+		session => $self->{session}->ID(),
+		event   => '_general_handler',
+	};
+
+	if ($extras)
+	{
+		while (my ($key, $val) = each(%$extras))
+		{
+			$data_hashref->{$key} = $val;	
+		}
+	}	
+	return $data_hashref;
 }
 
 sub store
 {
 	my ($self, $message) = @_;
 
-	$self->{generic}->store(
-		{ session => $self->{session}->ID(), event => '_general_handler' },
-		$message
-	);
+	$self->{generic}->store($self->_data_hashref(), $message);
+	return;
 }
 
 sub remove
 {
 	my ($self, $message_id) = @_;
 
-	$self->{generic}->remove(
-		{ session => $self->{session}->ID(), event => '_general_handler' },
-		$message_id
-	);
+	$self->{generic}->remove($self->_data_hashref(), $message_id);
+	return;
 }
 
 sub claim_and_retrieve
@@ -174,10 +184,13 @@ sub claim_and_retrieve
 	}
 
 	$self->{generic}->claim_and_retrieve(
-		{ session => $self->{session}->ID(), event => '_finished_claiming',
-			data => { destination => $destination }
-		},
-		{ destination => $destination, client_id => $client_id }
+		$self->_data_hashref({
+			event => '_finished_claiming',
+			data  => {
+				destination => $destination,
+			}
+		}),
+		{destination => $destination, client_id => $client_id},
 	);
 
 	# let the caller know that this is actually going down.
@@ -189,9 +202,9 @@ sub disown
 	my ($self, $destination, $client_id) = @_;
 
 	$self->{generic}->disown(
-		{ session => $self->{session}->ID(), event => '_general_handler' },
-		$destination, $client_id
+		$self->_data_hashref(), $destination, $client_id
 	);
+	return;
 }
 
 sub shutdown
@@ -205,9 +218,8 @@ sub shutdown
 	# Send the shutdown message.  When the underlying object calls
 	# the callback, we will then be sure that all message before it
 	# have gotten through and handled.
-	$self->{generic}->yield( storage_shutdown =>
-		{ session => $self->{session}->ID(), event => '_general_handler' }
-	);
+	$self->{generic}->yield('storage_shutdown', $self->_data_hashref());
+	return;
 }
 
 sub _general_handler
@@ -218,6 +230,7 @@ sub _general_handler
 	{
 		$self->_log("error", "Generic error: $ref->{error}");
 	}
+	return;
 }
 
 sub _error
@@ -240,6 +253,7 @@ sub _error
 			$poe_kernel->post( $self->{session}, '_shutdown_complete' );
 		}
 	}
+	return;
 }
 
 sub _log_proxy
@@ -247,6 +261,7 @@ sub _log_proxy
 	my ($self, $type, $msg) = @_[ OBJECT, ARG0, ARG1 ];
 
 	$self->_log($type, $msg);
+	return;
 }
 
 sub _finished_claiming
@@ -260,29 +275,26 @@ sub _finished_claiming
 	# fully claimed, but not if no message was claimed.  This covers the
 	# empty queue case.
 	delete $self->{claiming}->{$destination};
+	return;
 }
 
 sub _message_stored
 {
-	my ($self, $destination) = @_[ OBJECT, ARG0 ];
-
-	if ( defined $self->{message_stored} )
-	{
-		$self->{message_stored}->( $destination );
-	}
+	my ($self, $message) = @_[ OBJECT, ARG0 ];
+	$self->call_back('message_stored', $message);
+	return;
 }
 
 sub _dispatch_message
 {
 	my ($self, $message, $destination, $client_id) = @_[ OBJECT, ARG0, ARG1, ARG2 ];
 
-	if ( not defined $self->{dispatch_message} )
-	{
-		die "Pulled message from backstore, but there is no dispatch_message handler";
-	}
+	die 'Pulled message from backstore, but there is no dispatch_message handler'
+		unless exists $self->{callbacks}->{dispatch_message};
 
 	# call the handler because the message is complete
-	$self->{dispatch_message}->( $message, $destination, $client_id );
+	$self->call_back('dispatch_message', $message, $destination, $client_id );
+	return;
 }
 
 sub _destination_ready
@@ -294,12 +306,10 @@ sub _destination_ready
 	# unlock claiming from this destination
 	delete $self->{claiming}->{$destination};
 
-	# notify whoaver, that the destination is ready for another client to try to claim
-	# a message.
-	if ( defined $self->{destination_ready} )
-	{
-		$self->{destination_ready}->( $destination );
-	}
+	# notify whoaver, that the destination is ready for another client to 
+	# try to claim a message.
+	$self->call_back('destination_ready', $destination);
+	return;
 }
 
 sub _shutdown_complete
@@ -315,10 +325,8 @@ sub _shutdown_complete
 	$self->_log('alert', 'Generic storage engine is shutdown!');
 
 	# We are shutdown!  Hurray!  Start passing it up the chain.
-	if ( defined $self->{shutdown_complete} )
-	{
-		$self->{shutdown_complete}->();
-	}
+	$self->call_back('shutdown_complete');
+	return;
 }
 
 1;

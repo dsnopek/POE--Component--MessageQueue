@@ -70,27 +70,28 @@ sub new
 	return bless $self, $class;
 }
 
-sub set_message_stored_handler 
+sub set_callback
 {
-  my $self = shift;
-  $self->SUPER::set_message_stored_handler(@_);
-  $self->{front_store}->set_message_stored_handler(@_);
-  $self->{back_store}->set_message_stored_handler(@_);
-}
+	my ($self, $name, $fn) = @_;
 
-sub set_dispatch_message_handler {
-  my $self = shift;
-  $self->SUPER::set_dispatch_message_handler(@_);
-  $self->{front_store}->set_dispatch_message_handler(@_);
-  $self->{back_store}->set_dispatch_message_handler(@_);
-}
+	# Set the callback for superclass, front store, and back store.
+	my $super_front_back = sub {
+		$self->SUPER::set_callback($name, $fn);
+		$self->{front_store}->set_callback($name, $fn);
+		$self->{back_store}->set_callback($name, $fn);
+	};
 
-sub set_destination_ready_handler
-{
-  my $self = shift;
-  $self->SUPER::set_destination_ready_handler(@_);
-  $self->{front_store}->set_destination_ready_handler(@_);
-  $self->{back_store}->set_destination_ready_handler(@_);
+	# Just for the back store.
+	my $just_back = sub {$self->{back_store}->set_callback($name, $fn)};
+
+	my %setters = (
+		'message_stored'    => $super_front_back,
+		'dispatch_message'  => $super_front_back,
+		'destination_ready' => $super_front_back,
+		'shutdown_complete' => $just_back,
+	);
+	
+	return $setters{$name}->();
 }
 
 sub set_logger
@@ -99,12 +100,6 @@ sub set_logger
   $self->SUPER::set_logger(@_);
   $self->{front_store}->set_logger(@_);
   $self->{back_store}->set_logger(@_);
-}
-
-sub set_shutdown_complete_handler
-{
-	my ($self, $handler) = @_;
-	$self->{back_store}->set_shutdown_complete_handler( $handler );
 }
 
 sub store

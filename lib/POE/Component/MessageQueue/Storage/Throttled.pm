@@ -55,29 +55,25 @@ sub new
 	$self->{shutdown} = 0;
 
 	# we have to intercept the message_stored handler.
-	$self->{storage}->set_message_stored_handler(sub { return $self->_message_stored(@_); });
+	$self->{storage}->set_callback('message_stored', sub { 
+		return $self->_message_stored(@_); 
+	});
 
 	return bless $self, $class;
 }
 
-# set_message_stored_handler() -- We maintain the parents version.
-
-sub set_dispatch_message_handler
+sub set_callback
 {
-	my ($self, $handler) = @_;
-	$self->{storage}->set_dispatch_message_handler( $handler );
-}
-
-sub set_destination_ready_handler
-{
-	my ($self, $handler) = @_;
-	$self->{storage}->set_destination_ready_handler( $handler );
-}
-
-sub set_shutdown_complete_handler
-{
-	my ($self, $handler) = @_;
-	$self->{storage}->set_shutdown_complete_handler( $handler );
+	my ($self, $name, $fn) = @_;
+	my $storage = sub {$self->{storage}->set_callback($name, $fn)};
+	my $parent = sub {$self->SUPER::set_callback($name, $fn)};
+	my %setters = (
+		'message_stored'     => $parent,
+		'dispatch_message'   => $storage,
+		'destination_ready', => $storage,
+		'shutdown_complete', => $storage,
+	);
+	return $setters{$name}->();
 }
 
 sub set_logger
@@ -131,33 +127,31 @@ sub _throttle_remove
 
 sub _message_stored
 {
-	my ($self, $destination) = @_;
+	my ($self, $message) = @_;
 
 	# first, check if there are any throttled messages we can now push to
 	# the underlying storage engine.
 	if ( $self->{throttle_max} )
 	{
-		my $message = $self->_throttle_pop();
-		if ( $message )
+		my $to_store = $self->_throttle_pop();
+		if ( $to_store )
 		{
-			my $c = (scalar @{$self->{throttle_order}});
+			my $count = (scalar @{$self->{throttle_order}});
 
 			# if we have a throttled message then send it!
-			$self->_log("STORE: Sending throttled message from the buffer to the storage engine.  (Total throttled: $c)");
-			$self->{storage}->store($message);
+			$self->_log('STORE: Sending throttled message from the buffer to the'. 
+			            "storage engine.  (Total throttled: $count)");
+			$self->{storage}->store($to_store);
 		}
 		else
 		{
 			# else, simple decrease the throttle count
-			$self->{throttle_count} --;
+			$self->{throttle_count}--;
 		}
 	}
 
 	# Then, call the user handler!
-	if ( defined $self->{message_stored} )
-	{
-		$self->{message_stored}->( $destination );
-	}
+	$self->call_back('message_stored', $message);
 
 	# if we are shutting down and there are no more message throttled, then
 	# we shutdown the underlying engine.

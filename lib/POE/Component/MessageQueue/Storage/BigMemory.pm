@@ -92,7 +92,7 @@ sub store
 	}
 
 	$self->_log('info', "STORE: BIGMEMORY: Added $message->{message_id}.");
-	$self->call_back('message_stored');
+	$self->call_back('message_stored', $message);
 }
 
 # O(1)
