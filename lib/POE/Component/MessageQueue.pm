@@ -94,10 +94,11 @@ sub new
 	}
 
 	# setup the storage callbacks
-	$self->{storage}->set_message_stored_handler(  $self->__closure('_message_stored') );
-	$self->{storage}->set_dispatch_message_handler(  $self->__closure('_dispatch_from_store') );
-	$self->{storage}->set_destination_ready_handler( $self->__closure('_destination_store_ready') );
-	$self->{storage}->set_shutdown_complete_handler( $self->__closure('_shutdown_complete') );
+	foreach my $event qw( message_stored     dispatch_message
+	                      destination_ready  shutdown_complete )
+	{
+		$self->{storage}->set_callback($event, $self->__closure("_$event"));
+	}
 
 	# get the storage object using our logger
 	$self->{storage}->set_logger( $self->{logger} );
@@ -269,22 +270,14 @@ sub _client_error
 sub _message_stored
 {
 	my ($self, $message) = @_;
-	
-	my $destination = $message->{destination};
-	my $queue;
 
-	if ( $destination =~ /\/queue\/(.*)/ )
+	if ( $message->{destination} =~ /\/queue\/(.*)/ )
 	{
-		my $queue_name = $1;
-
-		$queue = $self->get_queue( $queue_name );
+		$self->get_queue($1)->pump();
 	}
-
-	# pump the queue for good luck!
-	$queue->pump();
 }
 
-sub _dispatch_from_store
+sub _dispatch_message
 {
 	my ($self, $message, $destination, $client_id) = @_;
 	
@@ -325,7 +318,7 @@ sub _dispatch_from_store
 	}
 }
 
-sub _destination_store_ready
+sub _destination_ready
 {
 	my ($self, $destination) = @_;
 
