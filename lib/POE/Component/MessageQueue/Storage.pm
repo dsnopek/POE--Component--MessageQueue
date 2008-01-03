@@ -48,19 +48,21 @@ sub _log
 {
 	my $self = shift;
 	$self->{logger}->log(@_);
+	return;
 }
 
 sub call_back
 {
 	my ($self, $name, @rest) = @_;
 	my $callback = $self->{callbacks}->{$name};
-	$callback->($self, @rest) if $callback;
+	return $callback ? $callback->(@rest) : undef; 
 }
 
 sub set_callback
 {
 	my ($self, $name, $sub) = @_;
 	$self->{callbacks}->{$name} = $sub;
+	return;
 }
 
 sub get_callback
@@ -73,7 +75,7 @@ sub set_logger
 {
 	my ($self, $logger) = @_;
 	$self->{logger} = $logger;
-	undef;
+	return;
 }
 
 # A hack to allow POE::Component::Generic to set the log function
@@ -83,7 +85,7 @@ sub set_log_function
 {
 	my ($self, $func) = @_;
 	$self->get_logger()->set_log_function($func);
-	undef;
+	return;
 }
 
 sub get_logger
@@ -139,8 +141,8 @@ sub disown
 # behind POE::Component::MessageQueue::Storage::Generic!
 sub storage_shutdown
 {
-	my $self = shift;
-	$self->shutdown();
+	shift->shutdown();
+	return;
 }
 
 sub shutdown
@@ -170,7 +172,9 @@ The parent class of the provided storage engines.  This is an "abstract" class t
 
 =item set_message_stored_handler I<CODEREF>
 
-Takes a CODEREF which will get called back when a message has been successfully stored.  This functwion will be called with one argument, the name of the destination.
+Takes a CODEREF which will get called back when store() has completed.  
+This function will be called with one argument: the message that has been 
+stored.
 
 =item set_dispatch_message_handler I<CODEREF>
 
@@ -198,7 +202,9 @@ Should return the next available message_id.
 
 =item store I<SCALAR>
 
-Takes an object of type L<POE::Component::MessageQueue::Message> that should be stored.  This call will eventually result in the I<message_stored_handler> being called exactly once.
+Takes an object of type L<POE::Component::MessageQueue::Message> that should
+be stored.  This call will eventually result in the I<message_stored_handler>
+being called exactly once, even if there was an error storing the message.
 
 =item remove I<SCALAR>
 
