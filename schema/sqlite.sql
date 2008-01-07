@@ -1,4 +1,11 @@
 
+CREATE TABLE meta
+(
+	key   varchar(255) primary key,
+	value varchar(255)
+);
+INSERT INTO meta (key, value) VALUES ('version', '0.1.8');
+
 CREATE TABLE messages
 (
 	message_id  varchar(255) primary key,

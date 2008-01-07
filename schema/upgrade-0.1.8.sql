@@ -1,7 +1,7 @@
 CREATE TABLE meta
 (
-	key   text primary key,
-	value text
+	key   varchar(255) primary key,
+	value varchar(255)
 );
 INSERT INTO meta (key, value) VALUES ('version', '0.1.8');
 
