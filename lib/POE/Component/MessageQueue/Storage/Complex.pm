@@ -72,33 +72,33 @@ sub new
 
 sub set_message_stored_handler 
 {
-  my $self = shift;
-  $self->SUPER::set_message_stored_handler(@_);
-  $self->{front_store}->set_message_stored_handler(@_);
-  $self->{back_store}->set_message_stored_handler(@_);
+	my $self = shift;
+	$self->SUPER::set_message_stored_handler(@_);
+	$self->{front_store}->set_message_stored_handler(@_);
+	$self->{back_store}->set_message_stored_handler(@_);
 }
 
 sub set_dispatch_message_handler {
-  my $self = shift;
-  $self->SUPER::set_dispatch_message_handler(@_);
-  $self->{front_store}->set_dispatch_message_handler(@_);
-  $self->{back_store}->set_dispatch_message_handler(@_);
+	my $self = shift;
+	$self->SUPER::set_dispatch_message_handler(@_);
+	$self->{front_store}->set_dispatch_message_handler(@_);
+	$self->{back_store}->set_dispatch_message_handler(@_);
 }
 
 sub set_destination_ready_handler
 {
-  my $self = shift;
-  $self->SUPER::set_destination_ready_handler(@_);
-  $self->{front_store}->set_destination_ready_handler(@_);
-  $self->{back_store}->set_destination_ready_handler(@_);
+	my $self = shift;
+	$self->SUPER::set_destination_ready_handler(@_);
+	$self->{front_store}->set_destination_ready_handler(@_);
+	$self->{back_store}->set_destination_ready_handler(@_);
 }
 
 sub set_logger
 {
-  my $self = shift;
-  $self->SUPER::set_logger(@_);
-  $self->{front_store}->set_logger(@_);
-  $self->{back_store}->set_logger(@_);
+	my $self = shift;
+	$self->SUPER::set_logger(@_);
+	$self->{front_store}->set_logger(@_);
+	$self->{back_store}->set_logger(@_);
 }
 
 sub set_shutdown_complete_handler

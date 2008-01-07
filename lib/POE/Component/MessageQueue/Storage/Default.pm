@@ -169,7 +169,7 @@ sub new
 		mkdir $data_dir ||
 		die "Couldn't make data dir '$data_dir': $!";
 
-  my $db_file     = "$data_dir/mq.db";
+	my $db_file     = "$data_dir/mq.db";
 	my $db_dsn      = "DBI:SQLite:dbname=$db_file";
 	my $db_username = q();
 	my $db_password = q();
