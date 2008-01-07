@@ -57,8 +57,7 @@ sub new
 	# we have to intercept the message_stored handler.
 	$self->{storage}->set_message_stored_handler(sub { return $self->_message_stored(@_); });
 
-	bless  $self, $class;
-	return $self;
+	return bless $self, $class;
 }
 
 # set_message_stored_handler() -- We maintain the parents version.
@@ -166,11 +165,6 @@ sub _message_stored
 	{
 		$self->{storage}->shutdown();
 	}
-}
-
-sub get_next_message_id
-{
-	return shift->{storage}->get_next_message_id();
 }
 
 sub store

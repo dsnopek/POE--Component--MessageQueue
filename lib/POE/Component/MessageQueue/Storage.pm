@@ -99,13 +99,6 @@ sub get_logger
 	return $self->{logger};
 }
 
-sub get_next_message_id
-{
-	my $self = shift;
-
-	die "Abstract.";
-}
-
 sub store
 {
 	my ($self, $message) = @_;
