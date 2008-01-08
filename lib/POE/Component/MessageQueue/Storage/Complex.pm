@@ -206,7 +206,7 @@ __END__
 =head1 NAME
 
 POE::Component::MessageQueue::Storage::Complex -- A configurable storage
-engine that keeps a front-store (something fast) and a back store 
+engine that keeps a front-store (something fast) and a back-store 
 (something persistent), allowing you to specify a timeout and an action to be 
 taken when messages in the front-store expire. 
 
