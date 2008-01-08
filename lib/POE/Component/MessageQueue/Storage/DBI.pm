@@ -23,15 +23,14 @@ use strict;
 
 sub new
 {
-        my $class = shift;
+	my $class = shift;
 
-        my $self = $class->SUPER::new({
-                package      => 'POE::Component::MessageQueue::Storage::Generic::DBI',
-                options      => \@_,
-        });
+	my $self = $class->SUPER::new({
+		package => 'POE::Component::MessageQueue::Storage::Generic::DBI',
+		options => \@_,
+	});
 
-        bless  $self, $class;
-        return $self;
+	return bless $self, $class;
 }
 
 1;
@@ -46,28 +45,28 @@ POE::Component::MessageQueue::Storage::DBI -- A storage engine that uses L<DBI>
 
 =head1 SYNOPSIS
 
-  use POE;
-  use POE::Component::MessageQueue;
-  use POE::Component::MessageQueue::Storage::DBI;
-  use strict;
+	use POE;
+	use POE::Component::MessageQueue;
+	use POE::Component::MessageQueue::Storage::DBI;
+	use strict;
 
-  # For mysql:
-  my $DB_DSN      = 'DBI:mysql:database=perl_mq';
-  my $DB_USERNAME = 'perl_mq';
-  my $DB_PASSWORD = 'perl_mq';
-  my $DB_OPTIONS  = undef;
+	# For mysql:
+	my $DB_DSN      = 'DBI:mysql:database=perl_mq';
+	my $DB_USERNAME = 'perl_mq';
+	my $DB_PASSWORD = 'perl_mq';
+	my $DB_OPTIONS  = undef;
 
-  POE::Component::MessageQueue->new({
-    storage => POE::Component::MessageQueue::Storage::DBI->new({
-      dsn      => $DB_DSN,
-      username => $DB_USERNAME,
-      password => $DB_PASSWORD,
-      options  => $DB_OPTIONS
-    })
-  });
+	POE::Component::MessageQueue->new({
+			storage => POE::Component::MessageQueue::Storage::DBI->new({
+			dsn      => $DB_DSN,
+			username => $DB_USERNAME,
+			password => $DB_PASSWORD,
+			options  => $DB_OPTIONS
+		})
+	});
 
-  POE::Kernel->run();
-  exit;
+	POE::Kernel->run();
+	exit;
 
 =head1 DESCRIPTION
 

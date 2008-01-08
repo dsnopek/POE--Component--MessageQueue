@@ -1,4 +1,11 @@
 
+== 0.1.8 -- ??/??/2008 ==
+
+ * Configurable message ID generators (UUIDs are now the default).
+ * Abstracted Storage::Complex to take a configurable front-store and expire function.
+ * An alterative memory-based storage engine (Storage::BigMemory) which operates in
+   O(1) time with any number of messages.
+
 == 0.1.7 -- 12/19/2007 ==
 
  * Added support for statistics gathering.

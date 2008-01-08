@@ -27,16 +27,9 @@ sub new
 	my $class = shift;
 	my $self  = $class->SUPER::new( @_ );
 
-	$self->{message_id} = 0;
 	$self->{messages}   = { }; # destination => @messages
 
-	return $self;
-}
-
-sub get_next_message_id
-{
-	my $self = shift;
-	return ++$self->{message_id};
+	return bless $self, $class;
 }
 
 sub has_message
@@ -48,7 +41,7 @@ sub has_message
 		my $messages = $self->{messages}->{$dest};
 		foreach my $message ( @{$messages} )
 		{
-			if ( $message->{message_id} == $message_id )
+			if ( $message->{message_id} eq $message_id )
 			{
 				return 1;
 			}
@@ -105,12 +98,12 @@ sub remove
 		# find the message and remove it
 		for ( my $i = 0; $i < $max; $i++ )
 		{
-			if ( $messages->[$i]->{message_id} == $message_id )
+			if ( $messages->[$i]->{message_id} eq $message_id )
 			{
-				splice @{$messages}, $i, 1;
-
-				# return 1 to denote that a message was actually removed
-				return 1;
+				$self->_log('info',
+					"STORE: MEMORY: Removed $message_id from in-memory store"
+				);
+				return splice(@{$messages}, $i, 1);
 			}
 		}
 	}
@@ -134,7 +127,7 @@ sub remove_multiple
 			# check if its on the list of message ids
 			foreach my $other_id ( @$message_ids )
 			{
-				if ( $message->{message_id} == $other_id )
+				if ( $message->{message_id} eq $other_id )
 				{
 					# put on our list
 					push @removed, $message;

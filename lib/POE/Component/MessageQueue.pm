@@ -22,12 +22,13 @@ use POE::Component::Server::Stomp;
 use POE::Component::MessageQueue::Client;
 use POE::Component::MessageQueue::Queue;
 use POE::Component::MessageQueue::Message;
+use POE::Component::MessageQueue::IDGenerator::UUID;
 use Net::Stomp;
 use Event::Notify;
 use vars qw($VERSION);
 use strict;
 
-$VERSION = '0.1.7';
+$VERSION = '0.1.8';
 
 use Carp qw(croak);
 use Data::Dumper;
@@ -48,6 +49,7 @@ sub new
 	my $storage;
 	my $logger_alias;
 	my $observers;
+	my $idgen;
 
 	if ( ref($args) eq 'HASH' )
 	{
@@ -57,6 +59,7 @@ sub new
 		$port     = $args->{port};
 		$domain   = $args->{domain};
 		
+		$idgen        = $args->{idgen};
 		$storage      = $args->{storage};
 		$logger_alias = $args->{logger_alias};
 		$observers    = $args->{observers};
@@ -80,6 +83,8 @@ sub new
 		needs_ack => { },
 		notify    => Event::Notify->new(),
 		observers => $observers,
+		idgen     => $idgen || 
+			POE::Component::MessageQueue::IDGenerator::UUID->new(),
 	};
 	bless $self, $class;
 
@@ -547,7 +552,7 @@ sub create_message
 
 	if ( not defined $message->{message_id} )
 	{
-		$message->{message_id} = $self->{storage}->get_next_message_id();
+		$message->{message_id} = $self->{idgen}->generate($message);
 	}
 
 	return $message;
@@ -692,7 +697,7 @@ POE::Component::MessageQueue - A POE message queue that uses STOMP for the commu
   use POE;
   use POE::Component::Logger;
   use POE::Component::MessageQueue;
-  use POE::Component::MessageQueue::Storage::Complex;
+  use POE::Component::MessageQueue::Storage::Default;
   use strict;
 
   my $DATA_DIR = '/tmp/perl_mq';
@@ -713,7 +718,7 @@ POE::Component::MessageQueue - A POE message queue that uses STOMP for the commu
     logger_alias => 'mq_logger',  # Optional.
 
     # Required!!
-    storage => POE::Component::MessageQueue::Storage::Complex->new({
+    storage => POE::Component::MessageQueue::Storage::Default->new({
       data_dir     => $DATA_DIR,
       timeout      => 2,
       throttle_max => 2
@@ -728,25 +733,29 @@ POE::Component::MessageQueue - A POE message queue that uses STOMP for the commu
 If you are only interested in running with the recommended storage backend and
 some predetermined defaults, you can use the included command line script.
 
-  user$ mq.pl --help
-  POE::Component::MessageQueue version 0.1.7
+  POE::Component::MessageQueue version 0.1.8
   Copyright 2007 David Snopek
-
+  
   mq.pl [--port|-p <num>] [--hostname|-h <host>]
+  	  [--front-store <str>] [--nouuids]
         [--timeout|-i <seconds>]   [--throttle|-T <count>]
         [--data-dir <path_to_dir>] [--log-conf <path_to_file>]
         [--stats] [--stats-interval|-i <seconds>]
         [--background|-b] [--pidfile|-p <path_to_file>]
         [--debug-shell] [--version|-v] [--help|-h]
-
+  
   SERVER OPTIONS:
     --port     -p <num>     The port number to listen on (Default: 61613)
     --hostname -h <host>    The hostname of the interface to listen on 
                             (Default: localhost)
 
   STORAGE OPTIONS:
+    --front-store -f        Specify which in-memory storage engine to use for
+                            the front-store (can be memory or bigmemory).
     --timeout  -i <secs>    The number of seconds to keep messages in the 
                             front-store (Default: 4)
+    --[no]uuids             Use (or do not use) UUIDs instead of incrementing
+                            integers for message IDs.  Default: uuids 
     --throttle -T <count>   The number of messages that can be stored at once 
                             before throttling (Default: 2)
     --data-dir <path>       The path to the directory to store data 
@@ -819,7 +828,7 @@ L<POE::Component::MessageQueue::Storage::Memory> -- The simplest storage engine.
 
 =item *
 
-L<POE::Component::MessageQueue::Storage::DBI> -- Uses Perl L<DBI> to store messages.  Not recommended to use directly because message body doesn't belong in the database.  All messages are stored persistently.  (Underneath this is really just L<POE::Component::MessageQueue::Storage::Generic> and L<POE::Component::MessageQueue::Storage::Generic::DBI>)
+L<POE::Component::MessageQueue::Storage::DBI> -- Uses Perl L<DBI> to store messages.  Depending on your database configuration, using directly may not be recommended because the message bodies are stored directly in the database.  Wrapping with L<POE::Component::MessageQueue::Storage::FileSystem> allows you to store the message bodies on disk.  All messages are stored persistently.  (Underneath this is really just L<POE::Component::MessageQueue::Storage::Generic> and L<POE::Component::MessageQueue::Storage::Generic::DBI>)
 
 =item *
 
@@ -835,11 +844,15 @@ L<POE::Component::MessageQueue::Storage::Generic::DBI> -- A synchronous L<DBI>-b
 
 =item *
 
-L<POE::Component::MessageQueue::Storage::Throttled> -- Wraps around another engine to limit the number of messages sent to be stored at once.  Use of this module is B<highly> recommend!  If the storage engine is unable to store the messages fast enough (ie. with slow disk IO) it can get really backed up and stall messages coming out of the queue, allowing execessive producers to basically monopolise the server, preventing any messages from getting distributed to subscribers.
+L<POE::Component::MessageQueue::Storage::Throttled> -- Wraps around another engine to limit the number of messages sent to be stored at once.  Use of this module is B<highly> recommend!  If the storage engine is unable to store the messages fast enough (ie. with slow disk IO) it can get really backed up and stall messages coming out of the queue, allowing execessive producers to basically monopolise the server, preventing any messages from getting distributed to subscribers.  Also, it will significantly cuts down the number of open FDs when used with L<POE::Component::MessageQueue::Storage::FileSystem>.
 
 =item *
 
-L<POE::Component::MessageQueue::Storage::Complex> -- A combination of the Memory, FileSystem, DBI and Throttled modules above.  It will keep messages in Memory and move them into FileSystem after a given number of seconds, throttling messages passed into DBI.  The DBI backend is configured to use SQLite.  It is capable of correctly handling a messages persistent flag.  This is the recommended storage engine and should provide the best performance in the most common case (ie. when both providers and consumers are connected to the queue at the same time).
+L<POE::Component::MessageQueue::Storage::Complex> -- A configurable storage engine that keeps a front-store (something fast) and a back-store (something persistent), allowing you to specify a timeout and an action to be taken when messages in the front-store expire, by default, moving them into the back-store.  It is capable of correctly handling a messages persistent flag.  This optimization allows for the possibility of messages being handled before ever having to be persisted.
+
+=item *
+
+L<POE::Component::MessageQueue::Storage::Default> -- A combination of the Complex, Memory, FileSystem, DBI and Throttled modules above.  It will keep messages in Memory and move them into FileSystem after a given number of seconds, throttling messages passed into DBI.  The DBI backend is configured to use SQLite.  It is capable of correctly handling a messages persistent flag.  This is the recommended storage engine and should provide the best performance in the most common case (ie. when both providers and consumers are connected to the queue at the same time).
 
 =back
 
@@ -911,9 +924,9 @@ L<http://www.activemq.org/> -- ActiveMQ is a popular Java-based message queue
 
 =back
 
-=head1 UPGRADING FROM 0.1.6 OR OLDER
+=head1 UPGRADING FROM OLDER VERSIONS
 
-If you used any of the following storage engines with PoCo::MQ 0.1.6 or older:
+If you used any of the following storage engines with PoCo::MQ 0.1.7 or older:
 
 =over 4
 
@@ -925,15 +938,25 @@ L<POE::Component::MessageQueue::Storage::DBI>
 
 The database format has changed.
 
-B<Note:> When using L<POE::Component::MessageQueue::Storage::Complex> (meaning mq.pl)
+B<Note:> When using L<POE::Component::MessageQueue::Storage::Default> (meaning mq.pl)
 the database will be automatically updated in place, so you don't need to worry
 about this.
 
-You will need to execute the following ALTER statements on your database to allow
-PoCo::MQ to keep working:
+Included in the distribution, is a schema/ directory with a few SQL scripts for 
+upgrading:
 
-  ALTER TABLE messages ADD COLUMN timestamp INT;
-  ALTER TABLE messages ADD COLUMN size      INT;
+=over
+
+=item *
+
+upgrade-0.1.7.sql -- Apply if you are upgrading from version 0.1.6 or older.
+
+=item *
+
+ugrade-0.1.8.sql -- Apply if your are upgrading from version 0.1.7 or after applying
+the above update script.
+
+=back
 
 =head1 CONTACT
 
@@ -1001,7 +1024,8 @@ L<POE::Component::MessageQueue::Storage::FileSystem>,
 L<POE::Component::MessageQueue::Storage::Generic>,
 L<POE::Component::MessageQueue::Storage::Generic::DBI>,
 L<POE::Component::MessageQueue::Storage::Throttled>,
-L<POE::Component::MessageQueue::Storage::Complex>
+L<POE::Component::MessageQueue::Storage::Complex>,
+L<POE::Component::MessageQueue::Storage::Default>
 
 I<Statistics modules:>
 

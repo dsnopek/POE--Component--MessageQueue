@@ -82,7 +82,7 @@ sub new
 	# DEBUG!
 	#$poe_kernel->post( $self->{session}, '_log_state' );
 
-	return $self;
+	return bless $self, $class ;
 }
 
 sub __closure
@@ -123,12 +123,6 @@ sub set_logger
 
 	$self->SUPER::set_logger( $logger );
 	$self->{info_storage}->set_logger( $logger );
-}
-
-sub get_next_message_id
-{
-	my $self = shift;
-	return $self->{info_storage}->get_next_message_id();
 }
 
 sub store

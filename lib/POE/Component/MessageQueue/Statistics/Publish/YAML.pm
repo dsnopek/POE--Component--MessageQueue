@@ -74,6 +74,11 @@ POE::Component::MessageQueue::Statistics::Publish::YAML - Publish Statistics In 
 
 This module dumps the statistics information in YAML format
 
+=head1 SEE ALSO
+
+L<POE::Component::MessageQueue::Statistics>,
+L<POE::Component::MessageQueue::Statistics::Publish>
+
 =head1 AUTHOR
 
 Daisuke Maki E<lt>daisuke@endeworks.jpE<gt>
