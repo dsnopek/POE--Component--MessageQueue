@@ -748,7 +748,7 @@ some predetermined defaults, you can use the included command line script.
     --port     -p <num>     The port number to listen on (Default: 61613)
     --hostname -h <host>    The hostname of the interface to listen on 
                             (Default: localhost)
-  
+
   STORAGE OPTIONS:
     --front-store -f        Specify which in-memory storage engine to use for
                             the front-store (can be memory or bigmemory).
@@ -762,18 +762,18 @@ some predetermined defaults, you can use the included command line script.
                             (Default: /var/lib/perl_mq)
     --log-conf <path>       The path to the log configuration file 
                             (Default: /etc/perl_mq/log.conf
-  
+
   STATISTICS OPTIONS:
     --stats                 If specified the, statistics information will be 
                             written to $DATA_DIR/stats.yml
     --stats-interval <secs> Specifies the number of seconds to wait before 
                             dumping statistics (Default: 10)
-  
+
   DAEMON OPTIONS:
     --background -b         If specified the script will daemonize and run in the
                             background
     --pidfile    -p <path>  The path to a file to store the PID of the process
-  
+
   OTHER OPTIONS:
     --debug-shell           Run with POE::Component::DebugShell
     --version    -v         Show the current version.
