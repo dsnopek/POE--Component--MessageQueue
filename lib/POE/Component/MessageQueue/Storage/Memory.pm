@@ -20,8 +20,6 @@ use base qw(POE::Component::MessageQueue::Storage);
 
 use strict;
 
-use Data::Dumper;
-
 sub new
 {
 	my $class = shift;
@@ -51,23 +49,6 @@ sub has_message
 	return 0;
 }
 
-# this function will clear out the engine and return an array reference
-# with all the messages on it.
-sub empty_all
-{
-	my $self = shift;
-
-	my @ret;
-
-	foreach my $messages ( values %{$self->{messages}} )
-	{
-		@ret = ( @ret, @$messages );
-	}
-	$self->{messages} = {};
-
-	return \@ret;
-}
-
 sub store
 {
 	my ($self, $message) = @_;
@@ -86,9 +67,10 @@ sub store
 
 sub remove
 {
-	my ($self, $message_id) = @_;
+	my ($self, $message_id, $callback) = @_;
+	my $removed = undef;
 
-	foreach my $dest ( keys %{$self->{messages}} )
+	OUTER: foreach my $dest ( keys %{$self->{messages}} )
 	{
 		my $messages = $self->{messages}->{$dest};
 		my $max = scalar @{$messages};
@@ -96,51 +78,60 @@ sub remove
 		# find the message and remove it
 		for ( my $i = 0; $i < $max; $i++ )
 		{
-			if ( $messages->[$i]->{message_id} eq $message_id )
+			my $message = $messages->[$i];
+			if ( $message->{message_id} eq $message_id )
 			{
+				splice(@$messages, $i, 1);
 				$self->_log('info',
 					"STORE: MEMORY: Removed $message_id from in-memory store"
 				);
-				return splice(@{$messages}, $i, 1);
+				$removed = $message;
+				last OUTER;
 			}
 		}
 	}
 
-	return 0;
+	$callback->($removed) if $callback;
+	return;
 }
 
 sub remove_multiple
 {
-	my ($self, $message_ids) = @_;
+	my ($self, $message_ids, $callback) = @_;
+	my @messages = ();
+	# Stuff IDs into a hash so we can quickly check if a message is on the list
+	my %id_hash = map { ($_, 1) } (@$message_ids);
 
-	my @removed;
-	while (my($dest, $messages) = each %{ $self->{messages} }) {
+	while ( my ($dest, $messages) = each %{ $self->{messages} } ) 
+	{
 		my $max = scalar @{$messages};
 
-		# find the message and remove it
 		for ( my $i = 0; $i < $max; $i++ )
 		{
 			my $message = $messages->[$i];
-
-			# check if its on the list of message ids
-			foreach my $other_id ( @$message_ids )
-			{
-				if ( $message->{message_id} eq $other_id )
-				{
-					# put on our list
-					push @removed, $message;
-
-					# remove
-					splice @{$messages}, $i--, 1;
-
-					# move onto next message
-					last;
-				}
-			}
+			# Check if this messages is in the "remove" list
+			next unless exists $id_hash{$message->{message_id}};
+			splice @$messages, $i--, 1;
+			push(@messages, $message) if $callback;
 		}
 	}
 
-	return \@removed;
+	$callback->(\@messages) if $callback;
+
+	return;
+}
+
+sub remove_all 
+{
+	my ($self, $callback) = @_;
+	if ($callback) 
+	{
+		my @messages = ();
+		push(@messages, @{$_}) foreach (values %{$self->messages});
+		$callback->(\@messages);
+	}
+	%{$self->{messages}} = ();
+	return;
 }
 
 sub claim_and_retrieve

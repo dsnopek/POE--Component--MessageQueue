@@ -36,18 +36,20 @@ sub new
 	# messages that are not persistent.	
 	$self->{expire_messages} = $args->{expire_messages} ||
 		sub {
-			my $message_ids = shift;
-			my @messages = grep { 
-				$_->{persistent} 
-			} (@{$self->{front_store}->remove_multiple($message_ids)});
+			my $continuation = sub {
+				my $message_aref = shift;
+				my @messages = grep { $_->{persistent} } (@$message_aref);
 
-			foreach (@messages) {
-				$self->_log('info',
-					'STORE: COMPLEX: ' .
-					"Moving expired message $_->{message_id} into backing store"
-				);
-				$self->{back_store}->store($_);
-			}
+				foreach my $msg (@messages)
+				{
+					$self->_log('info',
+						'STORE: COMPLEX: ' .
+						"Moving expired message $_->{message_id} into backing store"
+					);
+					$self->{back_store}->store($_);
+				}
+			};
+			$self->{front_store}->remove_multiple(shift, $continuation);
 		};
 
 	$self->{delay}      = int($self->{timeout} / 2);
@@ -114,21 +116,89 @@ sub store
 	$self->{timestamps}->{$message->{message_id}} = time();
 }
 
+# For these remove functions, the control flow is the same, but the
+# particulars vary.
+# front, back: call remove on their respective store with their argument as
+# the callback argument to remove.
+# stamps: deletes whatever is necessary from the timestamps hash.
+# combine: a function that aggregates the results of front and back.
+# callback: the thing to callback with the results of the remove op.
+sub _general_remove
+{
+	my ($self, %args) = @_;
+
+	# There are no results, so just call everything in parallel.
+	unless ($args{callback}) 
+	{
+		$args{front}->();
+		$args{back}->();
+		$args{stamps}->();
+		return;
+	}
+
+	# Save the results of front and back, aggregate them, and pass them on.
+	$args{front}->(sub {
+		my $fresult = shift;
+		$args{back}->(sub {
+			my $bresult = shift;	
+			$args{stamps}->();
+			$args{callback}->($args{combine}->($fresult, $bresult));
+		});
+	});
+	return;
+}
+
 sub remove
 {
-	my ($self, $message_id) = @_;
+	my ($self, $id, $cb) = @_;
+	$self->_general_remove(
+		front    => sub { $self->{front_store}->remove($id, shift) },
+		back     => sub {  $self->{back_store}->remove($id, shift) },
+		combine  => sub { $_[0] || $_[1] },
+		stamps   => sub { delete $self->{timestamps}->{$id} },
+		callback => $cb,
+	);
+}
 
-	$self->{front_store}->remove( $message_id ) ||
-		$self->{back_store}->remove( $message_id );
+# Combine for _multiple and _all
+sub __append
+{
+	my ($one, $two) = @_;
+	push(@$one, @$two);
+	return $one;
+}
 
-	delete $self->{timestamps}->{$message_id};
+# We'll call remove_multiple on the full range of ids - well-behaved stores
+# will just ignore IDs they don't have.
+sub remove_multiple
+{
+	my ($self, $id_aref, $cb);
+	$self->_general_remove(
+		front    => sub { $self->{front_store}->remove_multiple($id_aref, shift) },
+		back     => sub {  $self->{back_store}->remove_multiple($id_aref, shift) },
+		combine  => \&__append,
+		stamps   => sub { delete $self->{timestamps}->{$_} foreach (@$id_aref) },
+		callback => $cb,
+	);
+}
+
+sub remove_all
+{
+	my ($self, $cb);
+	$self->_general_remove(
+		front    => sub { $self->{front_store}->remove_all(shift) },
+		back     => sub {  $self->{back_store}->remove_all(shift) },
+		combine  => \&__append,
+		stamps   => sub { %{$self->{timestamps}} = () },
+		callback => $cb,
+	);	
 }
 
 sub claim_and_retrieve
 {
 	my $self = shift;
 
-	return $self->{front_store}->claim_and_retrieve(@_) || 
+	rturn $self->{front_store}->claim_and_retrieve(@_) || 
 		$self->{back_store}->claim_and_retrieve(@_);
 }
 
@@ -176,20 +246,23 @@ sub shutdown
 		'Forcing all messages from the front-store into the back-store...'
 	);
 
-	my @messages = grep {
-		$_->{persistent} 
-	} (@{$self->{front_store}->empty_all()});
+	my $continuation = sub {
+		my $message_aref = shift;
+		my @messages = grep { $_->{persistent} } (@$message_aref);
+		
+		foreach my $msg (@messages)
+		{
+			$self->_log('info',
+				"STORE: COMPLEX: Moving message $msg->{message_id} " .
+				'into backing store.'
+			);
+			$self->{back_store}->store($msg);
+		}	
 
-	foreach (@messages) {
-		$self->_log('info',
-			"STORE: COMPLEX: Moving message $_->{message_id} " .
-			'into backing store.'
-		);
-		$self->{back_store}->store($_);
-	}
-
-	$self->{front_store}->shutdown();
-	$self->{back_store}->shutdown();
+		$self->{front_store}->shutdown();
+		$self->{back_store}->shutdown();
+	};
+	$self->{front_store}->remove_all($continuation);
 }
 
 1;

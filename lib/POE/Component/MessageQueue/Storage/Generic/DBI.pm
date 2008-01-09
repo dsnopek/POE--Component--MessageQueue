@@ -49,6 +49,8 @@ sub new
 	return bless $self, $class;
 }
 
+sub _make_message { POE::Component::MessageQueue::Message->new(shift) }	
+
 sub store
 {
 	my ($self, $message) = @_;
@@ -89,27 +91,82 @@ sub store
 
 sub remove
 {
-	my ($self, $message_id) = @_;
+	my ($self, $message_id, $callback) = @_;
+	my $message = undef;
+	try eval {
+		if ($callback)
+		{
+			my $result = $self->{dbh}->selectrow_hashref(q{
+				SELECT * FROM messages WHERE message_id = ?
+			}, undef, ($message_id));
+			$message = _make_message($result) if $result;
+		}
 
-	my $SQL = "DELETE FROM messages WHERE message_id = ?";
-
-	try eval
-	{
-		my $stmt;
-		$stmt = $self->{dbh}->prepare($SQL);
-		$stmt->execute($message_id);
+		$self->{dbh}->do(q{
+			DELETE FROM messages WHERE message_id = ?
+		}, undef, ($message_id));
 	};
 	my $err = catch;
+	$self->_log("STORE: DBI: Error deleting message $message_id: $err") if $err;
 
-	if ( $err )
-	{
-		$self->_log("STORE: DBI: Error deleting message $message_id: $err");
-	}
-	else
-	{
-		$self->_log("STORE: DBI: Message $message_id deleted");
-	}
+	$callback->($message) if $callback;
+	return;
+}
 
+sub _remove_underneath
+{
+	my ($self, $get, $where, $errdesc) = @_;
+	my @messages = ();
+	try eval {
+		if ($get)
+		{
+			my $sth = $self->{dbh}->prepare('SELECT * FROM messages'.$where); 
+			$sth->execute();
+	
+			while(my $result = $sth->fetchrow_hashref())
+			{
+				push(@messages, _make_message($result));
+			}
+		}
+		$self->{dbh}->do('DELETE FROM messages'.$where);
+	};
+	my $err = catch;
+	$self->_log("STORE: DBI: Error $errdesc: $err") if ($err);
+
+	return \@messages;
+}
+
+sub remove
+{
+	my ($self, $message_id, $callback) = @_;
+	my $where = " WHERE message_id = '$message_id'";
+	my $ret = $self->_remove_underneath(
+		$callback, 
+		$where,
+		"removing message $message_id",
+	);
+	my $val = (scalar @$ret) ? $ret->[0] : undef;
+	$callback->($val) if $callback;
+	return;
+}
+
+sub remove_multiple
+{
+	my ($self, $message_ids, $callback) = @_;
+	my $ret = $self->_remove_underneath(
+		$callback,
+		' WHERE '. join(' OR ', map { "message_id = '$_'" } (@$message_ids)),
+		'removing multiple messages',
+	);
+	$callback->($ret) if $callback;
+	return;	
+}
+
+sub remove_all
+{
+	my ($self, $callback) = @_;
+	my $ret = $self->_remove_underneath($callback, '', 'removing all messages');
+	$callback->($ret) if $callback;
 	return;
 }
 
@@ -119,7 +176,7 @@ sub _retrieve
 
 	my $SQL = "SELECT * FROM messages WHERE destination = ? AND in_use_by IS NULL ORDER BY timestamp ASC LIMIT 1";
 
-	my $result;
+	my $result = undef;
 
 	try eval
 	{
@@ -131,7 +188,7 @@ sub _retrieve
 	my $err = catch;
 	$self->_log("error", "STORE: DBI: $err") if $err;
 
-	return $result ? POE::Component::MessageQueue::Message->new($result) : undef;
+	return $result && _make_message($result);
 }
 
 sub _claim

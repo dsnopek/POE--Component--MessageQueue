@@ -103,7 +103,21 @@ sub store
 
 sub remove
 {
-	my ($self, $message_id) = @_;
+	my ($self, $message_id, $callback) = @_;
+
+	die "Abstract.";
+}
+
+sub remove_multiple
+{
+	my ($self, $id_aref, $callback) = @_;
+
+	die "Abstract.";
+}
+
+sub remove_all
+{
+	my ($self, $callback) = @_;
 
 	die "Abstract.";
 }
@@ -206,9 +220,21 @@ Takes an object of type L<POE::Component::MessageQueue::Message> that should
 be stored.  This call will eventually result in the I<message_stored_handler>
 being called exactly once, even if there was an error storing the message.
 
-=item remove I<SCALAR>
+=item remove I<SCALAR,CODEREF>
 
-Takes a message_id to be removed from the storage engine.
+Takes a message_id to be removed from the storage engine.  If a coderef is
+supplied, it will be called with the message as its argument after removal.
+
+=item remove_multiple I<ARRAYREF,CODEREF>
+
+Takes an arrayref of message_ids to be removed from the storage engine. If a
+coderef is supplied, it will be called with an arrayref of the removed
+messages after removal.
+
+=item remove_all I<CODEREF>
+
+Takes an optional coderef argument that will be called with an arrayref of all
+the message that were in the store after they have been removed.
 
 =item claim_and_retrieve I<SCALAR, SCALAR> or I<HASHREF>
 

@@ -1,4 +1,4 @@
-package POE::Component::MessageQueue::Storage::Complex::Default;
+package POE::Component::MessageQueue::Storage::Default;
 
 use strict;
 use warnings;
@@ -9,7 +9,15 @@ use POE::Component::MessageQueue::Storage::Memory;
 use POE::Component::MessageQueue::Storage::Complex;
 use DBI;
 
-use constant CREATE_DB => <<'END_CREATE_DB';
+use constant META_SCHEMA => <<'EOF';
+CREATE TABLE meta
+(
+	key   text primary key,
+	value text
+);
+EOF
+
+use constant MESSAGES_SCHEMA => <<'EOF';
 CREATE TABLE messages
 (
 	message_id  text primary key,
@@ -25,12 +33,111 @@ CREATE INDEX id_index          ON messages ( message_id(8) );
 CREATE INDEX timestamp_index   ON messages ( timestamp );
 CREATE INDEX destination_index ON messages ( destination );
 CREATE INDEX in_use_by_index   ON messages ( in_use_by );
-END_CREATE_DB
+
+EOF
+
+# Hopefully, this will make adding new changes that break db compatability a
+# little easier.  Change the database schema above, then add a check for your
+# version like the examples below.
+sub _upgrade
+{
+	my $dbh = shift;
+	my @versions = ('0.1.7', '0.1.8');
+
+	# Funny lexical scoping rules require this to be an anonymous sub or weird
+	# things will happen with $dbh
+	my $meta_version = sub {
+		my $check_version = shift;
+		my $version;
+		eval {
+			($version) = $dbh->selectrow_array(
+				"SELECT value FROM meta WHERE key = 'version'"
+			);
+		};
+		return (!$@) && ($version ge $check_version);
+	};
+
+	# These should return true if the test passes (no upgrade needed)
+	my %tests = (
+		# The meta-table was added in 0.1.8, so we can't use that...
+		'0.1.7' => sub {
+			eval {
+				$dbh->selectrow_array("SELECT timestamp, size FROM messages LIMIT 1");
+			};
+			return (!$@);
+		},
+		'0.1.8' => sub { $meta_version->('0.1.8') },
+	);
+
+	my %repairs = (
+		'0.1.7' => sub {
+			$dbh->do('ALTER TABLE messages ADD COLUMN timestamp INT');
+			$dbh->do('ALTER TABLE messages ADD COLUMN size      INT');
+		},
+		'0.1.8' => sub {
+			# 0.1.8 adds a meta table for version info
+			$dbh->do( META_SCHEMA );
+			$dbh->do(q{INSERT INTO meta (key, value) VALUES ('version', '0.1.8')});
+
+			# SQLite doesn't have a syntax for modifying column types on primary
+			# keys, and 1.8->1.9 made message_id a text field.
+
+			# Rename old table and create new one
+			$dbh->do('ALTER TABLE messages RENAME TO old_messages');
+			$dbh->do( MESSAGES_SCHEMA );
+
+			# Dump old table into new table
+			my $columns = q{
+				message_id, destination, persistent, 
+				in_use_by,  body, timestamp, size
+			};
+
+			$dbh->do(qq{
+				INSERT INTO messages ( $columns ) 
+				SELECT $columns FROM old_messages
+			});
+
+			# Delete old table
+			$dbh->do('DROP TABLE old_messages');
+		},
+	);
+
+	my $do_repairs = 0;
+	foreach my $ver (@versions)
+	{
+		unless ($do_repairs) 
+		{
+			my $success = $tests{$ver}->();
+			unless ($success) 
+			{
+				$dbh->begin_work();
+				print STDERR "WARNING: User database is older than $ver.\n";
+				print STDERR "WARNING: Performing in-place upgrade...";
+				$do_repairs = 1;
+			}
+		}
+
+		if ($do_repairs)
+		{
+			eval { $repairs{$ver}->() };
+			if ($@)
+			{
+				$dbh->rollback();
+				die "encountered errors: $!: rolling back.\n";
+			}
+		}
+	}
+	if ($do_repairs)
+	{
+		$dbh->commit();
+		print STDERR "upgrade complete.\n";
+	}
+}
 
 sub _make_db
 {
 	my ($file, $dsn, $username, $password) = @_;
-	my $create_db = (not -f $file);
+	my $db_exists = (-f $file);
 	my $dbh = DBI->connect(
 		$dsn, 
 		$username, 
@@ -38,23 +145,15 @@ sub _make_db
 		{ RaiseError => 1 }
 	);
 
-	if ( $create_db )
+	if ( $db_exists )
 	{
-		$dbh->do( CREATE_DB );
+		_upgrade($dbh);
 	}
 	else
 	{
-		eval
-		{
-			$dbh->selectrow_array("SELECT timestamp, size FROM messages LIMIT 1");
-		};
-		if ( $@ )
-		{
-			print STDERR "WARNING: User has pre-0.1.7 database format.\n";
-			print STDERR "WARNING: Performing in place upgrade.\n";
-			$dbh->do('ALTER TABLE messages ADD COLUMN timestamp INT');
-			$dbh->do('ALTER TABLE messages ADD COLUMN size      INT');
-		}
+		$dbh->do( MESSAGES_SCHEMA );
+		$dbh->do( META_SCHEMA );
+		$dbh->do(q{INSERT INTO meta (key, value) ('version', '0.1.8')});
 	}
 	$dbh->disconnect();
 }

@@ -53,6 +53,7 @@ sub new
 		object_options => $options,
 		packages => {
 			$package => {
+				callbacks => [qw(remove remove_multiple remove_all)],
 				postbacks => {
 					set_callback     => 1,
 					set_log_function => 0,
