@@ -98,10 +98,10 @@ sub set_callback
 
 sub set_logger
 {
-  my $self = shift;
-  $self->SUPER::set_logger(@_);
-  $self->{front_store}->set_logger(@_);
-  $self->{back_store}->set_logger(@_);
+	my $self = shift;
+	$self->SUPER::set_logger(@_);
+	$self->{front_store}->set_logger(@_);
+	$self->{back_store}->set_logger(@_);
 }
 
 sub store

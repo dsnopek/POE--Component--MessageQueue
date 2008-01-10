@@ -27,7 +27,7 @@ my $pidfile;
 my $show_version = 0;
 my $show_usage   = 0;
 my $statistics   = 0;
-my $uuids = 0;
+my $uuids = 1;
 my $stat_interval = 10;
 my $front_store = 'memory';
 
@@ -76,7 +76,8 @@ STORAGE OPTIONS:
                           front-store (Default: 4)
   --front-store -f        Specify which in-memory storage engine to use for
                           the front-store (can be memory or bigmemory).
-	--uuids                 Use UUIDs instead of normal ints for message IDs. 
+  --[no]uuids             Use (or do not use) UUIDs instead of incrementing
+                          integers for message IDs.  Default: uuids 
   --throttle -T <count>   The number of messages that can be stored at once 
                           before throttling (Default: 2)
   --data-dir <path>       The path to the directory to store data 
@@ -173,7 +174,7 @@ elsif ($front_store eq 'bigmemory')
 }
 else
 {
-  die "Unknown front-store specified: $front_store";
+	die "Unknown front-store specified: $front_store";
 }
 
 my $idgen;
