@@ -123,7 +123,7 @@ sub store
 # stamps: deletes whatever is necessary from the timestamps hash.
 # combine: a function that aggregates the results of front and back.
 # callback: the thing to callback with the results of the remove op.
-sub _general_remove
+sub _remove_underneath
 {
 	my ($self, %args) = @_;
 
@@ -151,7 +151,7 @@ sub _general_remove
 sub remove
 {
 	my ($self, $id, $cb) = @_;
-	$self->_general_remove(
+	$self->_remove_underneath(
 		front    => sub { $self->{front_store}->remove($id, shift) },
 		back     => sub {  $self->{back_store}->remove($id, shift) },
 		combine  => sub { $_[0] || $_[1] },
@@ -173,7 +173,7 @@ sub __append
 sub remove_multiple
 {
 	my ($self, $id_aref, $cb);
-	$self->_general_remove(
+	$self->_remove_underneath(
 		front    => sub { $self->{front_store}->remove_multiple($id_aref, shift) },
 		back     => sub {  $self->{back_store}->remove_multiple($id_aref, shift) },
 		combine  => \&__append,
@@ -185,7 +185,7 @@ sub remove_multiple
 sub remove_all
 {
 	my ($self, $cb);
-	$self->_general_remove(
+	$self->_remove_underneath(
 		front    => sub { $self->{front_store}->remove_all(shift) },
 		back     => sub {  $self->{back_store}->remove_all(shift) },
 		combine  => \&__append,

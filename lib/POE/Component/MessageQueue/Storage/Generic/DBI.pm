@@ -89,30 +89,6 @@ sub store
 	return;
 }
 
-sub remove
-{
-	my ($self, $message_id, $callback) = @_;
-	my $message = undef;
-	try eval {
-		if ($callback)
-		{
-			my $result = $self->{dbh}->selectrow_hashref(q{
-				SELECT * FROM messages WHERE message_id = ?
-			}, undef, ($message_id));
-			$message = _make_message($result) if $result;
-		}
-
-		$self->{dbh}->do(q{
-			DELETE FROM messages WHERE message_id = ?
-		}, undef, ($message_id));
-	};
-	my $err = catch;
-	$self->_log("STORE: DBI: Error deleting message $message_id: $err") if $err;
-
-	$callback->($message) if $callback;
-	return;
-}
-
 sub _remove_underneath
 {
 	my ($self, $get, $where, $errdesc) = @_;

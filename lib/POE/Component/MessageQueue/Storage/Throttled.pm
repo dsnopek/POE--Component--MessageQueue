@@ -111,20 +111,6 @@ sub _throttle_pop
 	undef;
 }
 
-sub _throttle_remove
-{
-	my ($self, $message_id) = @_;
-
-	if ( exists $self->{throttle_buffer}->{$message_id} )
-	{
-		delete $self->{throttle_buffer}->{$message_id};
-		
-		return 1;
-	}
-
-	return 0;
-}
-
 sub _message_stored
 {
 	my ($self, $message) = @_;
@@ -192,19 +178,53 @@ sub store
 
 sub remove
 {
-	my ($self, $message_id) = @_;
+	my ($self, $message_id, $callback) = @_;
+	$self->remove_multiple([$message_id], $callback && sub {
+		my $aref = shift;
+		my $val = scalar @$aref ? $aref->[0] : undef;
+		$callback->($val);
+	});
+}
 
-	if ( $self->{throttle_max} )
-	{
-		# if we put this message in the throttle buffer, then remove
-		# it before it can even get to the storage engine
-		if ( $self->_throttle_remove( $message_id ) )
-		{
-			return;
-		}
+sub remove_multiple
+{
+	my ($self, $message_ids, $callback) = @_;
+	my @result = ();
+	my @in_storage = ();
+	# Collect the ones in the throttle buffer
+	foreach my $id (@$message_ids) {
+		my $message = delete $self->{throttle_buffer}->{$id};
+		my @args = $message ? (@result, $message) : (@in_storage, $id);
+		push(@args); # rofl
 	}
+	
+	# Pull the rest out of real storage, if there is any such thing as "rest"
+	if (scalar @in_storage)
+	{
+		$self->{storage}->remove_multiple(\@in_storage, $callback && sub {
+			my $aref = shift;
+			push(@result, @$aref);
+			$callback->(\@result);
+		});
+	}
+	elsif ($callback)
+	{
+		$callback->(\@result);
+	}
+	return;
+}
 
-	$self->{storage}->remove($message_id);
+sub remove_all
+{
+	my ($self, $callback) = @_;
+	my @result = ();
+	push(@result, values %{$self->{throttle_buffer}} );
+	$self->{storage}->remove_all($callback && sub {
+		my $aref = shift;
+		push(@result, @$aref);
+		$callback->(\@result);
+	});
+	return;
 }
 
 sub claim_and_retrieve

@@ -148,9 +148,25 @@ sub store
 
 sub remove
 {
-	my ($self, $message_id) = @_;
+	my ($self, $message_id, $callback) = @_;
 
-	$self->{generic}->remove($self->_data_hashref(), $message_id);
+	$self->{generic}->remove($self->_data_hashref(), $message_id, $callback);
+	return;
+}
+
+sub remove_multiple
+{
+	my ($self, $message_ids, $callback) = @_;
+
+	$self->{generic}->remove($self->_data_hashref(), $message_ids, $callback);
+	return;
+}
+
+sub remove_all
+{
+	my ($self, $callback) = @_;
+
+	$self->{generic}->remove($self->_data_hashref(), $callback);
 	return;
 }
 
