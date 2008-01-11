@@ -177,7 +177,7 @@ sub disown
 {
 	my ($self, $destination, $client_id) = @_;
 	my $q = $self->{claimed}->{$client_id} || return;
-	for(my $i = $q; $i; $i = $i->next())
+	for(my $i = $q->first(); $i; $i = $i->next())
 	{
 		my $message = $i->data();
 		if ($message->{destination} eq $destination)
