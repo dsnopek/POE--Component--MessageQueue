@@ -149,6 +149,11 @@ output to $code and execute it:
 		$code->( $output );
 	}
 
+=head1 SEE ALSO
+
+L<POE::Component::MessageQueue::Statistics>,
+L<POE::Component::MessageQueue::Statistics::Publish::YAML>
+
 =head1 AUTHOR
 
 Daisuke Maki E<lt>daisuke@endeworks.jpE<gt>

@@ -206,7 +206,7 @@ __END__
 =head1 NAME
 
 POE::Component::MessageQueue::Storage::Complex -- A configurable storage
-engine that keeps a front-store (something fast) and a back store 
+engine that keeps a front-store (something fast) and a back-store 
 (something persistent), allowing you to specify a timeout and an action to be 
 taken when messages in the front-store expire. 
 
@@ -223,7 +223,7 @@ taken when messages in the front-store expire.
 			throttle_max => 2,
 			front_store => POE::Component::MessageQueue::Storage::BigMemory->new(),
 			back_store => POE::Component::MessageQueue::Storage::Throttled->new({
-		  	storage => My::Persistent::But::Slow::Datastore->new(),	
+				storage => My::Persistent::But::Slow::Datastore->new(),	
 			}),
 			expire_messages => sub {
 				my $arrayref_of_message_ids = shift;
