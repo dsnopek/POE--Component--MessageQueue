@@ -124,13 +124,14 @@ sub remove_multiple
 sub remove_all 
 {
 	my ($self, $callback) = @_;
+	my $destinations = $self->{messages};
 	if ($callback) 
 	{
-		my @messages = ();
-		push(@messages, @{$_}) foreach (values %{$self->messages});
-		$callback->(\@messages);
+		my @result = ();
+		push(@result, @$_) foreach (values %$destinations);	
+		$callback->(\@result);
 	}
-	%{$self->{messages}} = ();
+	%$destinations = ();
 	return;
 }
 

@@ -246,7 +246,7 @@ sub shutdown
 		'Forcing all messages from the front-store into the back-store...'
 	);
 
-	my $continuation = sub {
+	$self->{front_store}->remove_all(sub {
 		my $message_aref = shift;
 		my @messages = grep { $_->{persistent} } (@$message_aref);
 		
@@ -261,8 +261,7 @@ sub shutdown
 
 		$self->{front_store}->shutdown();
 		$self->{back_store}->shutdown();
-	};
-	$self->{front_store}->remove_all($continuation);
+	});
 }
 
 1;

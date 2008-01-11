@@ -179,11 +179,15 @@ sub store
 sub remove
 {
 	my ($self, $message_id, $callback) = @_;
-	$self->remove_multiple([$message_id], $callback && sub {
-		my $aref = shift;
-		my $val = scalar @$aref ? $aref->[0] : undef;
-		$callback->($val);
-	});
+	my $message = delete $self->{throttle_buffer}->{$message_id};
+	if ($message)
+	{
+		$callback->($message) if $callback;
+	}
+	else
+	{
+		$self->{storage}->remove($message_id, $callback);
+	}
 }
 
 sub remove_multiple
@@ -213,6 +217,7 @@ sub remove_multiple
 			$callback->(\@result);
 		});
 	}
+	# If there was stuff in storage, the callback has already been handled.
 	elsif ($callback)
 	{
 		$callback->(\@result);
