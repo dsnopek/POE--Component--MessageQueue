@@ -239,9 +239,9 @@ sub claim_and_retrieve
 		# claim away!
 		$self->_claim( $message );
 
+		# declare the destination ready for more action!
+		$self->call_back('destination_ready', $destination);
 	}
-	# declare the destination ready for more action!
-	$self->call_back('destination_ready', $destination);
 
 	return;
 }

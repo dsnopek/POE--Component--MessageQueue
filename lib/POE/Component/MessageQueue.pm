@@ -515,7 +515,7 @@ sub route_frame
 		my $message_id = $frame->headers->{'message-id'};
 
 		$self->_log( 'notice',
-			sprintf ("RECV (%i): ACK - message %i",
+			sprintf ("RECV (%i): ACK - message %s",
 				$client->{client_id},
 				$message_id)
 		);

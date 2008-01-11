@@ -125,7 +125,7 @@ sub _message_stored
 			my $count = (scalar @{$self->{throttle_order}});
 
 			# if we have a throttled message then send it!
-			$self->_log('STORE: Sending throttled message from the buffer to the'. 
+			$self->_log('STORE: Sending throttled message from the buffer to the '. 
 			            "storage engine.  (Total throttled: $count)");
 			$self->{storage}->store($to_store);
 		}
@@ -194,8 +194,14 @@ sub remove_multiple
 	# Collect the ones in the throttle buffer
 	foreach my $id (@$message_ids) {
 		my $message = delete $self->{throttle_buffer}->{$id};
-		my @args = $message ? (@result, $message) : (@in_storage, $id);
-		push(@args); # rofl
+		if ($message)
+		{
+			push(@result, $message);
+		}
+		else
+		{
+			push(@in_storage, $id);
+		}
 	}
 	
 	# Pull the rest out of real storage, if there is any such thing as "rest"

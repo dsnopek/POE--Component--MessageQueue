@@ -153,7 +153,7 @@ sub _make_db
 	{
 		$dbh->do( MESSAGES_SCHEMA );
 		$dbh->do( META_SCHEMA );
-		$dbh->do(q{INSERT INTO meta (key, value) ('version', '0.1.8')});
+		$dbh->do(q{INSERT INTO meta (key, value) VALUES ('version', '0.1.8')});
 	}
 	$dbh->disconnect();
 }

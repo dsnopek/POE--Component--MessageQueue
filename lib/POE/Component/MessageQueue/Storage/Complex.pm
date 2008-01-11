@@ -44,9 +44,9 @@ sub new
 				{
 					$self->_log('info',
 						'STORE: COMPLEX: ' .
-						"Moving expired message $_->{message_id} into backing store"
+						"Moving expired message $msg->{message_id} into backing store"
 					);
-					$self->{back_store}->store($_);
+					$self->{back_store}->store($msg);
 				}
 			};
 			$self->{front_store}->remove_multiple(shift, $continuation);
@@ -198,7 +198,7 @@ sub claim_and_retrieve
 {
 	my $self = shift;
 
-	rturn $self->{front_store}->claim_and_retrieve(@_) || 
+	return $self->{front_store}->claim_and_retrieve(@_) || 
 		$self->{back_store}->claim_and_retrieve(@_);
 }
 

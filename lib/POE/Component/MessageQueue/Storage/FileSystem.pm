@@ -151,6 +151,37 @@ sub store
 	$self->{info_storage}->store( $message );
 }
 
+sub hard_delete
+{
+	my ($self, $id) = @_; 
+	
+	# Just unlink it unless there are pending writes
+	return $self->unlink_file($id) unless delete $self->{pending_writes}->{$id};
+
+	my $info = $self->{file_wheels}->{$id};
+	if ($info) 
+	{
+		$self->_log('debug',
+			"STORE: FILE: Stopping wheels for message $id (removing)"
+		);
+		my $wheel = $info->{write_wheel} || $info->{read_wheel};
+		$wheel->shutdown_input();
+		$wheel->shutdown_output();
+
+		# Mark for deletion: we'll detect this primarly in 
+		# _write_flushed_event and unlink the file at that time 
+		# (prevents a file descriptor leak)
+		$info->{delete_me} = 1;
+	}
+	else
+	{
+		# If we haven't started yet, _write_message_to_disk will just abort.
+		$self->_log('debug', 
+			"STORE: FILE: Removing message $id before writing started"
+		);
+	}
+}
+
 sub unlink_file
 {
 	my ($self, $message_id) = @_;
@@ -168,6 +199,7 @@ sub unlink_file
 sub _remove_underneath
 {
 	my ($self, $remover, $callback) = @_;
+
 	# Remover does the info-storage remove call and sends us an aref of messages
 	# (if necessary - if $callback wasn't specified, then we just discard them).
 	$remover->($callback && sub {
@@ -188,47 +220,35 @@ sub _remove_underneath
 
 			my $message = $messages->[$index];
 			my $id = $message->{message_id};
-			my $body = delete $self->{pending_writes}->{$id};
-			if ($body) # We haven't finished writing yet
+			my $body = $self->{pending_writes}->{$id};
+			if ($body) 
 			{
-				my $info = $self->{file_wheels}->{$id};
-				if ($info) # But we have started.  Cancel!
-				{
-					$self->_log('debug',
-						"STORE: FILE: Stopping wheels for message $id (removing)"
-					);
-					my $wheel = $info->{write_wheel} || $info->{read_wheel};
-					$wheel->shutdown_input();
-					$wheel->shutdown_output();
-		
-					# Mark for deletion: we'll detect this primarly in 
-					# _write_flushed_event and unlink the file at that time 
-					#(prevents a file descriptor leak)
-					$info->{delete_me} = 1;
-				}
-				else
-				{
-					# If we haven't started yet, _write_message_to_disk will just abort.
-					$self->_log('debug', 
-						"STORE: FILE: Removing message $id before writing started"
-					);
-				}
+				$self->hard_delete($id);
 				$message->{body} = $body;
 				push(@output, $message);
-				return $recurse->($recurse, $index++)
+				$recurse->($recurse, $index++)
 			}
-			# Don't have the body any more, so read from disk.
-			$poe_kernel->post($self->{session}, '_read_message_from_disk',
-				$message->{message_id}, sub { 
-					$body = shift;
-					$message->{body} = $body;
-					# If we didn't get a body, just discard this message.
-					push(@output, $message) if $body;
-					$recurse->($recurse, $index++);
-					return;
-			});
+			else
+			{
+				# Don't have the body any more, so read from disk.
+				$poe_kernel->post($self->{session}, '_read_message_from_disk', $id, 
+					sub { 
+						$body = shift;
+						$message->{body} = $body;
+						# If didn't get a body, there wasn't one to get.
+						if ($body)
+						{
+							push(@output, $message);
+						$self->unlink_file($id);
+						}
+						$recurse->($recurse, $index++);
+						return;
+					},
+				);
+			}
 		};
 		$loop->($loop, 0);
+		return;
 	});
 }
 
@@ -236,9 +256,13 @@ sub remove
 {
 	my ($self, $message_id, $callback) = @_;
 	
+	# Kill the file if we're not going to care what's in it
+	$self->hard_delete($message_id) unless $callback;
+
 	$self->_remove_underneath(sub {
 		# remover: Remove single message and pack it up in an aref 
 		my $send = shift;
+	
 		$self->{info_storage}->remove($message_id, $send && sub {
 			my $message = shift;
 			$send->([$message]);
@@ -258,6 +282,11 @@ sub remove_multiple
 {
 	my ($self, $message_ids, $callback) = @_;
 
+	unless ($callback)
+	{
+		$self->hard_delete($_) foreach (@$message_ids);
+	}
+
 	$self->_remove_underneath(sub {
 		$self->{info_storage}->remove_multiple($message_ids, shift)
 	}, $callback);
@@ -266,6 +295,23 @@ sub remove_multiple
 sub remove_all
 {
 	my ($self, $callback) = @_;
+
+	unless ($callback)
+	{
+		# Delete all the message files that don't have writes pending
+		use DirHandle;
+		my $dh = DirHandle->new($self->{data_dir});
+		foreach my $fn ($dh->read())
+		{
+			if ($fn =~ /msg-\(.*\)\.txt/)
+			{
+				my $id = $1;
+				$self->unlink_file($id) unless exists $self->{pending_writes}->{$id};	
+			}
+		}
+		# Do the special dance for deleting those that are pending
+		$self->hard_delete($_) foreach (keys %{$self->{pending_writes}});
+	}
 
 	$self->_remove_underneath(sub {
 		$self->{info_storage}->remove_all(shift);
@@ -415,7 +461,7 @@ sub _read_message_from_disk
 	}
 
 	# setup the wheel
-	my $fn = "$self->{data_dir}/msg-$id}.txt";
+	my $fn = "$self->{data_dir}/msg-$id.txt";
 	my $fh = IO::File->new( $fn );
 	
 	$self->_log( 'debug', "STORE: FILE: Starting to read $fn from disk" );
