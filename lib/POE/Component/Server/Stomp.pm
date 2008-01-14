@@ -19,14 +19,14 @@ package POE::Component::Server::Stomp;
 
 use POE::Session;
 use POE::Component::Server::TCP;
-use POE::Filter::Stream;
+use POE::Filter::Stomp;
 use IO::String;
 use Net::Stomp::Frame;
 use Carp qw(croak);
 use vars qw($VERSION);
 use strict;
 
-$VERSION = '0.2.2';
+$VERSION = '0.2.3';
 
 sub new
 {
@@ -59,11 +59,8 @@ sub new
 	{
 		my ($kernel, $input) = @_[ KERNEL, ARG0 ];
 
-		# create the frame.
-		my $frame = _parse_frame( $input );
-
 		# Replace ARG0 with the parsed frame.
-		splice(@_, ARG0, 1, $frame);
+		splice(@_, ARG0, 1, $input);
 
 		# pass to the user handler
 		$handle_frame->(@_);
@@ -81,7 +78,8 @@ sub new
 		ClientError        => $client_error,
 		ClientDisconnected => $client_disconnected,
 
-		ClientFilter => [ "POE::Filter::Line", Literal => "\000" ],
+		# Use Keven Esteb's awesome Stomp filter module!
+		ClientFilter => "POE::Filter::Stomp",
 
 		# pass everything left as arguments to the PoCo::Server::TCP
 		# contructor.
@@ -90,43 +88,6 @@ sub new
 
 	# POE::Component::Server::TCP does it!  So, I do it too.
 	return undef;
-}
-
-sub _parse_frame
-{
-	my ($input) = @_;
-
-	my $io = IO::String->new( $input );
-
-	my $command;
-	my $headers;
-	my $body;
-
-	# read the command
-	$command = $io->getline;
-	chop $command;
-
-	# read headers
-	while (1)
-	{
-		my $line = $io->getline;
-		chop $line;
-		last if $line eq "";
-		my ( $key, $value ) = split /: ?/, $line, 2;
-		$headers->{$key} = $value;
-	}
-
-	# read the body (all the remaining data)
-	$io->read( $body, (length($input) - $io->tell()) );
-
-	# create the frame.
-	my $frame = Net::Stomp::Frame->new({
-		command => $command,
-		headers => $headers,
-		body    => $body
-	});
-
-	return $frame;
 }
 
 1;
