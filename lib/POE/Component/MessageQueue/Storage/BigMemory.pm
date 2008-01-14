@@ -171,7 +171,7 @@ sub disown
 {
 	my ($self, $destination, $client_id) = @_;
 	my $q = $self->{claimed}->{$client_id} || return;
-	my $iterator = $q;
+	my $iterator = $q->first();
 
 	while ($iterator = $iterator->next())
 	{
