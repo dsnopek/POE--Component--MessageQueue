@@ -282,14 +282,14 @@ sub _client_error
 	}
 }
 
-sub destination_to_queue 
+sub _destination_to_queue 
 {
 	$_ = shift;
 	return unless m{/queue/(.*)};
 	return $1;
 }
 
-sub destination_to_topic
+sub _destination_to_topic
 {
 	$_ = shift;
 	return unless m{/topic/(.*)};
@@ -299,7 +299,7 @@ sub destination_to_topic
 sub pump_by_destination
 {
 	my ($self, $dest) = @_;
-	my $queue_name = destination_to_queue($dest);
+	my $queue_name = _destination_to_queue($dest);
 	return unless $queue_name;
 	$self->get_queue($queue_name)->pump();
 }
@@ -316,7 +316,7 @@ sub _dispatch_from_store
 {
 	my ($self, $message, $destination, $client_id) = @_;
 	
-	my $queue_name = destination_to_queue($destination);
+	my $queue_name = _destination_to_queue($destination);
 	return unless $queue_name;
 
 	my $queue = $self->get_queue( $queue_name );
@@ -430,11 +430,11 @@ sub route_frame
 	my $destination = $frame->headers->{destination};
 
 	my $queue_or_topic = sub {
-		if (my $name = destination_to_queue($destination)) 
+		if (my $name = _destination_to_queue($destination)) 
 		{
 			return $self->get_queue($name);
 		}
-		elsif (my $name = destination_to_topic($destination))
+		elsif (my $name = _destination_to_topic($destination))
 		{
 			return $self->get_topic($name);
 		}
@@ -469,7 +469,7 @@ sub route_frame
 				stored      => 0
 			});
 
-			if (my $queue_name = destination_to_queue($destination))
+			if (my $queue_name = _destination_to_queue($destination))
 			{
 				my $queue = $self->get_queue( $queue_name );
 
@@ -486,7 +486,7 @@ sub route_frame
 					message => $message 
 				});
 			}
-			elsif (my $topic_name = destination_to_topic($destination))
+			elsif (my $topic_name = _destination_to_topic($destination))
 			{
 				my $topic = $self->get_topic($topic_name);
 
