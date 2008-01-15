@@ -228,6 +228,9 @@ sub remove_client
 		$queue->remove_subscription( $client );
 	}
 
+	# Unsubscribe from all topics
+	$_->remove_subscription($client) foreach (values %{$self->{topics}});
+
 	# remove from the client list
 	delete $self->{clients}->{$client_id};
 

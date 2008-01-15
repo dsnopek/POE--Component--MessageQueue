@@ -32,17 +32,29 @@ sub new
 	return $self;
 }
 
+sub notify
+{
+	my ($self, @rest) = @_;
+	$self->{notify}->notify(@rest);
+}
+
 sub add_subscription
 {
 	my ($self, $client) = @_;
-	$self->{clients}->{$client->{client_id}} = $client;
+	my ($cid, $list) = ($client->{client_id}, $self->{clients});
+
+	unless (exists $list->{$cid}) {
+		$list->{$cid} = $client;
+		$self->notify('subscribe', { topic => $self });
+	}
 	return;
 }
 
 sub remove_subscription
 {
 	my ($self, $client) = @_;
-	delete $self->{clients}->{$client->{client_id}};
+	my $deleted = delete $self->{clients}->{$client->{client_id}};
+	$self->notify('unsubscribe', { topic => $self }) if $deleted;
 	return;
 }
 
@@ -52,13 +64,10 @@ sub send_message
 
 	foreach my $client (values %{$self->{clients}})
 	{
-		$self->{notify}->notify('dispatch', {
-			topic   => $self,
-			message => $message,
-			client  => $client,
-		});
 		$client->send_frame($message->create_stomp_frame());
 	}
+
+	$self->notify('dispatch', {topic => $self, message => $message});
 
 	return;
 }
