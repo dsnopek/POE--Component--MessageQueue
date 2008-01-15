@@ -16,6 +16,7 @@ requires 'POE::Component::Server::TCP';
 requires 'POE::Component::Logger';
 requires 'POE::Component::Generic' => 0.1001;
 requires 'POE::Wheel::ReadWrite';
+requires 'POE::Filter::Stomp' => 0.02;
 requires 'Net::Stomp';
 requires 'Exception::Class::DBI';
 requires 'Exception::Class::TryCatch';
