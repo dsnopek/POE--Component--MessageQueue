@@ -21,6 +21,7 @@ use POE 0.38;
 use POE::Component::Server::Stomp;
 use POE::Component::MessageQueue::Client;
 use POE::Component::MessageQueue::Queue;
+use POE::Component::MessageQueue::Topic;
 use POE::Component::MessageQueue::Message;
 use POE::Component::MessageQueue::IDGenerator::UUID;
 use Net::Stomp;
@@ -80,6 +81,7 @@ sub new
 		logger    => $logger,
 		clients   => { },
 		queues    => { },
+		topics    => { },
 		needs_ack => { },
 		notify    => Event::Notify->new(),
 		observers => $observers,
@@ -185,6 +187,17 @@ sub get_client
 	return $self->{clients}->{$client_id};
 }
 
+sub get_topic
+{
+	my ($self, $name) = @_;
+	my $topics = $self->{topics};
+
+	return ($topics->{$name}) || 
+	       ($topics->{$name} = POE::Component::MessageQueue::Topic->new(
+	         $name, $self->{notify}
+	       ));
+}
+
 sub get_queue
 {
 	my $self = shift;
@@ -214,6 +227,9 @@ sub remove_client
 		my $queue = $self->get_queue( $queue_name );
 		$queue->remove_subscription( $client );
 	}
+
+	# Unsubscribe from all topics
+	$_->remove_subscription($client) foreach (values %{$self->{topics}});
 
 	# remove from the client list
 	delete $self->{clients}->{$client_id};
@@ -266,35 +282,44 @@ sub _client_error
 	}
 }
 
+sub _destination_to_queue 
+{
+	$_ = shift;
+	return unless m{/queue/(.*)};
+	return $1;
+}
+
+sub _destination_to_topic
+{
+	$_ = shift;
+	return unless m{/topic/(.*)};
+	return $1;
+}
+
+sub pump_by_destination
+{
+	my ($self, $dest) = @_;
+	my $queue_name = _destination_to_queue($dest);
+	return unless $queue_name;
+	$self->get_queue($queue_name)->pump();
+}
+
 sub _message_stored
 {
 	my ($self, $message) = @_;
-	
-	my $destination = $message->{destination};
-	my $queue;
-
-	if ( $destination =~ /\/queue\/(.*)/ )
-	{
-		my $queue_name = $1;
-
-		$queue = $self->get_queue( $queue_name );
-	}
 
 	# pump the queue for good luck!
-	$queue->pump();
+	$self->pump_by_destination($message->{destination});	
 }
 
 sub _dispatch_from_store
 {
 	my ($self, $message, $destination, $client_id) = @_;
 	
-	my $queue;
-	if ( $destination =~ /\/queue\/(.*)/ )
-	{
-		my $queue_name = $1;
+	my $queue_name = _destination_to_queue($destination);
+	return unless $queue_name;
 
-		$queue = $self->get_queue( $queue_name );
-	}
+	my $queue = $self->get_queue( $queue_name );
 
 	my $client = $self->get_client( $client_id );
 
@@ -330,14 +355,7 @@ sub _destination_store_ready
 	my ($self, $destination) = @_;
 
 	#print "Queue is ready: $destination\n";
-
-	if ( $destination =~ /\/queue\/(.*)/ )
-	{
-		my $queue_name = $1;
-		my $queue = $self->get_queue( $queue_name );
-
-		$queue->pump();
-	}
+	$self->pump_by_destination($destination);	
 }
 
 sub _shutdown_complete
@@ -367,12 +385,7 @@ sub _pump
 {
 	my ($self, $kernel, $destination) = @_[ OBJECT, KERNEL, ARG0 ];
 
-	if ( $destination =~ /\/queue\/(.*)/ )
-	{
-		my $queue_name = $1;
-		my $queue = $self->get_queue( $queue_name );
-		$queue->pump();
-	}
+	$self->pump_by_destination($destination);
 }
 
 sub pump_deferred
@@ -413,45 +426,41 @@ sub route_frame
 		$frame  = shift;
 	}
 
-	if ( $frame->command eq 'CONNECT' )
-	{
-		$self->_log( 'notice',
-			sprintf ("RECV (%i): CONNECT %s:%s",
-				$client->{client_id},
-				$frame->headers->{login},
-				$frame->headers->{passcode})
-		);
-		
-		# connect!
-		$client->connect({
-			login    => $frame->headers->{login},
-			passcode => $frame->headers->{passcode}
-		});
-	}
-	elsif ( $frame->command eq 'DISCONNECT' )
-	{
-		$self->_log( 'notice', sprintf("RECV (%i): DISCONNECT", $client->{client_id}) );
+	my $cid = $client->{client_id};
+	my $destination = $frame->headers->{destination};
 
-		# disconnect, yo!
-		$self->remove_client( $client->{client_id} );
-	}
-	elsif ( $frame->command eq 'SEND' )
-	{
-		my $destination = $frame->headers->{destination};
-		my $persistent  = $frame->headers->{persistent} eq 'true';
-
-		$self->_log( 'notice',
-			sprintf ("RECV (%i): SEND message (%i bytes) to %s (persistent: %i)",
-				$client->{client_id},
-				length $frame->body,
-				$destination,
-				$persistent)
-		);
-
-		if ( $destination =~ /^\/queue\/(.*)$/ )
+	my $queue_or_topic = sub {
+		if (my $name = _destination_to_queue($destination)) 
 		{
-			my $queue_name = $1;
-			my $queue = $self->get_queue( $queue_name );
+			return $self->get_queue($name);
+		}
+		elsif (my $name = _destination_to_topic($destination))
+		{
+			return $self->get_topic($name);
+		}
+		return;
+	};
+
+	my %handlers = (
+		CONNECT => sub {
+			my $login = $frame->headers->{login};
+			my $passcode = $frame->headers->{passcode};
+
+			$self->_log('notice', "RECV ($cid): CONNECT $login:$passcode");
+			$client->connect({login => $login, passcode => $passcode});
+		},
+
+		DISCONNECT => sub {
+			$self->_log( 'notice', "RECV ($cid): DISCONNECT");
+			$self->remove_client($cid);
+		},
+
+		SEND => sub {
+			my $persistent  = $frame->headers->{persistent} eq 'true';
+
+			$self->_log('notice',
+				sprintf ("RECV (%s): SEND message (%i bytes) to %s (persistent: %i)",
+					$cid, length $frame->body, $destination, $persistent));
 
 			my $message = $self->create_message({
 				destination => $destination,
@@ -460,88 +469,92 @@ sub route_frame
 				stored      => 0
 			});
 
-			$self->{notify}->notify( 'recv', {
-				message => $message,
-				queue   => $queue,
-				client  => $client,
-			});
+			if (my $queue_name = _destination_to_queue($destination))
+			{
+				my $queue = $self->get_queue( $queue_name );
 
-			$queue->enqueue( $message );
+				$self->{notify}->notify( 'recv', {
+					message => $message,
+					queue   => $queue,
+					client  => $client,
+				});
 
-			$self->{notify}->notify( 'store', { queue => $queue, message => $message } );
-		}
-		else
-		{
-			$self->_log( 'error', "Don't know how to handle destination: $destination" );
-		}
-	}
-	elsif ( $frame->command eq 'SUBSCRIBE' )
+				$queue->enqueue( $message );
+
+				$self->{notify}->notify('store', { 
+					queue   => $queue, 
+					message => $message 
+				});
+			}
+			elsif (my $topic_name = _destination_to_topic($destination))
+			{
+				my $topic = $self->get_topic($topic_name);
+
+				$self->{notify}->notify( 'recv', {
+					message => $message,
+					topic   => $topic,
+					client  => $client,
+				});
+
+				$topic->send_message($message);
+			}
+			else
+			{
+				$self->_log('error', 
+					"Don't know how to handle destination: $destination");
+			}
+		},
+
+		SUBSCRIBE => sub {
+			my $ack_type = $frame->headers->{ack} || 'auto';
+
+			$self->_log('notice',
+				"RECV ($cid): SUBSCRIBE $destination (ack: $ack_type)");
+
+			if (my $thing = $queue_or_topic->())
+			{
+				$self->_log('notice', 
+					"MASTER: Subscribing client $cid to $destination"); 
+				$thing->add_subscription($client, $ack_type);
+			}
+		},
+
+		UNSUBSCRIBE => sub {
+			$self->_log('notice', "RECV ($cid): UNSUBSCRIBE $destination");
+
+			if (my $thing = $queue_or_topic->())
+			{
+				$self->_log('notice', 
+					"MASTER: Unsubscribing client $cid from $destination");
+				$thing->remove_subscription($client);
+			}
+		},
+
+		ACK => sub {
+			my $message_id = $frame->headers->{'message-id'};
+			$self->_log('notice', "RECV ($cid): ACK - message $message_id");
+			$self->ack_message($client, $message_id);
+		},
+	);
+
+	if (my $fn = $handlers{$frame->command})
 	{
-		my $destination = $frame->headers->{destination};
-		my $ack_type    = $frame->headers->{ack} || 'auto';
-
-		$self->_log( 'notice',
-			sprintf ("RECV (%i): SUBSCRIBE %s (ack: %s)",
-				$client->{client_id},
-				$destination,
-				$ack_type)
-		);
-
-		if ( $destination =~ /^\/queue\/(.*)$/ )
+		$fn->();
+		# Send receipt on anything but a connect
+		if ($frame->command ne 'CONNECT' && 
+				$frame->headers && 
+				(my $receipt = $frame->headers->{receipt}))
 		{
-			my $queue_name = $1;
-			my $queue = $self->get_queue( $queue_name );
-
-			$self->_log( 'notice', "MASTER: Subscribing client $client->{client_id} to $queue_name" );
-
-			$queue->add_subscription( $client, $ack_type );
+			$client->send_frame(Net::Stomp::Frame->new({
+				command => 'RECEIPT',
+				headers => {receipt => $receipt},
+			}));
 		}
-	}
-	elsif ( $frame->command eq 'UNSUBSCRIBE' )
-	{
-		my $destination = $frame->headers->{destination};
-
-		$self->_log( 'notice',
-			sprintf ("RECV (%i): UNSUBSCRIBE %s\n",
-				$client->{client_id},
-				$destination)
-		);
-
-		if ( $destination =~ /^\/queue\/(.*)$/ )
-		{
-			my $queue_name = $1;
-			my $queue = $self->get_queue( $queue_name );
-
-			$self->_log( 'notice', "MASTER: UN-subscribing client $client->{client_id} from $queue_name" );
-
-			$queue->remove_subscription( $client );
-		}
-	}
-	elsif ( $frame->command eq 'ACK' )
-	{
-		my $message_id = $frame->headers->{'message-id'};
-
-		$self->_log( 'notice',
-			sprintf ("RECV (%i): ACK - message %i",
-				$client->{client_id},
-				$message_id)
-		);
-
-		$self->ack_message( $client, $message_id );
 	}
 	else
 	{
-		$self->_log( 'error', "ERROR: Don't know how to handle frame: " . $frame->as_string );
-	}
-
-	if ($frame->command ne 'CONNECT' && $frame->headers && (my $receipt = $frame->headers->{receipt}))
-	{
-		$client->send_frame( Net::Stomp::Frame->new( {
-			command => 'RECEIPT',
-			headers => {
-				receipt => $receipt
-			}
-		} ) );
+		$self->_log('error', 
+			"ERROR: Don't know how to handle frame: " . $frame->as_string);
 	}
 }
 
