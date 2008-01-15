@@ -114,8 +114,9 @@ sub create_stomp_frame
 	my $frame = Net::Stomp::Frame->new({
 		command => 'MESSAGE',
 		headers => {
-			'destination' => $self->{destination},
-			'message-id'  => $self->{message_id},
+			'destination'    => $self->{destination},
+			'message-id'     => $self->{message_id},
+			'content-length' => $self->{size},
 		},
 		body => $self->{body}
 	});
