@@ -313,7 +313,7 @@ sub _message_stored
 	$self->pump_by_destination($message->{destination});	
 }
 
-sub _dispatch_from_store
+sub _dispatch_message
 {
 	my ($self, $message, $destination, $client_id) = @_;
 	
@@ -351,7 +351,7 @@ sub _dispatch_from_store
 	}
 }
 
-sub _destination_store_ready
+sub _destination_ready
 {
 	my ($self, $destination) = @_;
 
