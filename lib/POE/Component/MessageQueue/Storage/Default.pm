@@ -12,15 +12,15 @@ use DBI;
 use constant META_SCHEMA => <<'EOF';
 CREATE TABLE meta
 (
-	key   text primary key,
-	value text
+	key   varchar(255) primary key,
+	value varchar(255)
 );
 EOF
 
 use constant MESSAGES_SCHEMA => <<'EOF';
 CREATE TABLE messages
 (
-	message_id  text primary key,
+	message_id  varchar(255) primary key,
 	destination varchar(255) not null,
 	persistent  char(1) default 'Y' not null,
 	in_use_by   int,

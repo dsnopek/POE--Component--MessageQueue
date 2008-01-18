@@ -86,6 +86,20 @@ sub get_queue
 	return $queue;
 }
 
+sub get_topic
+{
+	my ($self, $name) = @_;
+	my $topic = $self->{statistics}{topics}{$name};
+
+	unless ($topic)
+	{
+		$topic = $self->{statistics}{topics}{$name} = {};
+		$topic->{$_} = 0 foreach qw(sent total_sent total_recvd avg_size_recvd);
+	}
+
+	return $topic;
+}
+
 sub shutdown 
 {
 	my $self = shift;
@@ -125,11 +139,17 @@ sub reaverage {
 	return ($average * ($total - 1) + $size) / $total;
 }
 
+sub get_destination
+{
+	my ($self, $data) = @_;
+	return ($data->{queue} && $self->get_queue($data->{queue}->{queue_name})) ||
+	       ($data->{topic} && $self->get_topic($data->{topic}->{name}));
+}
+
 sub notify_recv
 {
 	my ($self, $data) = @_;
-
-	my $stats = $self->get_queue( $data->{queue}->{queue_name} );
+	my $stats = $self->get_destination($data);
 	$stats->{total_recvd}++;
 
 	# recalc the average
@@ -151,16 +171,19 @@ sub message_handled
 	$h->{total_sent}++;
 
 	# Per-queue
-	my $stats = $self->get_queue( $data->{queue}->{queue_name} );
+	my $stats = $self->get_destination($data);
 
-	$stats->{stored}--;
 	$stats->{sent}++;
 	$stats->{total_sent}++;
 	$stats->{last_sent} = scalar localtime();
 
+	# Topics don't count. :)
+	$stats->{stored}-- unless exists $data->{topic};
+
 	# We check if timestamp is set, because it might not be, in the specific
 	# case where the database was upgraded from pre-0.1.6.
-	if ( $info->{timestamp} )
+	# Topics don't get stored, so this doesn't make sense for them.
+	if ( $info->{timestamp} && not exists $data->{topic} )
 	{
 		# recalc the average
 		$stats->{avg_secs_stored} = reaverage(
@@ -176,6 +199,11 @@ sub notify_dispatch
 	my ($self, $data) = @_;
 
 	my $receiver = $data->{client};
+	if (exists $data->{topic})
+	{
+		$self->message_handled($data);
+		return;
+	}
 
 	my $sub;
 	if ( ref($receiver) eq 'POE::Component::MessageQueue::Client' )
@@ -223,7 +251,7 @@ sub notify_subscribe
 	$h->{subscriptions}++;
 
 	# Per-queue
-	my $stats = $self->get_queue( $data->{queue}->{queue_name} );
+	my $stats = $self->get_destination($data);
 	$stats->{subscriptions}++;
 }
 
@@ -236,7 +264,7 @@ sub notify_unsubscribe
 	$h->{subscriptions}--;
 
 	# Per-queue
-	my $stats = $self->get_queue( $data->{queue}->{queue_name} );
+	my $stats = $self->get_destination($data);
 	$stats->{subscriptions}--;
 }
 
@@ -270,8 +298,13 @@ To enable outputs, you need to create a separate Publish object:
 		statistics => $statistics
 	);
 
-Please refer to POE::Component::MessageQueue::Statistics::Publish for details
+Please refer to L<POE::Component::MessageQueue::Statistics::Publish> for details
 on how to enable output
+
+=head1 SEE ALSO
+
+L<POE::Component::MessageQueue::Statistics::Publish>,
+L<POE::Component::MessageQueue::Statistics::Publish::YAML>
 
 =head1 AUTHOR
 

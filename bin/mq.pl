@@ -60,6 +60,7 @@ sub usage
 	my $X = ' ' x (length $0);
     print <<"ENDUSAGE";
 $0 [--port|-p <num>] [--hostname|-h <host>]
+$X [--front-store <str>] [--nouuids]
 $X [--timeout|-i <seconds>]   [--throttle|-T <count>]
 $X [--data-dir <path_to_dir>] [--log-conf <path_to_file>]
 $X [--stats] [--stats-interval|-i <seconds>]
@@ -72,10 +73,10 @@ SERVER OPTIONS:
                           (Default: localhost)
 
 STORAGE OPTIONS:
+  --front-store -f <str>  Specify which in-memory storage engine to use for
+                          the front-store (can be memory or bigmemory).
   --timeout  -i <secs>    The number of seconds to keep messages in the 
                           front-store (Default: 4)
-  --front-store -f        Specify which in-memory storage engine to use for
-                          the front-store (can be memory or bigmemory).
   --[no]uuids             Use (or do not use) UUIDs instead of incrementing
                           integers for message IDs.  Default: uuids 
   --throttle -T <count>   The number of messages that can be stored at once 

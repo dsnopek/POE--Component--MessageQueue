@@ -1,7 +1,7 @@
 CREATE TABLE meta
 (
-	key   text primary key,
-	value text
+	key   varchar(255) primary key,
+	value varchar(255)
 );
 INSERT INTO meta (key, value) VALUES ('version', '0.1.8');
 
@@ -9,7 +9,7 @@ ALTER TABLE messages RENAME TO old_messages;
 
 CREATE TABLE messages
 (
-	message_id  text primary key,
+	message_id  varchar(255) primary key,
 	destination varchar(255) not null,
 	persistent  char(1) default 'Y' not null,
 	in_use_by   int,
