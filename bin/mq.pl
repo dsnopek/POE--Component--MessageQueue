@@ -30,7 +30,7 @@ my $statistics   = 0;
 my $uuids = 1;
 my $stat_interval = 10;
 my $front_store = 'memory';
-my $crashbin = undef;
+my $crash_cmd = undef;
 
 GetOptions(
 	"port|p=i"         => \$port,
@@ -46,7 +46,7 @@ GetOptions(
 	"background|b"     => \$background,
 	"debug-shell"      => \$debug_shell,
 	"pidfile|p=s"      => \$pidfile,
-	"crashbin=s"       => \$crashbin,
+	"crash-cmd=s"      => \$crash_cmd,
 	"version|v"        => \$show_version,
 	"help|h"           => \$show_usage,
 );
@@ -67,7 +67,7 @@ $X [--timeout|-i <seconds>]   [--throttle|-T <count>]
 $X [--data-dir <path_to_dir>] [--log-conf <path_to_file>]
 $X [--stats] [--stats-interval|-i <seconds>]
 $X [--background|-b] [--pidfile|-p <path_to_file>]
-$X [--crashbin <path_to_script>]
+$X [--crash-cmd <path_to_script>]
 $X [--debug-shell] [--version|-v] [--help|-h]
 
 SERVER OPTIONS:
@@ -100,7 +100,7 @@ DAEMON OPTIONS:
                           background
   --pidfile    -p <path>  The path to a file to store the PID of the process
 
-  --crashbin   <path>     The path to a script to call when crashing.
+  --crash-cmd  <path>     The path to a script to call when crashing.
                           A stacktrace will be printed to the script's STDIN.
                           (ex. 'mail root\@localhost')
 
@@ -256,16 +256,16 @@ $SIG{__DIE__} = sub {
 	}
 
 	# Only bother if one was specified.
-	if ($crashbin)
+	if ($crash_cmd)
 	{
-		if (open DIEPIPE, '|-', $crashbin)
+		if (open DIEPIPE, '|-', $crash_cmd)
 		{
 			print DIEPIPE $diemsg;
 			close DIEPIPE;	
 		}
 		else
 		{
-			print STDERR "Couldn't send crashlog to $crashbin: $!\n";
+			print STDERR "Couldn't send crashlog to $crash_cmd: $!\n";
 		}
 	}
 };
