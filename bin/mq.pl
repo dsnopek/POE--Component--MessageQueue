@@ -237,7 +237,7 @@ if ( $debug_shell )
 $SIG{__DIE__} = sub {
 	my $trace = Devel::StackTrace->new()->as_string();
 	my $banner = sprintf("\n%s\n", '=' x 30);
-	my $diemsg = sprintf("$banner Crashed: %s $banner\n$trace", 
+	my $diemsg = sprintf("$banner MQ Crashed: %s $banner\n$trace", 
 		strftime('%Y-%m-%d %H:%M:%S', localtime(time())));
 
 	# Print it first, cause don't know if the other stuff is gonna work.
