@@ -53,7 +53,7 @@ sub _make_message { POE::Component::MessageQueue::Message->new(shift) }
 
 sub store
 {
-	my ($self, $message) = @_;
+	my ($self, $message, $callback) = @_;
 
 	my $SQL = "INSERT INTO messages (message_id, destination, body, persistent, in_use_by, timestamp, size) VALUES ( ?, ?, ?, ?, ?, ?, ? )";
 
@@ -82,9 +82,8 @@ sub store
 		$self->_log("STORE: DBI: Message $message->{message_id} stored in $message->{destination}");
 	}
 
-	# The API docs say we call message_stored exactly once, even if there's an
-	# error.
-	$self->call_back('message_stored', $message);
+	# Call the callback, even if we just send it undef (that's the interface).
+	$callback->($message) if $callback;
 
 	return;
 }
@@ -198,50 +197,18 @@ sub _claim
 
 sub claim_and_retrieve
 {
-	my $self = shift;
-	my $args = shift;
+	my ($self, $destination, $client_id, $dispatch) = @_;
 
-	die "Pulled message from backstore, but there is no dispatch_message handler"
-		unless exists $self->{callbacks}->{dispatch_message};
-		
-	my $destination;
-	my $client_id;
-
-	if ( ref($args) eq 'HASH' )
-	{
-		$destination = $args->{destination};
-		$client_id   = $args->{client_id};
-	}
-	else
-	{
-		$destination = $args;
-		$client_id   = shift;
-	}
-
-	# first, we retrieve a message
 	my $message = $self->_retrieve( $destination );
 	
-	# if we actually got a message, then we need to claim it.
-	if ( defined $message )
-	{
-		# set to the client_id that's funna get it
-		$message->{in_use_by} = $client_id;
-	}
+	# if we actually got a message, claim it
+	$message->{in_use_by} = $client_id if ($message);
 
-	# send the message to the handler, regardless if we actually got
-	# one or not.
-	# NOTE: We can do this before claiming the message, so I figure, why
-	# not do it since it will give the other thread something to do.
-	$self->call_back('dispatch_message', $message, $destination, $client_id);
+	# Might as well do this now so the other thread can get on its way. :)
+	$dispatch->($message, $destination, $client_id);
 
-	if ( defined $message )
-	{
-		# claim away!
-		$self->_claim( $message );
-
-		# declare the destination ready for more action!
-		$self->call_back('destination_ready', $destination);
-	}
+	# Write the claim info to database (if we got one)
+	$self->_claim($message) if $message;
 
 	return;
 }
@@ -272,9 +239,9 @@ sub disown
 	return;
 }
 
-sub shutdown
+sub storage_shutdown
 {
-	my ($self) = @_;
+	my ($self, $complete) = @_;
 
 	$self->_log('alert', 'Shutting down DBI storage engine...');
 
@@ -282,8 +249,7 @@ sub shutdown
 	$self->{dbh}->disconnect();
 
 	# call the shutdown handler.
-	$self->call_back('shutdown_complete');
-
+	$complete->();
 	return;
 }
 

@@ -65,7 +65,7 @@ sub _force_store {
 
 sub store
 {
-	my ($self, $message) = @_;
+	my ($self, $message, $callback) = @_;
 	my $claimant = $message->{in_use_by};
 
 	if ( defined $claimant )
@@ -78,7 +78,7 @@ sub store
 	}
 
 	$self->_log('info', "STORE: BIGMEMORY: Added $message->{message_id}.");
-	$self->call_back('message_stored', $message);
+	$callback->($message) if $callback;
 	return;
 }
 
@@ -138,38 +138,24 @@ sub remove_all
 
 sub claim_and_retrieve
 {
-	my $self = shift;
-	my $args = shift;
-
-	my $destination;
-	my $client_id;
-
-	if ( ref($args) eq 'HASH' )
-	{
-		$destination = $args->{destination};
-		$client_id   = $args->{client_id};
-	}
-	else
-	{
-		$destination = $args;
-		$client_id   = shift;
-	}
+	my ($self, $destination, $client_id, $dispatch) = @_;
+	my ($q, $message);
 
 	# Find an unclaimed message
-	my $q = $self->{unclaimed}->{$destination} || return;
-	my $message = $q->dequeue() || return;
+	if (($q = $self->{unclaimed}->{$destination}) &&
+	    ($message = $q->dequeue()))
+	{
+		# Claim it
+		$message->{in_use_by} = $client_id;
+		$self->_force_store('claimed', $client_id, $message);
+		$self->_log('info',
+			"STORE: BIGMEMORY: Message $message->{message_id} ".
+			"claimed by client $client_id."
+		);
+	}
 
-	# Claim it
-	$message->{in_use_by} = $client_id;
-	$self->_force_store('claimed', $client_id, $message);
-	$self->_log('info',
-		"STORE: BIGMEMORY: Message $message->{message_id} ".
-		"claimed by client $client_id."
-	);
-
-	# Dispatch it
-	$self->call_back('dispatch_message', $message, $destination, $client_id);
-	$self->call_back('destination_ready', $destination);
+	# Dispatch it (even if undef)
+	$dispatch->($message, $destination, $client_id);
 }
 
 # unmark all messages owned by this client
@@ -192,10 +178,10 @@ sub disown
 }
 
 # We don't persist anything, so just call our complete handler.
-sub shutdown
+sub storage_shutdown
 {
-	my $self = shift;
-	$self->call_back('shutdown_complete');
+	my ($self, $complete) = @_;
+	$complete->();	
 	return;
 }
 

@@ -95,13 +95,6 @@ sub new
 		$_->register($self) for (@$observers);
 	}
 
-	# setup the storage callbacks
-	foreach my $event qw( message_stored     dispatch_message
-	                      destination_ready  shutdown_complete )
-	{
-		$self->{storage}->set_callback($event, $self->__closure("_$event"));
-	}
-
 	# get the storage object using our logger
 	$self->{storage}->set_logger( $self->{logger} );
 
@@ -303,60 +296,6 @@ sub pump_by_destination
 	my $queue_name = _destination_to_queue($dest);
 	return unless $queue_name;
 	$self->get_queue($queue_name)->pump();
-}
-
-sub _message_stored
-{
-	my ($self, $message) = @_;
-
-	# pump the queue for good luck!
-	$self->pump_by_destination($message->{destination});	
-}
-
-sub _dispatch_message
-{
-	my ($self, $message, $destination, $client_id) = @_;
-	
-	my $queue_name = _destination_to_queue($destination);
-	return unless $queue_name;
-
-	my $queue = $self->get_queue( $queue_name );
-
-	my $client = $self->get_client( $client_id );
-
-	if ( defined $message )
-	{
-		#print "MESSAGE FROM STORE\n";
-		#print Dumper $message;
-
-		$self->{notify}->notify( 'dispatch', {
-			queue => $queue,
-			message => $message,
-			client => $client
-		});
-		$queue->dispatch_message_to( $message, $client );
-	}
-	else
-	{
-		$self->_log( 'notice', "No message in backstore on $destination for $client_id" );
-
-		# We need to free up the subscription.
-		my $sub = $queue->get_subscription($client);
-		if ( defined $sub )
-		{
-			# We have to test if it exists, because the client could have
-			# disconnected already.
-			$sub->set_done_with_message();
-		}
-	}
-}
-
-sub _destination_ready
-{
-	my ($self, $destination) = @_;
-
-	#print "Queue is ready: $destination\n";
-	$self->pump_by_destination($destination);	
 }
 
 sub _shutdown_complete
@@ -631,11 +570,7 @@ sub ack_message
 
 	# ACK the subscriber back into ready mode.
 	my $sub = $queue->get_subscription( $client );
-	if ( defined $sub )
-	{
-		# Must check if subscriber is still connected before setting!
-		$sub->set_done_with_message();
-	}
+	$sub->set_done_with_message() if $sub;
 
 	$self->{notify}->notify('ack', {
 		queue => $queue,
@@ -693,7 +628,7 @@ sub shutdown
 	}
 
 	# shutdown the storage
-	$self->{storage}->shutdown();
+	$self->{storage}->storage_shutdown();
 }
 
 1;

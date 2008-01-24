@@ -51,7 +51,7 @@ sub has_message
 
 sub store
 {
-	my ($self, $message) = @_;
+	my ($self, $message, $callback) = @_;
 	my $destination = $message->{destination};
 
 	# push onto our array
@@ -61,8 +61,7 @@ sub store
 		"STORE: MEMORY: Added $message->{message_id} to in-memory store" 
 	);
 
-	# call the message_stored handler
-	$self->call_back('message_stored', $message);
+	$callback->($message) if $callback;
 }
 
 sub remove
@@ -137,22 +136,7 @@ sub remove_all
 
 sub claim_and_retrieve
 {
-	my $self = shift;
-	my $args = shift;
-
-	my $destination;
-	my $client_id;
-
-	if ( ref($args) eq 'HASH' )
-	{
-		$destination = $args->{destination};
-		$client_id   = $args->{client_id};
-	}
-	else
-	{
-		$destination = $args;
-		$client_id   = shift;
-	}
+	my ($self, $destination, $client_id, $dispatch) = @_;
 
 	my @messages = @{ $self->{messages}{$destination} || [] };
 
@@ -161,11 +145,6 @@ sub claim_and_retrieve
 	{
 		if ( not defined $message->{in_use_by} )
 		{
-			
-			die 'Pulled message from backstore, but there is no '.
-			    'dispatch_message handler' 
-				unless exists $self->{callbacks}->{'dispatch_message'};
-
 			# claim it, yo!
 			$message->{in_use_by} = $client_id;
 			$self->_log('info',
@@ -173,18 +152,11 @@ sub claim_and_retrieve
 				"claimed by client $client_id."
 			);
 
-			# dispatch message
-			$self->call_back('dispatch_message', $message, $destination, $client_id);
-
-			# let it know that the destination is ready
-			$self->call_back('destination_ready', $destination);
-
-			# we are always capable to attempt to claim
-			return 1;
+			$dispatch->($message, $destination, $client_id);
 		}
 	}
 	
-	return 0;
+	return;
 }
 
 # unmark all messages owned by this client
@@ -202,14 +174,11 @@ sub disown
 	}
 }
 
-sub shutdown
+sub storage_shutdown
 {
-	my $self = shift;
-
-	# this storage engine is so simple, it has nothing to do to
-	# shutdown!  Since its purely in memory, it can't even persist
-	# any messages.
-	$self->call_back('shutdown_complete');
+	my ($self, $complete) = @_;
+	$complete->();
+	return;
 }
 
 1;

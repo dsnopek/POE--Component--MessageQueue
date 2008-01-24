@@ -29,15 +29,6 @@ sub new
 	my $logger = POE::Component::MessageQueue::Logger->new();
 	my $self = {
 		logger    => $logger,
-		# TODO: do something with this.
-		started   => 0,
-		callbacks => {
-			message_stored    => undef,
-			dispatch_message  => undef,
-			destination_ready => undef,
-			shutdown_complete => undef,
-		},
-		callback_transforms => {},
 	};
 
 	bless  $self, $class;
@@ -49,26 +40,6 @@ sub _log
 	my $self = shift;
 	$self->{logger}->log(@_);
 	return;
-}
-
-sub call_back
-{
-	my ($self, $name, @rest) = @_;
-	my $callback = $self->{callbacks}->{$name};
-	return $callback ? $callback->(@rest) : undef; 
-}
-
-sub set_callback
-{
-	my ($self, $name, $sub) = @_;
-	$self->{callbacks}->{$name} = $sub;
-	return;
-}
-
-sub get_callback
-{
-	my ($self, $name) = @_;
-	return $self->{callbacks}->{$name};
 }
 
 sub set_logger
@@ -151,15 +122,7 @@ sub disown
 	die "Abstract.";
 }
 
-# a semi-hidden alias that we need when using a storage engine
-# behind POE::Component::MessageQueue::Storage::Generic!
 sub storage_shutdown
-{
-	shift->shutdown();
-	return;
-}
-
-sub shutdown
 {
 	my $self = shift;
 
@@ -184,21 +147,9 @@ The parent class of the provided storage engines.  This is an "abstract" class t
 
 =over 2
 
-=item set_message_stored_handler I<CODEREF>
-
-Takes a CODEREF which will get called back when store() has completed.  
-This function will be called with one argument: the message that has been 
-stored.
-
 =item set_dispatch_message_handler I<CODEREF>
 
 Takes a CODEREF which will get called back when a message has been retrieved from the store.  This will be called with three arguments: the message, the destination string, and the client id.  If no message could be retrieved the function will still be called but with the message undefined.
-
-=item set_destination_ready_handler I<CODEREF>
-
-Takes a CODEREF which will get called back when a destination is ready to be claimed from again.  This is necessary for storage engines that will lock a destination while attempting to retrieve a message.  This handler will be called when the destination is unlocked so that message queue knows that it can claim more messages.  If your storage engine doesn't lock anything, you B<must> call this handler immediately after called the above handler.  
-
-It will be called with a single argument: the destination string.
 
 =item set_shutdown_complete_handler I<CODEREF>
 

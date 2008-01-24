@@ -46,13 +46,6 @@ sub new
 	# for storing message properties
 	$self->{info_storage} = $info_storage;
 
-	$info_storage->set_callback(
-		'dispatch_message', $self->__closure('_dispatch_message')
-	);
-	$info_storage->set_callback( 
-		'shutdown_complete', $self->__closure('_shutdown_complete') 
-	);
-
 	# for keeping the message body on the FS
 	$self->{data_dir}    = $data_dir;
 	$self->{file_wheels} = { };
@@ -105,20 +98,6 @@ sub __closure
 	return $func;
 }
 
-sub set_callback
-{
-	my ($self, $name, $fn) = @_;
-	my $info = sub {$self->{info_storage}->set_callback($name, $fn)};
-	my $parent = sub {$self->SUPER::set_callback($name, $fn)};
-	my %setters = (
-		'message_stored'    => $info, 
-		'destination_ready' => $info,
-		'dispatch_message'  => $parent,
-		'shutdown_complete' => $parent,
-	);
-	return $setters{$name}->();
-}
-
 sub set_logger
 {
 	my ($self, $logger) = @_;
@@ -129,7 +108,7 @@ sub set_logger
 
 sub store
 {
-	my ($self, $message) = @_;
+	my ($self, $message, $callback) = @_;
 
 	# Grab the body and delete it from the message
 	my $body = delete $message->{body};
@@ -148,7 +127,7 @@ sub store
 		$message, $body );
 
 	# hand-off the rest of the message to the info storage
-	$self->{info_storage}->store( $message );
+	$self->{info_storage}->store($message, $callback);
 }
 
 sub hard_delete
@@ -330,27 +309,28 @@ sub disown
 	return $self->{info_storage}->disown( $destination, $client_id );
 }
 
-sub shutdown
+sub storage_shutdown
 {
-	my $self = shift;
+	my ($self, $complete) = @_;
 
-	$self->{shutdown} = 1;
+	$self->{shutdown} = sub {
+		$self->{info_storage}->storage_shutdown(sub {
+			$poe_kernel->signal($self->{session}, 'TERM');
+			$complete->();
+		});
+	};
+
 	$self->_wheel_check();
 }
 
 #
 # For handling responses from database:
 #
-
 sub _dispatch_message
 {
-	my ($self, $message, $destination, $client_id) = @_;
+	my ($self, $message, $destination, $client_id, $dispatch) = @_;
 
-	unless ($message)
-	{
-		$self->call_back('dispatch_message', undef, $destination, $client_id);
-		return;
-	}
+	return $dispatch->(undef, $destination, $client_id) unless $message;
 
 	my $id = $message->{message_id};
 	my $body = $self->{pending_writes}->{$id};
@@ -364,7 +344,7 @@ sub _dispatch_message
 		# We don't stop writing, because if the message is not ACK'd,
 		# we want it to get saved to disk.
 
-		$self->call_back('dispatch_message', $message, $destination, $client_id);
+		$dispatch->($message, $destination, $client_id);
 	}
 	else
 	{
@@ -384,19 +364,9 @@ sub _dispatch_message
 				$message = undef;
 			}
 
-			$self->call_back('dispatch_message', $message, $destination, $client_id); 
+			$dispatch->($message, $destination, $client_id); 
 		});
 	}
-}
-
-sub _shutdown_complete
-{
-	my $self = shift;
-
-	# Ok!  This means that the info storage is totally shutdown, so we
-	# are ready to kill our internal session.
-	$poe_kernel->signal( $self->{session}, 'TERM' );
-	$self->call_back('shutdown_complete');
 }
 
 #
@@ -538,16 +508,16 @@ sub _read_error
 sub _wheel_check
 {
 	my $self = shift;
-	if ( $self->{shutdown} )
+	my $shutdown = $self->{shutdown};
+	if ($shutdown)
 	{
-		my $wheel_count = scalar keys %{$self->{file_wheels}};
-		if ($wheel_count)
+		if (scalar keys %{$self->{file_wheels}})
 		{
 			$self->_log('alert', 'Waiting for disk...');
 		}
 		else
 		{
-			$self->{info_storage}->shutdown();
+			$shutdown->();
 		}
 	}
 }

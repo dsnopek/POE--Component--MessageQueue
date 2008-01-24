@@ -34,66 +34,43 @@ sub new
 
 	# The default is to move persistent messages to the backstore and to discard
 	# messages that are not persistent.	
-	$self->{expire_messages} = $args->{expire_messages} ||
+	my $expire = $args->{expire} ||
 		sub {
-			my $continuation = sub {
-				my $message_aref = shift;
-				my @messages = grep { $_->{persistent} } (@$message_aref);
+			my ($message, $callback) = @_;
 
-				foreach my $msg (@messages)
+			$self->{front_store}->remove($message, sub {
+				# The message may not be there if it was removed before it expired.
+				my $message = shift;
+				return unless $message;
+
+				if ($message->{persistent}) 
 				{
-					$self->_log('info',
-						'STORE: COMPLEX: ' .
-						"Moving expired message $msg->{message_id} into backing store"
-					);
-					$self->{back_store}->store($msg);
+					$self->_log('info', 'STORE: COMPLEX: Moving expired message '.
+						"$message->{message_id} into the backstore.");
+					$self->{back_store}->store($message, $callback);
 				}
-			};
-			$self->{front_store}->remove_multiple(shift, $continuation);
+				elsif($callback)
+				{
+					$callback->($message);
+				}
+			});
 		};
 
-	$self->{delay}      = int($self->{timeout} / 2);
-	$self->{timestamps} = {};
+	$self->{session_alias} = 'MQ-Expire-Timer';
 
 	# our session that does the timed message check-up.
 	$self->{session} = POE::Session->create(
 		inline_states => {
-			_start => sub {
-				$_[KERNEL]->yield('_check_messages');
+			'_start' => sub{ $poe_kernel->alias_set($self->{session_alias}) },
+			'_expire_message' => sub {
+				my ($kernel, @args) = @_[KERNEL, ARG0, ARG1];
+				$kernel->delay_set(_timer_up => $self->{timeout} => @args);
 			},
+			'_timer_up' => sub { $expire->(@_[ARG0,ARG1]) },	
 		},
-		object_states => [
-			$self => [
-				'_check_messages',
-			],
-		],
 	);
 
 	return bless $self, $class;
-}
-
-sub set_callback
-{
-	my ($self, $name, $fn) = @_;
-
-	# Set the callback for superclass, front store, and back store.
-	my $super_front_back = sub {
-		$self->SUPER::set_callback($name, $fn);
-		$self->{front_store}->set_callback($name, $fn);
-		$self->{back_store}->set_callback($name, $fn);
-	};
-
-	# Just for the back store.
-	my $just_back = sub {$self->{back_store}->set_callback($name, $fn)};
-
-	my %setters = (
-		'message_stored'    => $super_front_back,
-		'dispatch_message'  => $super_front_back,
-		'destination_ready' => $super_front_back,
-		'shutdown_complete' => $just_back,
-	);
-	
-	return $setters{$name}->();
 }
 
 sub set_logger
@@ -106,21 +83,20 @@ sub set_logger
 
 sub store
 {
-	my ($self, $message) = @_;
+	my ($self, $message, $callback) = @_;
 
-	$self->{front_store}->store( $message );
-
-	# mark the timestamp that this message was added 
-	# We ignore the persistent flag, because it's up to expire_message to decide
-	# what to do with that. 
-	$self->{timestamps}->{$message->{message_id}} = time();
+	$self->{front_store}->store($message, sub {
+		# Don't start ticking the clock until it finishes storing.
+		my $message = shift;
+		$poe_kernel->post($self->{session}, '_expire_message', $message, $callback);
+		$callback->($message);
+	});
 }
 
 # For these remove functions, the control flow is the same, but the
 # particulars vary.
 # front, back: call remove on their respective store with their argument as
 # the callback argument to remove.
-# stamps: deletes whatever is necessary from the timestamps hash.
 # combine: a function that aggregates the results of front and back.
 # callback: the thing to callback with the results of the remove op.
 sub _remove_underneath
@@ -132,7 +108,6 @@ sub _remove_underneath
 	{
 		$args{front}->();
 		$args{back}->();
-		$args{stamps}->();
 		return;
 	}
 
@@ -141,7 +116,6 @@ sub _remove_underneath
 		my $fresult = shift;
 		$args{back}->(sub {
 			my $bresult = shift;	
-			$args{stamps}->();
 			$args{callback}->($args{combine}->($fresult, $bresult));
 		});
 	});
@@ -155,7 +129,6 @@ sub remove
 		front    => sub { $self->{front_store}->remove($id, shift) },
 		back     => sub {  $self->{back_store}->remove($id, shift) },
 		combine  => sub { $_[0] || $_[1] },
-		stamps   => sub { delete $self->{timestamps}->{$id} },
 		callback => $cb,
 	);
 }
@@ -177,7 +150,6 @@ sub remove_multiple
 		front    => sub { $self->{front_store}->remove_multiple($id_aref, shift) },
 		back     => sub {  $self->{back_store}->remove_multiple($id_aref, shift) },
 		combine  => \&__append,
-		stamps   => sub { delete $self->{timestamps}->{$_} foreach (@$id_aref) },
 		callback => $cb,
 	);
 }
@@ -189,17 +161,20 @@ sub remove_all
 		front    => sub { $self->{front_store}->remove_all(shift) },
 		back     => sub {  $self->{back_store}->remove_all(shift) },
 		combine  => \&__append,
-		stamps   => sub { %{$self->{timestamps}} = () },
 		callback => $cb,
 	);	
 }
 
 sub claim_and_retrieve
 {
-	my $self = shift;
+	my ($self, $destination, $client_id, $dispatch) = @_;
+	my ($front, $back) = ($self->{front_store}, $self->{back_store});
 
-	return $self->{front_store}->claim_and_retrieve(@_) || 
-		$self->{back_store}->claim_and_retrieve(@_);
+	$front->claim_and_retrieve($destination, $client_id, sub {
+		my $message = shift;
+		$message ? $dispatch->($message, $destination, $client_id) :
+		           $back->claim_and_retrieve($destination, $client_id, $dispatch);
+	});
 }
 
 # unmark all messages owned by this client
@@ -211,42 +186,23 @@ sub disown
 	$self->{back_store}->disown( $destination, $client_id );
 }
 
-# our periodic check to move messages into the backing store
-sub _check_messages
+sub storage_shutdown
 {
-	my ($self, $kernel) = @_[ OBJECT, KERNEL ];
-
-	return if $self->{shutdown};
-
-	$self->_log( 'debug', 'STORE: COMPLEX: Checking for outdated messages' );
-
-	my $threshold = time() - $self->{timeout};
-	my @outdated = grep {
-		$self->{timestamps}->{$_} < $threshold
-	} (keys %{$self->{timestamps}});
-
-	$self->{expire_messages}->(\@outdated);
-	delete $self->{timestamps}->{$_} for (@outdated);
-
-	# Set timer for next expiration check.
-	$kernel->delay( '_check_messages', $self->{delay} );
-}
-
-sub shutdown
-{
-	my $self = shift;
+	my ($self, $complete) = @_;
 
 	return if $self->{shutdown};
 	$self->{shutdown} = 1;
 
 	# shutdown our check messages session
-	$poe_kernel->signal( $self->{session}, 'TERM' );
+	$poe_kernel->alias_remove($self->{session_alias});
 
 	$self->_log('alert', 
 		'Forcing all messages from the front-store into the back-store...'
 	);
 
-	$self->{front_store}->remove_all(sub {
+	my ($front, $back) = ($self->{front_store}, $self->{back_store});
+
+	$front->remove_all(sub {
 		my $message_aref = shift;
 		my @messages = grep { $_->{persistent} } (@$message_aref);
 		
@@ -256,11 +212,10 @@ sub shutdown
 				"STORE: COMPLEX: Moving message $msg->{message_id} " .
 				'into backing store.'
 			);
-			$self->{back_store}->store($msg);
+			$back->store($msg, sub {});
 		}	
 
-		$self->{front_store}->shutdown();
-		$self->{back_store}->shutdown();
+		$front->storage_shutdown(sub {$back->storage_shutdown($complete)});
 	});
 }
 
@@ -292,9 +247,9 @@ taken when messages in the front-store expire.
 			back_store => POE::Component::MessageQueue::Storage::Throttled->new({
 				storage => My::Persistent::But::Slow::Datastore->new(),	
 			}),
-			expire_messages => sub {
-				my $arrayref_of_message_ids = shift;
-				do_something($arrayref_of_message_ids);
+			expire => sub {
+				my $message_id = shift;
+				do_something($message_id);
 			},
 		})
 	});
@@ -317,11 +272,11 @@ specify, a timeout that you specify, and tells you when messages expire.
 
 The number of seconds after a message enters the front-store before it
 expires.  After this time, if the message hasn't been removed, it will be
-passed to expire_messages. 
+passed to expire. 
 
-=item expire_messages => CODEREF
+=item expire => CODEREF
 
-A function of one argument (an arrayref of message ids) that does something
+A function of one argument (a message id) that does something
 with expired messages.  The default action is to delete them from the front
 store and store them in the back-store, but you can override that here.
 
