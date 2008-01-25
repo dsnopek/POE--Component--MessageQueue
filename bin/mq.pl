@@ -30,6 +30,7 @@ my $statistics   = 0;
 my $uuids = 1;
 my $stat_interval = 10;
 my $front_store = 'memory';
+my $crash_cmd = undef;
 
 GetOptions(
 	"port|p=i"         => \$port,
@@ -45,6 +46,7 @@ GetOptions(
 	"background|b"     => \$background,
 	"debug-shell"      => \$debug_shell,
 	"pidfile|p=s"      => \$pidfile,
+	"crash-cmd=s"      => \$crash_cmd,
 	"version|v"        => \$show_version,
 	"help|h"           => \$show_usage,
 );
@@ -65,6 +67,7 @@ $X [--timeout|-i <seconds>]   [--throttle|-T <count>]
 $X [--data-dir <path_to_dir>] [--log-conf <path_to_file>]
 $X [--stats] [--stats-interval|-i <seconds>]
 $X [--background|-b] [--pidfile|-p <path_to_file>]
+$X [--crash-cmd <path_to_script>]
 $X [--debug-shell] [--version|-v] [--help|-h]
 
 SERVER OPTIONS:
@@ -96,6 +99,10 @@ DAEMON OPTIONS:
   --background -b         If specified the script will daemonize and run in the
                           background
   --pidfile    -p <path>  The path to a file to store the PID of the process
+
+  --crash-cmd  <path>     The path to a script to call when crashing.
+                          A stacktrace will be printed to the script's STDIN.
+                          (ex. 'mail root\@localhost')
 
 OTHER OPTIONS:
   --debug-shell           Run with POE::Component::DebugShell
@@ -228,27 +235,39 @@ if ( $debug_shell )
 
 # install a die handler so we can catch crashes and log them
 $SIG{__DIE__} = sub {
-	my $trace = Devel::StackTrace->new;
+	my $trace = Devel::StackTrace->new()->as_string();
+	my $banner = sprintf("\n%s\n", '=' x 30);
+	my $diemsg = sprintf("$banner MQ Crashed: %s $banner\n$trace", 
+		strftime('%Y-%m-%d %H:%M:%S', localtime(time())));
 
-	# attempt to write to the crashed log for later debugging
+	# Print it first, cause don't know if the other stuff is gonna work.
+	print STDERR $diemsg;
+
+	# This will probably work, but we should say so if it doesn't.
 	my $fn = "$DATA_DIR/crashed.log";
-	my $fd = IO::File->new(">>$fn");
-	if ( $fd )
+	if(open DIEFILE, ">>", $fn)
 	{
-		my (@l) = localtime(time());
-		$fd->write("\n============================== \n");
-		$fd->write(" Crashed: ".strftime('%Y-%m-%d %H:%M:%S', @l));
-		$fd->write("\n============================== \n\n");
-		$fd->write( $trace->as_string );
-		$fd->close();
+		print DIEFILE $diemsg;
+		close DIEFILE;	
 	}
 	else
 	{
-		print STDERR "Unable to open crashed log '$fn': $!\n";
+		print STDERR "Couldn't open crashlog '$fn': $!\n";
 	}
 
-	# spit out a stack trace
-	print STDERR $trace->as_string;
+	# Only bother if one was specified.
+	if ($crash_cmd)
+	{
+		if (open DIEPIPE, '|-', $crash_cmd)
+		{
+			print DIEPIPE $diemsg;
+			close DIEPIPE;	
+		}
+		else
+		{
+			print STDERR "Couldn't send crashlog to $crash_cmd: $!\n";
+		}
+	}
 };
 
 POE::Kernel->run();
