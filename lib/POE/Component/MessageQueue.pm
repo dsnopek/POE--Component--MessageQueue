@@ -628,7 +628,7 @@ sub shutdown
 	}
 
 	# shutdown the storage
-	$self->{storage}->storage_shutdown();
+	$self->{storage}->storage_shutdown($self->__closure('_shutdown_complete'));
 }
 
 1;

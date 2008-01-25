@@ -48,7 +48,9 @@ sub new
 
 	$self->{claiming}     = { };
 
-	my $generic = POE::Component::Generic->spawn(
+	my $alias = 'MQ-Storage-Generic';
+
+	my $generic = $self->{generic} = POE::Component::Generic->spawn(
 		package => $package,
 		object_options => $options,
 		packages => {
@@ -68,19 +70,24 @@ sub new
 			}
 		},
 		error => {
-			session => 'MQ-Storage-Generic',
+			session => $alias,
 			event   => '_error'
 		},
 		#debug => 1,
 		#verbose => 1
 	);
 
-	$self->{session_alias} = 'MQ-Storage-Generic';
-
-	my $session = POE::Session->create(
+	my $session = $self->{session} = POE::Session->create(
 		inline_states => {
 			_start => sub {
-				$_[KERNEL]->alias_set($self->{session_alias})
+				$_[KERNEL]->alias_set($alias);
+			},
+			_shutdown => sub {
+				my $callback = $_[ARG0];
+				$generic->shutdown();
+				$_[KERNEL]->alias_remove($alias);
+				$self->_log('alert', 'Generic storage engine is shutdown!');
+				$callback->();
 			},
 		},
 		object_states => [
@@ -91,11 +98,6 @@ sub new
 			]
 		]
 	);
-
-	# store the sessions
-	$self->{generic} = $generic;
-	$self->{session} = $session;
-
 	$generic->set_log_function(
 		$self->_data_hashref(), 
 		{session => $session->ID(), event =>'_log_proxy'},
@@ -199,17 +201,11 @@ sub storage_shutdown
 
 	$self->_log('alert', 'Shutting down generic storage engine...');
 
-	$self->{shutdown} = 1;
-
-	# Send the shutdown message.  When the underlying object calls
-	# the callback, we will then be sure that all message before it
-	# have gotten through and handled.
-
-	$self->{generic}->storage_shutdown($self->_data_hashref(), sub {
-		# This will shut us down.
-		$poe_kernel->alias_remove($self->{session_alias});
-		$self->_log('alert', 'Generic storage engine is shutdown!');
-		$complete->();
+	# Send the shutdown message to generic - it will come back when it's cleaned
+	# up its resources, and we can stop it for reals (as well as stop our own
+	# session).  
+	$self->{generic}->yield(storage_shutdown => $self->_data_hashref(), sub {
+		$poe_kernel->post($self->{session}, '_shutdown', $complete);
 	});
 
 	return;
