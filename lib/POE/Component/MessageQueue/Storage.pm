@@ -147,29 +147,16 @@ The parent class of the provided storage engines.  This is an "abstract" class t
 
 =over 2
 
-=item set_dispatch_message_handler I<CODEREF>
-
-Takes a CODEREF which will get called back when a message has been retrieved from the store.  This will be called with three arguments: the message, the destination string, and the client id.  If no message could be retrieved the function will still be called but with the message undefined.
-
-=item set_shutdown_complete_handler I<CODEREF>
-
-Takes a CODEREF which will get called when the storage engine has finished shutting down.  The shutdown process is started by calling I<shutdown()> on the storage engine (see below).
-
-It will be called without any arguments.
-
 =item set_logger I<SCALAR>
 
 Takes an object of type L<POE::Component::MessageQueue::Logger> that should be used for logging.
 
-=item get_next_message_id
-
-Should return the next available message_id.
-
-=item store I<SCALAR>
+=item store I<SCALAR,CODEREF>
 
 Takes an object of type L<POE::Component::MessageQueue::Message> that should
-be stored.  This call will eventually result in the I<message_stored_handler>
-being called exactly once, even if there was an error storing the message.
+be stored.  The supplied coderef will be called with the stored message as an
+argument when storage has completed.  If a message could not be claimed, the
+message argument will be undefined.
 
 =item remove I<SCALAR,CODEREF>
 
@@ -187,17 +174,23 @@ messages after removal.
 Takes an optional coderef argument that will be called with an arrayref of all
 the message that were in the store after they have been removed.
 
-=item claim_and_retrieve I<SCALAR, SCALAR> or I<HASHREF>
+=item claim_and_retrieve I<SCALAR, SCALAR, CODEREF>
 
-Takes the destination string and client id (or a HASHREF with keys "destination" and "client_id").  Should claim a message for the given client id on the given destination.  This call will eventually result in the I<dispatch_message_handler> and I<destination_ready_handler> being called exactly once each.
+Takes the destination string and client id.  Claims a message for the given 
+client id on the given destination.  When this has been done, the supplied
+coderef will be called with the message, destination, and client_id as
+arguments.
 
 =item disown I<SCALAR>, I<SCALAR>
 
 Takes a destination and client id.  All messages which are owned by this client id on this destination should be marked as owned by nobody.
 
-=item shutdown
+=item storage_shutdown I<CODEREF>
 
-Will start shutting down the storage engine.  The I<shutdown_complete> handler will be called when the storage engine has finished shutting down.  This should be a graceful operation.  Ie., The storage engine will attempt to clean-up and push messages to persistent storage if possible before calling the I<shutdown_complete> handler.
+Starts shutting down the storage engine.  The supplied coderef will be called
+with no arguments when the shutdown has completed.  The storage engine will
+attempt to do any cleanup (persisting of messages, etc) before calling the
+coderef.
 
 =back
 

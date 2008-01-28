@@ -38,7 +38,7 @@ sub new
 		sub {
 			my ($message, $callback) = @_;
 
-			$self->{front_store}->remove($message, sub {
+			$self->{front_store}->remove($message->{message_id}, sub {
 				# The message may not be there if it was removed before it expired.
 				my $message = shift;
 				return unless $message;

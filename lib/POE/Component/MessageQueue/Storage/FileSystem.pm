@@ -299,8 +299,10 @@ sub remove_all
 
 sub claim_and_retrieve
 {
-	my $self = shift;
-	return $self->{info_storage}->claim_and_retrieve( @_ );
+	my ($self, @args) = @_;
+	my $old_callback = pop(@args);
+	my $new_callback = sub { $self->_dispatch_message(@_, $old_callback) };
+	return $self->{info_storage}->claim_and_retrieve(@args, $new_callback);
 }
 
 sub disown
