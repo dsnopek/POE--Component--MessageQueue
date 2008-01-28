@@ -48,8 +48,6 @@ sub new
 		queue_name           => $queue_name,
 		subscriptions        => [ ],
 		sub_map              => { },
-		has_pending_messages => 1,
-		pumping              => 0
 	};
 
 	bless  $self, $class;
@@ -105,12 +103,18 @@ sub remove_subscription
 			# disown all messages on the storage layer for this client on
 			# this queue.
 			$self->get_parent()->get_storage()->disown(
-				"/queue/$self->{queue_name}", $client->{client_id} );
+				$self->destination(), $client->{client_id});
 
 			$self->get_parent->{notify}->notify('unsubscribe', { queue => $self, client => $client });
 			return;
 		}
 	}
+}
+
+sub destination
+{
+	my $self = shift;
+	return "/queue/$self->{queue_name}";
 }
 
 sub get_subscription
@@ -149,19 +153,6 @@ sub get_available_subscriber
 	return $sub;
 }
 
-sub has_pending_messages
-{
-	my ($self, $value) = @_;
-
-	# TODO: doesn't work for some reason.
-#	if ( $value == 0 )
-#	{
-#		$self->{has_pending_messages} = 0;
-#	}
-
-	return $self->{has_pending_messages};
-}
-
 sub has_available_subscribers
 {
 	my $self = shift;
@@ -181,119 +172,67 @@ sub pump
 {
 	my $self = shift;
 
-	# Make sure we don't end up in some kind of recursive pump loop!
-	if ( $self->{pumping} )
-	{
-		return;
-	}
-	$self->{pumping} = 1;
-	
 	$self->_log( 'debug', " -- PUMP QUEUE: $self->{queue_name} -- " );
 	$self->get_parent->{notify}->notify('pump');
 
-	# attempt to get a pending message and pass it the the 'send_queue' action.
-	if ( $self->{has_pending_messages} )
+	if (my $sub = $self->get_available_subscriber())
 	{
-		my $sub = $self->get_available_subscriber();
-		if ( $sub )
-		{
-			# get a message out of the backing store
-			my $ret = $self->get_parent()->get_storage()->claim_and_retrieve({
-				destination => "/queue/$self->{queue_name}",
-				client_id   => $sub->{client}->{client_id}
-			});
-
-			# if a message was actually claimed!
-			if ( $ret and $sub->{ack_type} eq 'client' )
-			{
-				# makes sure that this subscription isn't double picked
-				$sub->set_handling_message();
-			}
-		}
-	}
-
-	# end pumping lock!
-	$self->{pumping} = 0;
-}
-
-sub send_message
-{
-	my ($self, $message) = @_;
-
-	my $sub = $self->get_available_subscriber();
-	if ( defined $sub )
-	{
-		$self->dispatch_message_to( $message, $sub );
-	}
-	else
-	{
-		# we have messages waiting in the store
-		$self->{has_pending_messages} = 1;
+		my $done_claiming = sub {
+			my $message = shift;
+			$self->dispatch_message_to($message, $sub) if $message;
+		};
+		$self->get_parent()->get_storage()->claim_and_retrieve(
+			$self->destination(), $sub->{client}->{client_id}, $done_claiming);
 	}
 }
 
 sub dispatch_message_to
 {
-	my ($self, $message, $receiver) = @_;
+	my ($self, $message, $subscriber) = @_;
+	my $client = $subscriber->get_client();
+	my $client_id = $client->{client_id};
+	my $message_id = $message->{message_id};
 
-	my $sub;
+	$self->_log('info', 
+		"QUEUE: Sending message $message_id to client $client_id");
 
-	if ( ref($receiver) eq 'POE::Component::MessageQueue::Client' )
+	# send actual message
+	if($client->send_frame($message->create_stomp_frame()))
 	{
-		# automatically convert clients to subscribers!
-		$sub = $self->get_subscription( $receiver );
+		if ( $subscriber->{ack_type} eq 'client' )
+		{
+			$subscriber->set_handling_message();
+			$self->get_parent()->push_unacked_message($message, $client);
+		}
+		else
+		{
+			$self->get_parent()->get_storage()->remove($message_id);
+		}
+
+		# We've dispatched the message for sure: THIS IS WHERE THIS GOES.
+		$self->get_parent()->{notify}->notify('dispatch', {
+			queue   => $self, 
+			message => $message, 
+			client  => $client,
+		});
 	}
-	else
+	else # We failed to send the frame: client is no longer available.
 	{
-		$sub = $receiver;
-	}
+		my $dest = $self->destination();
 
-	my $result = 0;
-
-	if ( defined $sub )
-	{
-		$self->_log( "QUEUE: Sending message $message->{message_id} to client $sub->{client}->{client_id}" );
-
-		# send actual message
-		$result = $sub->get_client()->send_frame( $message->create_stomp_frame() );
-	}
-
-	if ( not $result )
-	{
-		my $client_id = (defined $sub) ? $sub->{client}->{client_id} : $receiver->{client_id};
-
-		# This can happen when a client disconnects before the server
-		# can give them the message intended for them.
-		$self->_log( 'warning', "QUEUE: Message $message->{message_id} intended for $client_id on /queue/$self->{queue_name} could not be delivered" );
+		$self->_log('warning', sprintf(
+			"QUEUE: Message %s intended for %s on %s could not be delivered", 
+			$message_id, $client_id, $dest,
+		));
 
 		# The message *NEEDS* to be disowned in the storage layer, otherwise
 		# it will live forever as being claimed by a client that doesn't exist.
-		$self->get_parent()->get_storage()->disown(
-			"/queue/$self->{queue_name}", $client_id );
-
-		# pump the queue to get the message to another suscriber.
-		$self->pump();
-
-		return;
+		$self->get_parent()->get_storage()->disown($dest, $client_id);
 	}
 
-	# mark as needing ack, or remove message.
-	if ( $sub->{ack_type} eq 'client' )
-	{
-		# Put into waiting for ACK mode.
-		$sub->set_handling_message();
-
-		# add to the general list of messages requiring ACK
-		$self->get_parent()->push_unacked_message( $message, $sub->get_client() );
-	}
-	else
-	{
-		$self->get_parent()->get_storage()->remove( $message->get_message_id() );
-
-		# we aren't waiting for anything, so pump the queue
-		# NOTE: For some reason, using the deferred pump is so much more performant!
-		$self->get_parent->pump_deferred("/queue/$self->{queue_name}");
-	}
+	# This is a good time to pump the queue, since we either succeeded in
+	# sending out a message or just disowned one.
+	$self->pump();
 }
 
 sub enqueue
@@ -312,7 +251,11 @@ sub enqueue
 		);
 		$self->dispatch_message_to( $message, $sub );
 	}
-	$self->get_parent()->get_storage()->store( $message );
+
+	# Store the message, pump when it it's done being stored.
+	$self->get_parent()->get_storage()->store($message, sub {
+		$self->pump();
+	});
 }
 
 1;

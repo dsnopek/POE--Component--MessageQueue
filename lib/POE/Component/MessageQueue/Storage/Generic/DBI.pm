@@ -49,9 +49,11 @@ sub new
 	return bless $self, $class;
 }
 
+sub _make_message { POE::Component::MessageQueue::Message->new(shift) }	
+
 sub store
 {
-	my ($self, $message) = @_;
+	my ($self, $message, $callback) = @_;
 
 	my $SQL = "INSERT INTO messages (message_id, destination, body, persistent, in_use_by, timestamp, size) VALUES ( ?, ?, ?, ?, ?, ?, ? )";
 
@@ -80,38 +82,67 @@ sub store
 		$self->_log("STORE: DBI: Message $message->{message_id} stored in $message->{destination}");
 	}
 
-	if ( defined $self->{message_stored} )
-	{
-		$self->{message_stored}->( $message );
-	}
+	# Call the callback, even if we just send it undef (that's the interface).
+	$callback->($message) if $callback;
 
-	undef;
+	return;
+}
+
+sub _remove_underneath
+{
+	my ($self, $get, $where, $errdesc) = @_;
+	my @messages = ();
+	try eval {
+		if ($get)
+		{
+			my $sth = $self->{dbh}->prepare('SELECT * FROM messages'.$where); 
+			$sth->execute();
+	
+			while(my $result = $sth->fetchrow_hashref())
+			{
+				push(@messages, _make_message($result));
+			}
+		}
+		$self->{dbh}->do('DELETE FROM messages'.$where);
+	};
+	my $err = catch;
+	$self->_log("STORE: DBI: Error $errdesc: $err") if ($err);
+
+	return \@messages;
 }
 
 sub remove
 {
-	my ($self, $message_id) = @_;
+	my ($self, $message_id, $callback) = @_;
+	my $where = " WHERE message_id = '$message_id'";
+	my $ret = $self->_remove_underneath(
+		$callback, 
+		$where,
+		"removing message $message_id",
+	);
+	my $val = (scalar @$ret) ? $ret->[0] : undef;
+	$callback->($val) if $callback;
+	return;
+}
 
-	my $SQL = "DELETE FROM messages WHERE message_id = ?";
+sub remove_multiple
+{
+	my ($self, $message_ids, $callback) = @_;
+	my $ret = $self->_remove_underneath(
+		$callback,
+		' WHERE '. join(' OR ', map { "message_id = '$_'" } (@$message_ids)),
+		'removing multiple messages',
+	);
+	$callback->($ret) if $callback;
+	return;	
+}
 
-	try eval
-	{
-		my $stmt;
-		$stmt = $self->{dbh}->prepare($SQL);
-		$stmt->execute($message_id);
-	};
-	my $err = catch;
-
-	if ( $err )
-	{
-		$self->_log("STORE: DBI: Error deleting message $message_id: $err");
-	}
-	else
-	{
-		$self->_log("STORE: DBI: Message $message_id deleted");
-	}
-
-	undef;
+sub remove_all
+{
+	my ($self, $callback) = @_;
+	my $ret = $self->_remove_underneath($callback, '', 'removing all messages');
+	$callback->($ret) if $callback;
+	return;
 }
 
 sub _retrieve
@@ -120,7 +151,7 @@ sub _retrieve
 
 	my $SQL = "SELECT * FROM messages WHERE destination = ? AND in_use_by IS NULL ORDER BY timestamp ASC LIMIT 1";
 
-	my $result;
+	my $result = undef;
 
 	try eval
 	{
@@ -130,25 +161,9 @@ sub _retrieve
 		$result = $stmt->fetchrow_hashref;
 	};
 	my $err = catch;
+	$self->_log("error", "STORE: DBI: $err") if $err;
 
-	if ( $err )
-	{
-		$self->_log("error", "STORE: DBI: $err");
-	}
-	elsif ( defined $result )
-	{
-		return POE::Component::MessageQueue::Message->new({
-			message_id  => $result->{message_id},
-			destination => $result->{destination},
-			persistent  => $result->{persistent},
-			body        => $result->{body},
-			in_use_by   => $result->{in_use_by},
-			timestamp   => $result->{timestamp},
-			size        => $result->{size},
-		});
-	}
-
-	undef;
+	return $result && _make_message($result);
 }
 
 sub _claim
@@ -177,63 +192,25 @@ sub _claim
 		);
 	}
 
-	undef;
+	return;
 }
 
 sub claim_and_retrieve
 {
-	my $self = shift;
-	my $args = shift;
+	my ($self, $destination, $client_id, $dispatch) = @_;
 
-	if ( not defined $self->{dispatch_message} )
-	{
-		die "Pulled message from backstore, but there is no dispatch_message handler";
-	}
-
-	my $destination;
-	my $client_id;
-
-	if ( ref($args) eq 'HASH' )
-	{
-		$destination = $args->{destination};
-		$client_id   = $args->{client_id};
-	}
-	else
-	{
-		$destination = $args;
-		$client_id   = shift;
-	}
-
-	# first, we retrieve a message
 	my $message = $self->_retrieve( $destination );
 	
-	# if we actually got a message, then we need to claim it.
-	if ( defined $message )
-	{
-		# set to the client_id that's funna get it
-		$message->{in_use_by} = $client_id;
-	}
+	# if we actually got a message, claim it
+	$message->{in_use_by} = $client_id if ($message);
 
-	# send the message to the handler, regardless if we actually got
-	# one or not.
-	# NOTE: We can do this before claiming the message, so I figure, why
-	# not do it since it will give the other thread something to do.
-	$self->{dispatch_message}->( $message, $destination, $client_id );
+	# Might as well do this now so the other thread can get on its way. :)
+	$dispatch->($message, $destination, $client_id);
 
-	if ( defined $message )
-	{
-		# claim away!
-		$self->_claim( $message );
+	# Write the claim info to database (if we got one)
+	$self->_claim($message) if $message;
 
-		if ( defined $self->{destination_ready} )
-		{
-			# after it is claimed, we declare the destination ready for 
-			# more action!
-			$self->{destination_ready}->( $destination );
-		}
-	}
-
-	undef;
+	return;
 }
 
 sub disown
@@ -259,12 +236,12 @@ sub disown
 		$self->_log("STORE: DBI: All messages on $destination disowned for client $client_id");
 	}
 
-	undef;
+	return;
 }
 
-sub shutdown
+sub storage_shutdown
 {
-	my ($self) = @_;
+	my ($self, $complete) = @_;
 
 	$self->_log('alert', 'Shutting down DBI storage engine...');
 
@@ -272,12 +249,8 @@ sub shutdown
 	$self->{dbh}->disconnect();
 
 	# call the shutdown handler.
-	if ( defined $self->{shutdown_complete} )
-	{
-		$self->{shutdown_complete}->();
-	}
-
-	return undef;
+	$complete->();
+	return;
 }
 
 1;

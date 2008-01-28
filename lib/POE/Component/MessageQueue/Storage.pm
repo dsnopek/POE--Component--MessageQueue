@@ -27,15 +27,8 @@ sub new
 
 	# a null logger
 	my $logger = POE::Component::MessageQueue::Logger->new();
-
 	my $self = {
-		logger            => $logger,
-		message_stored    => undef,
-		dispatch_message  => undef,
-		destination_ready => undef,
-		shutdown_complete => undef,
-		# TODO: do something with this.
-		started           => 0
+		logger    => $logger,
 	};
 
 	bless  $self, $class;
@@ -46,41 +39,14 @@ sub _log
 {
 	my $self = shift;
 	$self->{logger}->log(@_);
-}
-
-sub set_message_stored_handler
-{
-	my ($self, $handler) = @_;
-	$self->{message_stored} = $handler;
-	undef;
-}
-
-sub set_dispatch_message_handler
-{
-	my ($self, $handler) = @_;
-	$self->{dispatch_message} = $handler;
-	undef;
-}
-
-sub set_destination_ready_handler
-{
-	my ($self, $handler) = @_;
-	$self->{destination_ready} = $handler;
-	undef;
-}
-
-sub set_shutdown_complete_handler
-{
-	my ($self, $handler) = @_;
-	$self->{shutdown_complete} = $handler;
-	undef;
+	return;
 }
 
 sub set_logger
 {
 	my ($self, $logger) = @_;
 	$self->{logger} = $logger;
-	undef;
+	return;
 }
 
 # A hack to allow POE::Component::Generic to set the log function
@@ -90,7 +56,7 @@ sub set_log_function
 {
 	my ($self, $func) = @_;
 	$self->get_logger()->set_log_function($func);
-	undef;
+	return;
 }
 
 sub get_logger
@@ -108,7 +74,21 @@ sub store
 
 sub remove
 {
-	my ($self, $message_id) = @_;
+	my ($self, $message_id, $callback) = @_;
+
+	die "Abstract.";
+}
+
+sub remove_multiple
+{
+	my ($self, $id_aref, $callback) = @_;
+
+	die "Abstract.";
+}
+
+sub remove_all
+{
+	my ($self, $callback) = @_;
 
 	die "Abstract.";
 }
@@ -142,15 +122,7 @@ sub disown
 	die "Abstract.";
 }
 
-# a semi-hidden alias that we need when using a storage engine
-# behind POE::Component::MessageQueue::Storage::Generic!
 sub storage_shutdown
-{
-	my $self = shift;
-	$self->shutdown();
-}
-
-sub shutdown
 {
 	my $self = shift;
 
@@ -175,53 +147,50 @@ The parent class of the provided storage engines.  This is an "abstract" class t
 
 =over 2
 
-=item set_message_stored_handler I<CODEREF>
-
-Takes a CODEREF which will get called back when a message has been successfully stored.  This functwion will be called with one argument, the name of the destination.
-
-=item set_dispatch_message_handler I<CODEREF>
-
-Takes a CODEREF which will get called back when a message has been retrieved from the store.  This will be called with three arguments: the message, the destination string, and the client id.  If no message could be retrieved the function will still be called but with the message undefined.
-
-=item set_destination_ready_handler I<CODEREF>
-
-Takes a CODEREF which will get called back when a destination is ready to be claimed from again.  This is necessary for storage engines that will lock a destination while attempting to retrieve a message.  This handler will be called when the destination is unlocked so that message queue knows that it can claim more messages.  If your storage engine doesn't lock anything, you B<must> call this handler immediately after called the above handler.  
-
-It will be called with a single argument: the destination string.
-
-=item set_shutdown_complete_handler I<CODEREF>
-
-Takes a CODEREF which will get called when the storage engine has finished shutting down.  The shutdown process is started by calling I<shutdown()> on the storage engine (see below).
-
-It will be called without any arguments.
-
 =item set_logger I<SCALAR>
 
 Takes an object of type L<POE::Component::MessageQueue::Logger> that should be used for logging.
 
-=item get_next_message_id
+=item store I<SCALAR,CODEREF>
 
-Should return the next available message_id.
+Takes an object of type L<POE::Component::MessageQueue::Message> that should
+be stored.  The supplied coderef will be called with the stored message as an
+argument when storage has completed.  If a message could not be claimed, the
+message argument will be undefined.
 
-=item store I<SCALAR>
+=item remove I<SCALAR,CODEREF>
 
-Takes an object of type L<POE::Component::MessageQueue::Message> that should be stored.  This call will eventually result in the I<message_stored_handler> being called exactly once.
+Takes a message_id to be removed from the storage engine.  If a coderef is
+supplied, it will be called with the message as its argument after removal.
 
-=item remove I<SCALAR>
+=item remove_multiple I<ARRAYREF,CODEREF>
 
-Takes a message_id to be removed from the storage engine.
+Takes an arrayref of message_ids to be removed from the storage engine. If a
+coderef is supplied, it will be called with an arrayref of the removed
+messages after removal.
 
-=item claim_and_retrieve I<SCALAR, SCALAR> or I<HASHREF>
+=item remove_all I<CODEREF>
 
-Takes the destination string and client id (or a HASHREF with keys "destination" and "client_id").  Should claim a message for the given client id on the given destination.  This call will eventually result in the I<dispatch_message_handler> and I<destination_ready_handler> being called exactly once each.
+Takes an optional coderef argument that will be called with an arrayref of all
+the message that were in the store after they have been removed.
+
+=item claim_and_retrieve I<SCALAR, SCALAR, CODEREF>
+
+Takes the destination string and client id.  Claims a message for the given 
+client id on the given destination.  When this has been done, the supplied
+coderef will be called with the message, destination, and client_id as
+arguments.
 
 =item disown I<SCALAR>, I<SCALAR>
 
 Takes a destination and client id.  All messages which are owned by this client id on this destination should be marked as owned by nobody.
 
-=item shutdown
+=item storage_shutdown I<CODEREF>
 
-Will start shutting down the storage engine.  The I<shutdown_complete> handler will be called when the storage engine has finished shutting down.  This should be a graceful operation.  Ie., The storage engine will attempt to clean-up and push messages to persistent storage if possible before calling the I<shutdown_complete> handler.
+Starts shutting down the storage engine.  The supplied coderef will be called
+with no arguments when the shutdown has completed.  The storage engine will
+attempt to do any cleanup (persisting of messages, etc) before calling the
+coderef.
 
 =back
 

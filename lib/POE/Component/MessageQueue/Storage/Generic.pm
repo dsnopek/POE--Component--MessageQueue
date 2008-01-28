@@ -48,19 +48,20 @@ sub new
 
 	$self->{claiming}     = { };
 
-	my $generic = POE::Component::Generic->spawn(
+	my $alias = 'MQ-Storage-Generic';
+
+	my $generic = $self->{generic} = POE::Component::Generic->spawn(
 		package => $package,
 		object_options => $options,
 		packages => {
-			$package =>
-			{
-				postbacks => [
-					'set_message_stored_handler',
-					'set_dispatch_message_handler',
-					'set_destination_ready_handler',
-					'set_shutdown_complete_handler',
-					'set_log_function'
-				],
+			$package => {
+				callbacks => [qw(
+					remove    remove_multiple     remove_all
+					store     claim_and_retrieve  storage_shutdown
+				)],
+				postbacks => {
+					set_log_function => 0,
+				},
 				factories => [ 'get_logger' ],
 			},
 			'POE::Component::MessageQueue::Logger' =>
@@ -69,119 +70,119 @@ sub new
 			}
 		},
 		error => {
-			session => 'MQ-Storage-Generic',
+			session => $alias,
 			event   => '_error'
 		},
 		#debug => 1,
 		#verbose => 1
 	);
 
-	$self->{session_alias} = 'MQ-Storage-Generic';
-
-	my $session = POE::Session->create(
+	my $session = $self->{session} = POE::Session->create(
 		inline_states => {
 			_start => sub {
-				$_[KERNEL]->alias_set($self->{session_alias})
+				$_[KERNEL]->alias_set($alias);
+			},
+			_shutdown => sub {
+				my $callback = $_[ARG0];
+				$generic->shutdown();
+				$_[KERNEL]->alias_remove($alias);
+				$self->_log('alert', 'Generic storage engine is shutdown!');
+				$callback->();
 			},
 		},
 		object_states => [
 			$self => [
 				'_general_handler',
 				'_log_proxy',
-				'_message_stored',
-				'_dispatch_message',
-				'_destination_ready',
-				'_finished_claiming',
-				'_shutdown_complete',
 				'_error',
 			]
 		]
 	);
-
-	# store the sessions
-	$self->{generic} = $generic;
-	$self->{session} = $session;
-
-	# before anything else, set the log function
-	$self->{generic}->set_log_function(
-		{ session => $session->ID(), event => '_general_handler' },
-		{ session => $session->ID(), event => '_log_proxy' });
-	# set-up the postbacks for all the handlers
-	$self->{generic}->set_message_stored_handler(
-		{ session => $session->ID(), event => '_general_handler' },
-		{ session => $session->ID(), event => '_message_stored' });
-	$self->{generic}->set_dispatch_message_handler(
-		{ session => $session->ID(), event => '_general_handler' },
-		{ session => $session->ID(), event => '_dispatch_message' });
-	$self->{generic}->set_destination_ready_handler(
-		{ session => $session->ID(), event => '_general_handler' },
-		{ session => $session->ID(), event => '_destination_ready' });
-	$self->{generic}->set_shutdown_complete_handler(
-		{ session => $session->ID(), event => '_general_handler' },
-		{ session => $session->ID(), event => '_shutdown_complete' });
+	$generic->set_log_function(
+		$self->_data_hashref(), 
+		{session => $session->ID(), event =>'_log_proxy'},
+	);
 
 	return bless $self, $class;
 }
 
+# Internal shortcut: second argument is extra stuff to add to the data
+# hashref, but by default it just sets up the "_general_handler" stuff.
+sub _data_hashref
+{
+	my ($self, $extras) = @_;
+	my $data_hashref = {
+		session => $self->{session}->ID(),
+		event   => '_general_handler',
+	};
+
+	if ($extras)
+	{
+		while (my ($key, $val) = each(%$extras))
+		{
+			$data_hashref->{$key} = $val;	
+		}
+	}	
+	return $data_hashref;
+}
+
 sub store
 {
-	my ($self, $message) = @_;
+	my ($self, $message, $callback) = @_;
 
-	$self->{generic}->store(
-		{ session => $self->{session}->ID(), event => '_general_handler' },
-		$message
-	);
+	$self->{generic}->store($self->_data_hashref(), $message, $callback);
+	return;
 }
 
 sub remove
 {
-	my ($self, $message_id) = @_;
+	my ($self, $message_id, $callback) = @_;
 
-	$self->{generic}->remove(
-		{ session => $self->{session}->ID(), event => '_general_handler' },
-		$message_id
-	);
+	$self->{generic}->remove($self->_data_hashref(), $message_id, $callback);
+	return;
+}
+
+sub remove_multiple
+{
+	my ($self, $message_ids, $callback) = @_;
+
+	$self->{generic}->remove($self->_data_hashref(), $message_ids, $callback);
+	return;
+}
+
+sub remove_all
+{
+	my ($self, $callback) = @_;
+
+	$self->{generic}->remove($self->_data_hashref(), $callback);
+	return;
 }
 
 sub claim_and_retrieve
 {
-	my $self = shift;
-	my $args = shift;
+	my ($self, $destination, $client_id, $dispatch) = @_;
 
-	my $destination;
-	my $client_id;
-
-	if ( ref($args) eq 'HASH' )
+	# Skip if we're already claiming for this destination
+	if ($self->{claiming}->{$destination})
 	{
-		$destination = $args->{destination};
-		$client_id   = $args->{client_id};
+		$dispatch->(undef, $destination, $client_id);
 	}
 	else
 	{
-		$destination = $args;
-		$client_id   = shift;
-	}
-
-	if ( $self->{claiming}->{$destination} )
-	{
-		# we are already attempting to claim a message for this destination!
-		return 0;
-	}
-	else
-	{
-		# lock temporarily.
+		# Lock destination 
 		$self->{claiming}->{$destination} = $client_id;
+
+		my $done_claiming = sub {
+			# Unlock and move along
+			delete $self->{claiming}->{$destination};
+			$dispatch->(@_);
+		};
+
+		$self->{generic}->claim_and_retrieve($self->_data_hashref(),
+			$destination, $client_id, $done_claiming);
 	}
 
-	$self->{generic}->claim_and_retrieve(
-		{ session => $self->{session}->ID(), event => '_finished_claiming',
-			data => { destination => $destination }
-		},
-		{ destination => $destination, client_id => $client_id }
-	);
-
-	# let the caller know that this is actually going down.
-	return 1;
+	return;
 }
 
 sub disown
@@ -189,25 +190,25 @@ sub disown
 	my ($self, $destination, $client_id) = @_;
 
 	$self->{generic}->disown(
-		{ session => $self->{session}->ID(), event => '_general_handler' },
-		$destination, $client_id
+		$self->_data_hashref(), $destination, $client_id
 	);
+	return;
 }
 
-sub shutdown
+sub storage_shutdown
 {
-	my $self = shift;
+	my ($self, $complete) = @_;
 
 	$self->_log('alert', 'Shutting down generic storage engine...');
 
-	$self->{shutdown} = 1;
+	# Send the shutdown message to generic - it will come back when it's cleaned
+	# up its resources, and we can stop it for reals (as well as stop our own
+	# session).  
+	$self->{generic}->yield(storage_shutdown => $self->_data_hashref(), sub {
+		$poe_kernel->post($self->{session}, '_shutdown', $complete);
+	});
 
-	# Send the shutdown message.  When the underlying object calls
-	# the callback, we will then be sure that all message before it
-	# have gotten through and handled.
-	$self->{generic}->yield( storage_shutdown =>
-		{ session => $self->{session}->ID(), event => '_general_handler' }
-	);
+	return;
 }
 
 sub _general_handler
@@ -218,6 +219,7 @@ sub _general_handler
 	{
 		$self->_log("error", "Generic error: $ref->{error}");
 	}
+	return;
 }
 
 sub _error
@@ -231,15 +233,8 @@ sub _error
 	else
 	{
 		$self->_log('error', "Generic error:  $err->{operation} $err->{errnum} $err->{errstr}");
-
-		if ( $self->{shutdown} )
-		{
-			# if any error occurs while attempting to shutdown, then
-			# we simply force a shutdown.
-			$self->_log('error', 'Forcing shutdown from error');
-			$poe_kernel->post( $self->{session}, '_shutdown_complete' );
-		}
 	}
+	return;
 }
 
 sub _log_proxy
@@ -247,6 +242,7 @@ sub _log_proxy
 	my ($self, $type, $msg) = @_[ OBJECT, ARG0, ARG1 ];
 
 	$self->_log($type, $msg);
+	return;
 }
 
 sub _finished_claiming
@@ -260,65 +256,7 @@ sub _finished_claiming
 	# fully claimed, but not if no message was claimed.  This covers the
 	# empty queue case.
 	delete $self->{claiming}->{$destination};
-}
-
-sub _message_stored
-{
-	my ($self, $destination) = @_[ OBJECT, ARG0 ];
-
-	if ( defined $self->{message_stored} )
-	{
-		$self->{message_stored}->( $destination );
-	}
-}
-
-sub _dispatch_message
-{
-	my ($self, $message, $destination, $client_id) = @_[ OBJECT, ARG0, ARG1, ARG2 ];
-
-	if ( not defined $self->{dispatch_message} )
-	{
-		die "Pulled message from backstore, but there is no dispatch_message handler";
-	}
-
-	# call the handler because the message is complete
-	$self->{dispatch_message}->( $message, $destination, $client_id );
-}
-
-sub _destination_ready
-{
-	my ($self, $destination) = @_[ OBJECT, ARG0 ];
-
-	# NOTE: This will happen after a message is fully claimed.
-
-	# unlock claiming from this destination
-	delete $self->{claiming}->{$destination};
-
-	# notify whoaver, that the destination is ready for another client to try to claim
-	# a message.
-	if ( defined $self->{destination_ready} )
-	{
-		$self->{destination_ready}->( $destination );
-	}
-}
-
-sub _shutdown_complete
-{
-	my ($self) = @_[ OBJECT ];
-
-	# shutdown the generic object
-	$self->{generic}->shutdown();
-
-	# clear our alias, so this session should end.
-	$poe_kernel->alias_remove($self->{session_alias});
-
-	$self->_log('alert', 'Generic storage engine is shutdown!');
-
-	# We are shutdown!  Hurray!  Start passing it up the chain.
-	if ( defined $self->{shutdown_complete} )
-	{
-		$self->{shutdown_complete}->();
-	}
+	return;
 }
 
 1;
