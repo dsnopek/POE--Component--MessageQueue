@@ -16,118 +16,22 @@
 #
 
 package POE::Component::MessageQueue::Storage;
-
+use Moose::Role;
 use POE::Component::MessageQueue::Logger;
-use strict;
 
-sub new
-{
-	my $class = shift;
-	my $args  = shift;
+requires qw(
+	remove_multiple     remove_all   remove
+	claim_and_retrieve  disown       store
+	storage_shutdown
+);
 
-	# a null logger
-	my $logger = POE::Component::MessageQueue::Logger->new();
-	my $self = {
-		logger    => $logger,
-	};
-
-	bless  $self, $class;
-	return $self;
-}
-
-sub _log
-{
-	my $self = shift;
-	$self->{logger}->log(@_);
-	return;
-}
-
-sub set_logger
-{
-	my ($self, $logger) = @_;
-	$self->{logger} = $logger;
-	return;
-}
-
-# A hack to allow POE::Component::Generic to set the log function
-# in a single event.  This allows us to setup the logger before any
-# other events happen.
-sub set_log_function
-{
-	my ($self, $func) = @_;
-	$self->get_logger()->set_log_function($func);
-	return;
-}
-
-sub get_logger
-{
-	my $self = shift;
-	return $self->{logger};
-}
-
-sub store
-{
-	my ($self, $message) = @_;
-
-	die "Abstract.";
-}
-
-sub remove
-{
-	my ($self, $message_id, $callback) = @_;
-
-	die "Abstract.";
-}
-
-sub remove_multiple
-{
-	my ($self, $id_aref, $callback) = @_;
-
-	die "Abstract.";
-}
-
-sub remove_all
-{
-	my ($self, $callback) = @_;
-
-	die "Abstract.";
-}
-
-sub claim_and_retrieve
-{
-	my $self = shift;
-	my $args = shift;
-
-	my $destination;
-	my $client_id;
-
-	if ( ref($args) eq 'HASH' )
-	{
-		$destination = $args->{destination};
-		$client_id   = $args->{client_id};
-	}
-	else
-	{
-		$destination = $args;
-		$client_id   = shift;
-	}
-
-	die "Abstract.";
-}
-
-sub disown
-{
-	my ($self, $destination, $client_id) = @_;
-
-	die "Abstract.";
-}
-
-sub storage_shutdown
-{
-	my $self = shift;
-
-	die "Abstract.";
-}
+has 'logger' => (
+	is      => 'rw',
+	writer  => 'set_logger',
+	reader  => 'get_logger',
+	default => sub { POE::Component::MessageQueue::Logger->new() },
+	handles => [qw(log set_log_function)],
+);
 
 1;
 

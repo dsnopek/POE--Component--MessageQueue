@@ -1,52 +1,75 @@
+#
+# Copyright 2007 David Snopek <dsnopek@gmail.com>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
 
 package POE::Component::MessageQueue::Storage::Generic::DBI;
-use base qw(POE::Component::MessageQueue::Storage::Generic::Base);
+use Moose;
+with qw(POE::Component::MessageQueue::Storage::Generic::Base);
 
 use DBI;
 use Exception::Class::DBI;
 use Exception::Class::TryCatch;
-use Data::UUID;
-use strict;
 
-sub new
-{
-	my $class = shift;
-	my $args  = shift;
+has 'dsn' => (
+	is       => 'ro',
+	isa      => 'Str',
+	required => 1,	
+);
 
-	my $dsn;
-	my $username;
-	my $password;
-	my $options;
+has 'username' => (
+	is       => 'ro',
+	isa      => 'Str',
+	required => 1,	
+);
 
-	if ( ref($args) eq 'HASH' )
-	{
-		$dsn      = $args->{dsn};
-		$username = $args->{username};
-		$password = $args->{password};
-		$options  = $args->{options};
-	}
-	else
-	{
-		$dsn      = $args;
-		$username = shift;
-		$password = shift;
-		$options  = shift;
-	}
+has 'password' => (
+	is       => 'ro',
+	isa      => 'Str',
+	required => 1,	
+);
 
-	# force use of exceptions
-	$options->{'HandleError'} = Exception::Class::DBI->handler,
-	$options->{'PrintError'} = 0;
-	$options->{'RaiseError'} = 0;
+has 'options' => (
+	is => 'ro',
+	isa => 'HashRef',
+	default => sub { {} },
+	required => 1,
+);
 
-	my $dbh = DBI->connect($dsn, $username, $password, $options);
+has 'dbh' => (
+	is => 'ro',
+	isa => 'Object',
+	lazy => 1,
+	default => sub {
+		my $self = shift;
+		DBI->connect($self->dsn, $self->username, $self->password, $self->options);
+	},
+);
 
-	# before going any further, clear some old state
-	$dbh->do( "UPDATE messages SET in_use_by = NULL" );
+sub new {
+	my ($class, @args) = @_;
+	my $self = $class->SUPER::new(@_);
 
-	my $self = $class->SUPER::new( $args );
-	$self->{dbh}        = $dbh;
+	# Force exception handling
+  $self->options->{'HandleError'} = Exception::Class::DBI->handler,
+  $self->options->{'PrintError'} = 0;
+  $self->options->{'RaiseError'} = 0;
 
-	return bless $self, $class;
+	# This actually makes DBH connect, cause it's lazy
+	$self->dbh->do( "UPDATE messages SET in_use_by = NULL" );
+	return $self;
 }
 
 sub _make_message { POE::Component::MessageQueue::Message->new(shift) }	
@@ -75,11 +98,11 @@ sub store
 
 	if ( $err )
 	{
-		$self->_log('error', "STORE: DBI: Error storing $message->{message_id} in $message->{destination}: $err");
+		$self->log('error', "STORE: DBI: Error storing $message->{message_id} in $message->{destination}: $err");
 	}
 	else
 	{
-		$self->_log("STORE: DBI: Message $message->{message_id} stored in $message->{destination}");
+		$self->log("STORE: DBI: Message $message->{message_id} stored in $message->{destination}");
 	}
 
 	# Call the callback, even if we just send it undef (that's the interface).
@@ -95,7 +118,7 @@ sub _remove_underneath
 	try eval {
 		if ($get)
 		{
-			my $sth = $self->{dbh}->prepare('SELECT * FROM messages'.$where); 
+			my $sth = $self->dbh->prepare('SELECT * FROM messages'.$where); 
 			$sth->execute();
 	
 			while(my $result = $sth->fetchrow_hashref())
@@ -103,10 +126,10 @@ sub _remove_underneath
 				push(@messages, _make_message($result));
 			}
 		}
-		$self->{dbh}->do('DELETE FROM messages'.$where);
+		$self->dbh->do('DELETE FROM messages'.$where);
 	};
 	my $err = catch;
-	$self->_log("STORE: DBI: Error $errdesc: $err") if ($err);
+	$self->log("STORE: DBI: Error $errdesc: $err") if ($err);
 
 	return \@messages;
 }
@@ -156,12 +179,12 @@ sub _retrieve
 	try eval
 	{
 		my $stmt;
-		$stmt = $self->{dbh}->prepare($SQL);
+		$stmt = $self->dbh->prepare($SQL);
 		$stmt->execute($destination);
 		$result = $stmt->fetchrow_hashref;
 	};
 	my $err = catch;
-	$self->_log("error", "STORE: DBI: $err") if $err;
+	$self->log("error", "STORE: DBI: $err") if $err;
 
 	return $result && _make_message($result);
 }
@@ -175,18 +198,18 @@ sub _claim
 	try eval
 	{
 		my $stmt;
-		$stmt = $self->{dbh}->prepare($SQL);
+		$stmt = $self->dbh->prepare($SQL);
 		$stmt->execute($message->{in_use_by}, $message->{message_id});
 	};
 	my $err = catch;
 
 	if ( $err )
 	{
-		$self->_log("error", "STORE: DBI: Error claiming message $message->{message_id} for $message->{in_use_by}: $err");
+		$self->log("error", "STORE: DBI: Error claiming message $message->{message_id} for $message->{in_use_by}: $err");
 	}
 	else
 	{
-		$self->_log('info', 
+		$self->log('info', 
 			"STORE: DBI: Message $message->{message_id} ".
 			"claimed by $message->{in_use_by}"
 		);
@@ -221,19 +244,18 @@ sub disown
 
 	try eval
 	{
-		my $stmt;
-		$stmt = $self->{dbh}->prepare($SQL);
+		my $stmt = $self->dbh->prepare($SQL);
 		$stmt->execute($destination, $client_id);
 	};
 	my $err = catch;
 
 	if ( $err )
 	{
-		$self->_log("error", "STORE: DBI: Error disowning all messages on $destination for $client_id: $err");
+		$self->log("error", "STORE: DBI: Error disowning all messages on $destination for $client_id: $err");
 	}
 	else
 	{
-		$self->_log("STORE: DBI: All messages on $destination disowned for client $client_id");
+		$self->log("STORE: DBI: All messages on $destination disowned for client $client_id");
 	}
 
 	return;
@@ -243,10 +265,10 @@ sub storage_shutdown
 {
 	my ($self, $complete) = @_;
 
-	$self->_log('alert', 'Shutting down DBI storage engine...');
+	$self->log('alert', 'Shutting down DBI storage engine...');
 
 	# close the database handle.
-	$self->{dbh}->disconnect();
+	$self->dbh->disconnect();
 
 	# call the shutdown handler.
 	$complete->();

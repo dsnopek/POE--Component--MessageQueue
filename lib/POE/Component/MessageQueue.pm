@@ -16,6 +16,10 @@
 #
 
 package POE::Component::MessageQueue;
+use strict;
+use Carp qw(croak);
+use vars qw($VERSION);
+$VERSION = '0.1.8';
 
 use POE 0.38;
 use POE::Component::Server::Stomp;
@@ -26,13 +30,6 @@ use POE::Component::MessageQueue::Message;
 use POE::Component::MessageQueue::IDGenerator::UUID;
 use Net::Stomp;
 use Event::Notify;
-use vars qw($VERSION);
-use strict;
-
-$VERSION = '0.1.8';
-
-use Carp qw(croak);
-use Data::Dumper;
 
 use constant SHUTDOWN_SIGNALS => ('TERM', 'HUP', 'INT');
 

@@ -1,24 +1,20 @@
-
 package POE::Component::MessageQueue::Storage::Generic::Base;
-use base qw(POE::Component::MessageQueue::Storage);
+use Moose::Role;
+with qw(POE::Component::MessageQueue::Storage);
 use POE::Component::MessageQueue;
-use strict;
 
-sub new
-{
-	my $class = shift;
-	my $args  = shift;
-
-	my $self = $class->SUPER::new( $args );
-
-	# We're in a child process when this happens: if we don't do this, we'll get
-	# killed on these signals and PoCo::MQ::Storage::Generic will get a broken
-	# pipe when it tries to talk to us.
+after 'new' => sub {
 	foreach my $sig (POE::Component::MessageQueue->SHUTDOWN_SIGNALS) {
 		$SIG{$sig} = 'IGNORE';
 	} 
+};
 
-	return bless $self, $class;
+# Generics have funny behavior, and we'd like to be able to set the logger on
+# a single event.  So, we have this special call, ONLY for generics.
+sub set_log_function
+{
+	my ($self, $fn) = @_;
+	$self->get_logger()->set_log_function($fn)
 }
 
 1;

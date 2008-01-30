@@ -203,16 +203,17 @@ my %args = (
 	port     => $port,
 	hostname => $hostname,
 
-	storage => POE::Component::MessageQueue::Storage::Default->new({
+	storage => POE::Component::MessageQueue::Storage::Default->new(
 		data_dir     => $DATA_DIR,
 		timeout      => $timeout,
 		throttle_max => $throttle_max,
 		front_store  => $front_store,
-	}),
+	),
 
 	idgen => $idgen,
 	logger_alias => $logger_alias,
 );
+
 if ($statistics) {
 	require POE::Component::MessageQueue::Statistics;
 	require POE::Component::MessageQueue::Statistics::Publish::YAML;

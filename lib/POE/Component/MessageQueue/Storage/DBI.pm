@@ -16,21 +16,12 @@
 #
 
 package POE::Component::MessageQueue::Storage::DBI;
-use base qw(POE::Component::MessageQueue::Storage::Generic);
+use Moose;
+extends qw(POE::Component::MessageQueue::Storage::Generic);
 
-use POE::Component::MessageQueue::Storage::Generic::DBI;
-use strict;
-
-sub new
+sub package_name 
 {
-	my $class = shift;
-
-	my $self = $class->SUPER::new({
-		package => 'POE::Component::MessageQueue::Storage::Generic::DBI',
-		options => \@_,
-	});
-
-	return bless $self, $class;
+	return 'POE::Component::MessageQueue::Storage::Generic::DBI';
 }
 
 1;

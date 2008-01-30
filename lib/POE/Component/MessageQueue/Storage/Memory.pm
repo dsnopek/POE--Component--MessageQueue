@@ -16,38 +16,11 @@
 #
 
 package POE::Component::MessageQueue::Storage::Memory;
-use base qw(POE::Component::MessageQueue::Storage);
+use Moose;
+with qw(POE::Component::MessageQueue::Storage);
 
-use strict;
-
-sub new
-{
-	my $class = shift;
-	my $self  = $class->SUPER::new( @_ );
-
-	$self->{messages}   = { }; # destination => @messages
-
-	return bless $self, $class;
-}
-
-sub has_message
-{
-	my ($self, $message_id) = @_;
-
-	foreach my $dest ( keys %{$self->{messages}} )
-	{
-		my $messages = $self->{messages}->{$dest};
-		foreach my $message ( @{$messages} )
-		{
-			if ( $message->{message_id} eq $message_id )
-			{
-				return 1;
-			}
-		}
-	}
-
-	return 0;
-}
+# destination => @messages
+has 'messages' => (default => sub { {} });
 
 sub store
 {
@@ -57,7 +30,7 @@ sub store
 	# push onto our array
 	$self->{messages}{ $destination } ||= [];
 	push @{$self->{messages}{$destination}}, $message;
-	$self->_log( 
+	$self->log( 
 		"STORE: MEMORY: Added $message->{message_id} to in-memory store" 
 	);
 
@@ -81,7 +54,7 @@ sub remove
 			if ( $message->{message_id} eq $message_id )
 			{
 				splice(@$messages, $i, 1);
-				$self->_log('info',
+				$self->log('info',
 					"STORE: MEMORY: Removed $message_id from in-memory store"
 				);
 				$removed = $message;
@@ -147,7 +120,7 @@ sub claim_and_retrieve
 		{
 			# claim it, yo!
 			$message->{in_use_by} = $client_id;
-			$self->_log('info',
+			$self->log('info',
 				"STORE: MEMORY: Message $message->{message_id} ".
 				"claimed by client $client_id."
 			);

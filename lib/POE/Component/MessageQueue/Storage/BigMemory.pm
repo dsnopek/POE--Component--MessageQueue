@@ -15,41 +15,20 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-use strict;
 package POE::Component::MessageQueue::Storage::BigMemory;
-use base qw(POE::Component::MessageQueue::Storage);
+use Moose;
+with qw(POE::Component::MessageQueue::Storage);
 
 use POE::Component::MessageQueue::Storage::Structure::DLList;
 
-sub new
-{
-	my $class = shift;
-	my $self  = $class->SUPER::new(@_);
+sub _hashref { {} };
 
-	# claimed messages (removed from named queues when claimed).
-	# Key: Client ID.
-	# Value: A doubly linked queue of messages.
-	$self->{claimed} = {};
-
-	# Named queues.
-	# Key: Queue Name
-	# Value: A doubly linked queue of messages
-	$self->{unclaimed} = {};   
-
-	# All messages.
-	# Key: A message id
-	# Value: A cell in a doubly linked queue
-	$self->{messages} = {};
-
-	return bless $self, $class;
-}
-
-sub has_message
-{
-	my ($self, $id) = @_;
-
-	return ( exists($self->{messages}->{$id}) );
-}
+# claimer_id => DLList[Message]
+has 'claimed'   => (default => \&_hashref);
+# queue_name => DLList[Message]
+has 'unclaimed' => (default => \&_hashref);
+# message_id => DLList[Message] ... messages = claimed UNION unclaimed
+has 'messages'  => (default => \&_hashref);
 
 sub _force_store {
 	my ($self, $hashname, $key, $message) = @_;
@@ -77,7 +56,7 @@ sub store
 		$self->_force_store('unclaimed', $message->{destination}, $message);
 	}
 
-	$self->_log('info', "STORE: BIGMEMORY: Added $message->{message_id}.");
+	$self->log('info', "STORE: BIGMEMORY: Added $message->{message_id}.");
 	$callback->($message) if $callback;
 	return;
 }
@@ -86,13 +65,14 @@ sub remove
 {
 	my ($self, $id, $callback) = @_;
 	my $cell = delete $self->{messages}->{$id};
+
 	unless ($cell)
 	{
 		$callback->(undef) if $callback;
 		return;
 	}
-	my $message = $cell->delete();
 
+	my $message = $cell->delete();
 	my $claimant = $message->{in_use_by};
 
 	if ( $claimant )
@@ -105,7 +85,7 @@ sub remove
 	}
 
 	$callback->($message) if $callback;
-	$self->_log('info', "STORE: BIGMEMORY: Removed $id from in-memory store");
+	$self->log('info', "STORE: BIGMEMORY: Removed $id from in-memory store");
 	return;
 }
 
@@ -148,7 +128,7 @@ sub claim_and_retrieve
 		# Claim it
 		$message->{in_use_by} = $client_id;
 		$self->_force_store('claimed', $client_id, $message);
-		$self->_log('info',
+		$self->log('info',
 			"STORE: BIGMEMORY: Message $message->{message_id} ".
 			"claimed by client $client_id."
 		);
