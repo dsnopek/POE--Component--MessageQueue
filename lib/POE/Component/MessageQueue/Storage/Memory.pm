@@ -30,9 +30,7 @@ sub store
 	# push onto our array
 	$self->{messages}{ $destination } ||= [];
 	push @{$self->{messages}{$destination}}, $message;
-	$self->log( 
-		"STORE: MEMORY: Added $message->{message_id} to in-memory store" 
-	);
+	$self->log('info', "Added $message->{message_id}");
 
 	$callback->($message) if $callback;
 }
@@ -54,9 +52,7 @@ sub remove
 			if ( $message->{message_id} eq $message_id )
 			{
 				splice(@$messages, $i, 1);
-				$self->log('info',
-					"STORE: MEMORY: Removed $message_id from in-memory store"
-				);
+				$self->log('info', "Removed $message_id");
 				$removed = $message;
 				last OUTER;
 			}
@@ -120,15 +116,16 @@ sub claim_and_retrieve
 		{
 			# claim it, yo!
 			$message->{in_use_by} = $client_id;
-			$self->log('info',
-				"STORE: MEMORY: Message $message->{message_id} ".
-				"claimed by client $client_id."
-			);
+			$self->log('info', sprintf('Message %s claimed by client %s',
+				$message->{message_id}, $client_id));
 
 			$dispatch->($message, $destination, $client_id);
+			return;
 		}
 	}
-	
+
+	# Spec says to do this on failure.
+	$dispatch->(undef, $destination, $client_id);
 	return;
 }
 

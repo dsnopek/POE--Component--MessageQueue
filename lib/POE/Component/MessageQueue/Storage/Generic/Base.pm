@@ -1,20 +1,26 @@
 package POE::Component::MessageQueue::Storage::Generic::Base;
 use Moose::Role;
-with qw(POE::Component::MessageQueue::Storage);
 use POE::Component::MessageQueue;
+
+# In generics, we just want log to call the postback (we have to do this
+# before "with" injects a log method in here.
+override 'log' => sub {
+	my $self = shift;
+	$self->log_function->(@_) if $self->has_logger;
+};
+
+with qw(POE::Component::MessageQueue::Storage);
+
+has 'log_function' => (
+	is        => 'rw',
+	writer    => 'set_log_function',
+	predicate => 'has_logger',
+);
 
 after 'new' => sub {
 	foreach my $sig (POE::Component::MessageQueue->SHUTDOWN_SIGNALS) {
 		$SIG{$sig} = 'IGNORE';
 	} 
 };
-
-# Generics have funny behavior, and we'd like to be able to set the logger on
-# a single event.  So, we have this special call, ONLY for generics.
-sub set_log_function
-{
-	my ($self, $fn) = @_;
-	$self->get_logger()->set_log_function($fn)
-}
 
 1;

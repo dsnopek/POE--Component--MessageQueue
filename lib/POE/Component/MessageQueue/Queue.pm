@@ -127,30 +127,22 @@ sub get_subscription
 sub get_available_subscriber
 {
 	my $self = shift;
-	my $args = shift;
 
-	my $total = scalar @{$self->{subscriptions}};
-	my $sub;
-	my $i;
+	my $count = @{$self->{subscriptions}};
 
-	for( $i = 0; $i < $total; $i++ )
+	for(my $i = 0; $i < $count; $i++)
 	{
 		if ( $self->{subscriptions}->[$i]->is_ready() )
 		{
-			$sub = $self->{subscriptions}->[$i];
-			last;
+			my $sub = $self->{subscriptions}->[$i];
+			# Here we remove the chosen one from the subscription list and 
+			# push it on the end, so that we favor other subscribers.
+			splice @{$self->{subscriptions}}, $i, 1;
+			push   @{$self->{subscriptions}}, $sub;
+			return $sub;
 		}
 	}
-
-	if ( $sub and $total != 1 )
-	{
-		# Here we remove the chosen one from the subscription list and 
-		# push it on the end, so that we favor other subscribers.
-		splice @{$self->{subscriptions}}, $i, 1;
-		push   @{$self->{subscriptions}}, $sub;
-	}
-
-	return $sub;
+	return;
 }
 
 sub has_available_subscribers

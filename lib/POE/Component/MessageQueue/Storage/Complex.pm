@@ -23,6 +23,7 @@ use POE;
 has 'timeout' => (
 	is       => 'ro',
 	isa      => 'Int',
+	default  => 4,
 	required => 1,
 );
 
@@ -66,8 +67,8 @@ has 'expire_message' => (
 
 				if ($message->{persistent}) 
 				{
-					$self->log('info', 'STORE: COMPLEX: Moving expired message '.
-						"$message->{message_id} into the backstore.");
+					$self->log('info', sprintf('Moving expired message %s into backstore',
+						$message->{message_id}));
 					$self->back->store($message, $callback);
 				}
 				elsif($callback)
@@ -78,6 +79,13 @@ has 'expire_message' => (
 		};
 	},
 );
+
+override 'new' => sub {
+	my $self = super();
+	$self->children({FRONT => $self->front, BACK => $self->back});
+	$self->add_names qw(COMPLEX);
+	return $self;
+};
 
 sub store
 {
@@ -95,15 +103,10 @@ sub storage_shutdown
 {
 	my ($self, $complete) = @_;
 
-	return if $self->{shutdown};
-	$self->{shutdown} = 1;
-
 	# shutdown our check messages session
 	$poe_kernel->alias_remove($self->alias);
 
-	$self->log('alert', 
-		'Forcing all messages from the front-store into the back-store...'
-	);
+	$self->log('alert', 'Forcing messages from frontstore to backstore');
 
 	$self->front->remove_all(sub {
 		my $message_aref = shift;
@@ -111,10 +114,7 @@ sub storage_shutdown
 		
 		foreach my $msg (@messages)
 		{
-			$self->log('info',
-				"STORE: COMPLEX: Moving message $msg->{message_id} " .
-				'into backing store.'
-			);
+			$self->log('info', "Moving message $msg->{message_id} into backstore.");
 			$self->back->store($msg, sub {});
 		}	
 

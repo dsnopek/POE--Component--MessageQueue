@@ -71,12 +71,7 @@ override 'new' => sub {
 					store     claim_and_retrieve  storage_shutdown
 				)],
 				postbacks => [qw(set_log_function)],
-				factories => [qw(get_logger)],
 			},
-			'POE::Component::MessageQueue::Logger' =>
-			{
-				postbacks => [qw(set_log_function)]
-			}
 		},
 		error => {
 			session => $self->alias,

@@ -84,8 +84,6 @@ sub __append
 {
 	my ($one, $two) = @_;
 	push(@$one, @$two);
-	use YAML;
-	print STDERR Dump($one);
 	return $one;
 }
 

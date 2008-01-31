@@ -25,13 +25,47 @@ requires qw(
 	storage_shutdown
 );
 
+has 'names' => (
+	is      => 'rw',
+	isa     => 'ArrayRef',
+	writer  => 'set_names',
+	default => sub { [] },
+);
+
+has 'children' => (
+	is => 'rw',
+	isa => 'HashRef',
+	default => sub { {} },
+);
+
 has 'logger' => (
 	is      => 'rw',
 	writer  => 'set_logger',
-	reader  => 'get_logger',
 	default => sub { POE::Component::MessageQueue::Logger->new() },
-	handles => [qw(log set_log_function)],
 );
+
+sub add_names
+{
+	my ($self, @names) = @_;
+	my @prev_names = @{$self->names};
+	push(@prev_names, @names);
+	$self->set_names(\@prev_names);
+}
+
+after 'set_names' => sub {
+	my ($self, $names) = @_;
+	while (my ($name, $store) = each %{$self->children})
+	{
+		$store->set_names([@$names, $name]);
+	}
+};
+
+sub log
+{
+	my ($self, $type, $msg, @rest) = @_;
+	my $namestr = join(': ', @{$self->names});
+	return $self->logger->log($type, "STORE: $namestr: $msg", @rest);
+}
 
 1;
 

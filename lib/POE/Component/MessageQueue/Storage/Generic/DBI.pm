@@ -98,11 +98,13 @@ sub store
 
 	if ( $err )
 	{
-		$self->log('error', "STORE: DBI: Error storing $message->{message_id} in $message->{destination}: $err");
+		$self->log('error', sprintf("Error storing %s in %s: $err", 
+			$message->{message_id}, $message->{destination}));
 	}
 	else
 	{
-		$self->log("STORE: DBI: Message $message->{message_id} stored in $message->{destination}");
+		$self->log('info', 'Message %s stored in %s', 
+			$message->{message_id}, $message->{destination});
 	}
 
 	# Call the callback, even if we just send it undef (that's the interface).
@@ -129,7 +131,7 @@ sub _remove_underneath
 		$self->dbh->do('DELETE FROM messages'.$where);
 	};
 	my $err = catch;
-	$self->log("STORE: DBI: Error $errdesc: $err") if ($err);
+	$self->log('error', "Error $errdesc: $err") if ($err);
 
 	return \@messages;
 }
@@ -184,7 +186,7 @@ sub _retrieve
 		$result = $stmt->fetchrow_hashref;
 	};
 	my $err = catch;
-	$self->log("error", "STORE: DBI: $err") if $err;
+	$self->log("error", "$err") if $err;
 
 	return $result && _make_message($result);
 }
@@ -205,14 +207,13 @@ sub _claim
 
 	if ( $err )
 	{
-		$self->log("error", "STORE: DBI: Error claiming message $message->{message_id} for $message->{in_use_by}: $err");
+		$self->log('error', sprintf("Error claiming message %s for client %s: $err",
+			$message->{message_id}, $message->{in_use_by}));
 	}
 	else
 	{
-		$self->log('info', 
-			"STORE: DBI: Message $message->{message_id} ".
-			"claimed by $message->{in_use_by}"
-		);
+		$self->log('info', sprintf('Message %s claimed by %s', 
+			$message->{message_id}, $message->{in_use_by}));
 	}
 
 	return;
@@ -251,11 +252,13 @@ sub disown
 
 	if ( $err )
 	{
-		$self->log("error", "STORE: DBI: Error disowning all messages on $destination for $client_id: $err");
+		$self->log('error', 
+			"Error disowning all messages on $destination for $client_id: $err");
 	}
 	else
 	{
-		$self->log("STORE: DBI: All messages on $destination disowned for client $client_id");
+		$self->log('info', 
+			"All messages on $destination disowned for client $client_id");
 	}
 
 	return;

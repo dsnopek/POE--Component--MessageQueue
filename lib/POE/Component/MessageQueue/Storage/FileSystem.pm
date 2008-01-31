@@ -44,7 +44,6 @@ has 'data_dir' => (
 use constant empty_hashref => (
 	is       => 'ro',
 	isa      => 'HashRef',
-	required => 1,
 	default  => sub{ {} },
 );
 has 'file_wheels'          => empty_hashref;
@@ -91,6 +90,12 @@ has 'session' => (
 	},
 );
 
+override 'new' => sub {
+	my $self = super();
+	$self->children({INFO => $self->info_store});
+	return $self;
+};
+
 after 'set_logger' => sub {
 	my ($self, $logger) = @_;
 	$self->info_store->set_logger($logger);
@@ -126,19 +131,17 @@ sub _get_filename
 	return sprintf('%s/msg-%s.txt', $self->data_dir, $message_id);
 }
 
-sub hard_delete
+sub _hard_delete
 {
 	my ($self, $id) = @_; 
 	
 	# Just unlink it unless there are pending writes
-	return $self->unlink_file($id) unless delete $self->pending_writes->{$id};
+	return $self->_unlink_file($id) unless delete $self->pending_writes->{$id};
 
 	my $info = $self->file_wheels->{$id};
 	if ($info) 
 	{
-		$self->log('debug',
-			"STORE: FILE: Stopping wheels for message $id (removing)"
-		);
+		$self->log('debug', "Stopping wheels for message $id (removing)");
 		my $wheel = $info->{write_wheel} || $info->{read_wheel};
 		$wheel->shutdown_input();
 		$wheel->shutdown_output();
@@ -151,19 +154,17 @@ sub hard_delete
 	else
 	{
 		# If we haven't started yet, _write_message_to_disk will just abort.
-		$self->log('debug', 
-			"STORE: FILE: Removing message $id before writing started"
-		);
+		$self->log('debug', "Removing message $id before writing started");
 	}
 }
 
-sub unlink_file
+sub _unlink_file
 {
 	my ($self, $message_id) = @_;
 	my $fn = $self->_get_filename($message_id);
-	$self->log( 'debug', "STORE: FILE: Deleting $fn" );
+	$self->log( 'debug', "Deleting $fn" );
 	unlink $fn || 
-		$self->log( 'error', "STORE: FILE: Unable to remove $fn: $!" );
+		$self->log( 'error', "Unable to remove $fn: $!" );
 	return;
 }
 
@@ -198,7 +199,7 @@ sub _remove_underneath
 			my $body = $self->pending_writes->{$id};
 			if ($body) 
 			{
-				$self->hard_delete($id);
+				$self->_hard_delete($id);
 				$message->{body} = $body;
 				push(@output, $message);
 				$recurse->($recurse, $index++)
@@ -214,7 +215,7 @@ sub _remove_underneath
 						if ($body)
 						{
 							push(@output, $message);
-							$self->unlink_file($id);
+							$self->_unlink_file($id);
 						}
 						$recurse->($recurse, $index++);
 						return;
@@ -232,7 +233,7 @@ sub remove
 	my ($self, $message_id, $callback) = @_;
 	
 	# Kill the file if we're not going to care what's in it
-	$self->hard_delete($message_id) unless $callback;
+	$self->_hard_delete($message_id) unless $callback;
 
 	$self->_remove_underneath(sub {
 		# remover: Remove single message and pack it up in an aref 
@@ -259,7 +260,7 @@ sub remove_multiple
 
 	unless ($callback)
 	{
-		$self->hard_delete($_) foreach (@$message_ids);
+		$self->_hard_delete($_) foreach (@$message_ids);
 	}
 
 	$self->_remove_underneath(sub {
@@ -281,11 +282,11 @@ sub remove_all
 			if ($fn =~ /msg-\(.*\)\.txt/)
 			{
 				my $id = $1;
-				$self->unlink_file($id) unless exists $self->pending_writes->{$id};	
+				$self->_unlink_file($id) unless exists $self->pending_writes->{$id};	
 			}
 		}
 		# Do the special dance for deleting those that are pending
-		$self->hard_delete($_) foreach (keys %{$self->pending_writes});
+		$self->_hard_delete($_) foreach (keys %{$self->pending_writes});
 	}
 
 	$self->_remove_underneath(sub {
@@ -349,9 +350,7 @@ sub _dispatch_message
 			}
 			else
 			{
-				$self->log('warning', 
-					"STORE: FILE: Can't find message $id on disk!  Discarding message" 
-				);
+				$self->log('warning', "Can't find message $id!  Discarding"); 
 				$self->remove($id);
 				$message = undef;
 			}
@@ -373,15 +372,13 @@ sub _write_message_to_disk
 	{
 		my $here = __PACKAGE__.'::_write_message_to_disk()';
 		$self->log('emergency',
-			"$here: A wheel already exists for this message ($id)! ".
-			'This should never happen!'
-		);
+			"$here: wheel already exists for message $id! This shouldn't happen!");
 		return;
 	}
 	 
 	unless ($self->pending_writes->{$id})
 	{
-		$self->log('debug', "STORE: FILE: Abort write of message $id to disk");
+		$self->log('debug', "Abort write of message $id to disk");
 		delete $self->file_wheels->{$id};
 		return;
 	}
@@ -425,7 +422,7 @@ sub _read_message_from_disk
 	my $fn = $self->_get_filename($id);
 	my $fh = IO::File->new( $fn );
 	
-	$self->log( 'debug', "STORE: FILE: Starting to read $fn from disk" );
+	$self->log( 'debug', "Starting to read $fn from disk" );
 
 	# if we can't find the message body.  This usually happens as a result
 	# of crash recovery.
@@ -472,7 +469,7 @@ sub _read_error
 		my $callback = $info->{callback};
 
 		my $fn = $self->_get_filename($id);
-		$self->log('debug', "STORE: FILE: Finished reading $fn");
+		$self->log('debug', "Finished reading $fn");
 
 		# clear our state
 		delete $self->wheel_to_message_map->{$wheel_id};
@@ -481,7 +478,7 @@ sub _read_error
 		# NOTE:  I have never seen this happen, but it seems theoretically 
 		# possible.  Considering the former problem with leaking FD's, I'd 
 		# rather keep this here just in case.
-		$self->unlink_file($id) if ($info->{delete_me});
+		$self->_unlink_file($id) if ($info->{delete_me});
 
 		# send the message out!
 		$callback->($body);
@@ -491,7 +488,7 @@ sub _read_error
 	}
 	else
 	{
-		$self->log( 'error', "STORE: $op: Error $errnum $errstr" );
+		$self->log( 'error', "$op: Error $errnum $errstr" );
 	}
 }
 
@@ -518,7 +515,7 @@ sub _write_flushed_event
 	# remove from the first map
 	my $id = delete $self->wheel_to_message_map->{$wheel_id};
 
-	$self->log( 'debug', "STORE: FILE: Finished writing message $id to disk" );
+	$self->log( 'debug', "Finished writing message $id to disk" );
 
 	# remove from the second map
 	my $info = delete $self->file_wheels->{$id};
@@ -529,7 +526,7 @@ sub _write_flushed_event
 	# If we were actively writing the file when the message to delete
 	# came, we cannot actually delete it until the FD gets flushed, or the FD
 	# will live until the program dies.
-	$self->unlink_file($id) if ($info->{delete_me});
+	$self->_unlink_file($id) if ($info->{delete_me});
 
 	# Shutdown if wheels are done
 	$self->_wheel_check();
@@ -542,13 +539,12 @@ sub _log_state
 	use Data::Dumper;
 
 	my $wheel_count = scalar keys %{$self->file_wheels};
-	$self->log('debug', 
-		"STORE: FILE: Currently there are $wheel_count wheels in action.");
+	$self->log('debug', "Currently there are $wheel_count wheels in action.");
 
 	my $wheel_to_message_map = Dumper($self->wheel_to_message_map);
 	$wheel_to_message_map =~ s/\n//g;
 	$wheel_to_message_map =~ s/\s+/ /g;
-	$self->log('debug', "STORE: FILE: wheel_to_message_map: $wheel_to_message_map");
+	$self->log('debug', "wheel_to_message_map: $wheel_to_message_map");
 
 	while ( my ($key, $value) = each %{$self->file_wheels} )
 	{
@@ -560,7 +556,7 @@ sub _log_state
 		$wheel =~ s/\n//g;
 		$wheel =~ s/\s+/ /g;
 		
-		$self->log('debug', "STORE: FILE: wheel ($key): $wheel");
+		$self->log('debug', "wheel ($key): $wheel");
 	}
 
 	$kernel->delay_set('_log_state', 5);

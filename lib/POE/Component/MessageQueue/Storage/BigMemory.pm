@@ -21,14 +21,13 @@ with qw(POE::Component::MessageQueue::Storage);
 
 use POE::Component::MessageQueue::Storage::Structure::DLList;
 
-sub _hashref { {} };
-
+use constant empty_hashref => (default => sub { {} });
 # claimer_id => DLList[Message]
-has 'claimed'   => (default => \&_hashref);
+has 'claimed'   => empty_hashref;
 # queue_name => DLList[Message]
-has 'unclaimed' => (default => \&_hashref);
+has 'unclaimed' => empty_hashref;
 # message_id => DLList[Message] ... messages = claimed UNION unclaimed
-has 'messages'  => (default => \&_hashref);
+has 'messages'  => empty_hashref;
 
 sub _force_store {
 	my ($self, $hashname, $key, $message) = @_;
@@ -56,7 +55,7 @@ sub store
 		$self->_force_store('unclaimed', $message->{destination}, $message);
 	}
 
-	$self->log('info', "STORE: BIGMEMORY: Added $message->{message_id}.");
+	$self->log('info', "Added $message->{message_id}.");
 	$callback->($message) if $callback;
 	return;
 }
@@ -85,7 +84,7 @@ sub remove
 	}
 
 	$callback->($message) if $callback;
-	$self->log('info', "STORE: BIGMEMORY: Removed $id from in-memory store");
+	$self->log('info', "Removed $id");
 	return;
 }
 
@@ -128,10 +127,8 @@ sub claim_and_retrieve
 		# Claim it
 		$message->{in_use_by} = $client_id;
 		$self->_force_store('claimed', $client_id, $message);
-		$self->log('info',
-			"STORE: BIGMEMORY: Message $message->{message_id} ".
-			"claimed by client $client_id."
-		);
+		$self->log('info', sprintf('Message %s claimed by client %s',
+			$message->{message_id}, $client_id));
 	}
 
 	# Dispatch it (even if undef)

@@ -49,8 +49,16 @@ has 'messages' => (
 has 'shutdown_callback' => (
 	is        => 'rw',
 	isa       => 'CodeRef',
+	clearer   => 'disable_shutdown',
 	predicate => 'shutting_down',
 );
+
+override 'new' => sub {
+	my $self = super();
+	$self->children({THROTTLED => $self->front, STORAGE => $self->back});
+	$self->add_names qw(THROTTLED);
+	return $self;
+};
 
 sub _message_stored
 {
@@ -65,7 +73,7 @@ sub _message_stored
 		delete $self->messages->{$id};	
 
 		my $count = keys %{$self->messages};
-		$self->log("STORE: THROTTLED: Sending throttled message ($count left)");
+		$self->log('info', "Sending throttled message ($count left)");
 
 		$self->front->remove($id, sub {
 			my $message = shift;
@@ -113,7 +121,7 @@ sub store
 	{
 		$self->front->store($message, sub {
 			$self->messages->{$message->{message_id}} = $self->queue->push($message);
-			$self->log(sprintf('STORE: THROTTLED: Throttling (Total throttled: %d)',
+			$self->log('info', sprintf('Throttling (Total throttled: %d)',
 				scalar keys %{$self->messages}));
 		});
 	}
@@ -128,7 +136,7 @@ sub _shutdown_throttle_check
 		# However, we'll still get message_storeds as our backstore finishes, and
 		# we don't want to continue calling shutdown_callback.
 		$self->shutdown_callback->();
-		delete $self->{shutdown_callback};
+		$self->disable_shutdown();
 	}
 	return;
 }
