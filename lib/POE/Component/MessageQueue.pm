@@ -515,7 +515,7 @@ sub push_unacked_message
 	my $unacked = {
 		client     => $client,
 		message_id => $message->{message_id},
-		queue_name => $message->get_queue_name(),
+		queue_name => _destination_to_queue($message->destination),
 		timestamp  => $message->{timestamp},
 		size       => $message->{size}
 	};

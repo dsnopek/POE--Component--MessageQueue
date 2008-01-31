@@ -16,112 +16,65 @@
 #
 
 package POE::Component::MessageQueue::Message;
+use Moose;
 
 use Net::Stomp::Frame;
-use strict;
 
-sub new
-{
-	my $class = shift;
-	my $args  = shift;
+has 'id'  => (
+	is => 'ro',
+	isa => 'Str',
+	required => 1,
+);
 
-	my $message_id;
-	my $destination;
-	my $body;
-	my $persistent;
-	my $in_use_by;
-	my $size;
-	my $timestamp;
+has 'destination' => (
+	is => 'ro',
+	isa => 'Str',
+	required => 1,
+);
 
-	if ( ref($args) eq 'HASH' )
-	{
-		$message_id  = $args->{message_id};
-		$destination = $args->{destination};
-		$body        = $args->{body};
-		$persistent  = $args->{persistent};
-		$in_use_by   = $args->{in_use_by};
-		$timestamp   = $args->{timestamp};
-		$size        = $args->{size};
-	}
-	else
-	{
-		$message_id  = $args;
-		$destination = shift;
-		$body        = shift;
-		$persistent  = shift;
-	}
+has 'body'        => (
+	is => 'rw',
+);
 
-	if ( not defined $size )
-	{
-		$size = ($body) ? length $body : 0;
-	}
+has 'persistent'  => (
+	is => 'ro',
+	isa => 'Int',
+	required => 1,
+);
 
-	my $self =
-	{
-		message_id  => $message_id,
-		destination => $destination,
-		body        => $body       || '',
-		persistent  => $persistent || 0,
-		in_use_by   => $in_use_by  || undef,
-		timestamp   => $timestamp  || time(),
-		size        => $size,
-	};
+has 'claimant'    => (
+	is => 'rw',
+	isa => 'Maybe[Int]',
+	predicate => 'claimed',
+	clearer => 'disown',
+);
 
-	bless  $self, $class;
-	return $self;
-}
+has 'size'        => (
+	is => 'ro',
+	isa => 'Int',
+	lazy => 1,
+	default => sub {length $_[0]->body},
+);
 
-sub get_message_id  { return shift->{message_id}; }
-sub get_destination { return shift->{destination}; }
-sub get_body        { return shift->{body}; }
-sub get_persistent  { return shift->{persistent}; }
-sub get_in_use_by   { return shift->{in_use_by}; }
-sub get_timestamp   { return shift->{timestamp}; }
-sub get_size        { return shift->{size}; }
-
-sub is_in_queue
-{
-	return shift->{destination} =~ /^\/queue\//;
-}
-
-sub is_in_topic
-{
-	return shift->{destination} =~ /^\/topic\//;
-}
-
-sub set_in_use_by
-{
-	my ($self, $in_use_by) = @_;
-	$self->{in_use_by} = $in_use_by;
-}
-
-sub get_queue_name
-{
-	my $self = shift;
-
-	if ( $self->{destination} =~ /^\/queue\/(.*)$/ )
-	{
-		return $1;
-	}
-
-	return undef;
-}
+has 'timestamp'   => (
+	is => 'ro',
+	isa => 'Int',
+	default => sub { time() },
+);
 
 sub create_stomp_frame
 {
 	my $self = shift;
 
-	my $frame = Net::Stomp::Frame->new({
+	return Net::Stomp::Frame->new({
 		command => 'MESSAGE',
 		headers => {
-			'destination'    => $self->{destination},
-			'message-id'     => $self->{message_id},
-			'content-length' => $self->{size},
+			'destination'    => $self->destination,
+			'message-id'     => $self->id,
+			'content-length' => $self->size,
 		},
-		body => $self->{body}
+		body => $self->body,
 	});
-
-	return $frame;
 }
 
 1;
