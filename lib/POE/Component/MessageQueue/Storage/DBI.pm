@@ -98,12 +98,12 @@ L<POE::Component::MessageQueue::Storage::Generic::DBI>).
 
 =head1 SEE ALSO
 
+L<POE::Component::MessageQueue>,
+L<POE::Component::MessageQueue::Storage>,
 L<DBI>
 
 I<Other storage engines:>
 
-L<POE::Component::MessageQueue>,
-L<POE::Component::MessageQueue::Storage>,
 L<POE::Component::MessageQueue::Storage::Memory>,
 L<POE::Component::MessageQueue::Storage::BigMemory>,
 L<POE::Component::MessageQueue::Storage::FileSystem>,

@@ -270,10 +270,11 @@ None to speak of!
 
 L<POE::Component::MessageQueue::Storage::BigMemory> -- Alternative memory-based storage engine.
 
+L<POE::Component::MessageQueue>,
+L<POE::Component::MessageQueue::Storage>
+
 I<Other storage engines:>
 
-L<POE::Component::MessageQueue>,
-L<POE::Component::MessageQueue::Storage>,
 L<POE::Component::MessageQueue::Storage::BigMemory>,
 L<POE::Component::MessageQueue::Storage::FileSystem>,
 L<POE::Component::MessageQueue::Storage::DBI>,

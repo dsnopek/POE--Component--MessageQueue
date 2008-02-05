@@ -202,7 +202,7 @@ __END__
 =head1 NAME
 
 POE::Component::MessageQueue::Storage::BigMemory -- In-memory storage engine
-for large values of N 
+optimized for a large number of messages.
 
 =head1 SYNOPSIS
 
@@ -237,10 +237,11 @@ messages in memory for a period of time before moving them into persistent stora
 
 =head1 SEE ALSO
 
+L<POE::Component::MessageQueue>,
+L<POE::Component::MessageQueue::Storage>
+
 I<Other storage engines:>
 
-L<POE::Component::MessageQueue>,
-L<POE::Component::MessageQueue::Storage>,
 L<POE::Component::MessageQueue::Storage::Memory>,
 L<POE::Component::MessageQueue::Storage::FileSystem>,
 L<POE::Component::MessageQueue::Storage::DBI>,

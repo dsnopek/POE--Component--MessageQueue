@@ -301,10 +301,11 @@ The max number of messages that can be sent to the DBI store at one time.
 
 =head1 SEE ALSO
 
+L<POE::Component::MessageQueue>,
+L<POE::Component::MessageQueue::Storage>
+
 I<Other storage engines:>
 
-L<POE::Component::MessageQueue>,
-L<POE::Component::MessageQueue::Storage>,
 L<POE::Component::MessageQueue::Storage::Memory>,
 L<POE::Component::MessageQueue::Storage::BigMemory>,
 L<POE::Component::MessageQueue::Storage::FileSystem>,

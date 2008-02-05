@@ -305,13 +305,13 @@ L<POE::Component::MessageQueue::Storage::Complex::Default> - The most common cas
 
 I<External references:>
 
+L<POE::Component::MessageQueue>,
+L<POE::Component::MessageQueue::Storage>,
 L<DBI>,
 L<DBD::SQLite>
 
 I<Other storage engines:>
 
-L<POE::Component::MessageQueue>,
-L<POE::Component::MessageQueue::Storage>,
 L<POE::Component::MessageQueue::Storage::Default>,
 L<POE::Component::MessageQueue::Storage::Memory>,
 L<POE::Component::MessageQueue::Storage::BigMemory>,

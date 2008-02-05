@@ -579,10 +579,11 @@ The directory to store the files containing the message body's.
 
 =head1 SEE ALSO
 
+L<POE::Component::MessageQueue>,
+L<POE::Component::MessageQueue::Storage>
+
 I<Other storage engines:>
 
-L<POE::Component::MessageQueue>,
-L<POE::Component::MessageQueue::Storage>,
 L<POE::Component::MessageQueue::Storage::DBI>,
 L<POE::Component::MessageQueue::Storage::Memory>,
 L<POE::Component::MessageQueue::Storage::BigMemory>,

@@ -384,11 +384,12 @@ The arguments to pass to the new() function of the above package.
 
 =head1 SEE ALSO
 
-I<Other storage engines:>
-
-L<POE::Component::Generic>,
 L<POE::Component::MessageQueue>,
 L<POE::Component::MessageQueue::Storage>,
+L<POE::Component::Generic>
+
+I<Other storage engines:>
+
 L<POE::Component::MessageQueue::Storage::Memory>,
 L<POE::Component::MessageQueue::Storage::BigMemory>,
 L<POE::Component::MessageQueue::Storage::FileSystem>,
