@@ -1,5 +1,5 @@
 #
-# Copyright 2007 David Snopek <dsnopek@gmail.com>
+# Copyright 2007, 2008 David Snopek <dsnopek@gmail.com>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -212,28 +212,39 @@ taken when messages in the front-store expire.
 
 =head1 SYNOPSIS
 
-	use POE;
-	use POE::Component::MessageQueue;
-	use POE::Component::MessageQueue::Storage::Complex;
-	use strict;
+  use POE;
+  use POE::Component::MessageQueue;
+  use POE::Component::MessageQueue::Storage::Complex;
+  use strict;
 
-	POE::Component::MessageQueue->new({
-		storage => POE::Component::MessageQueue::Storage::Complex->new({
-			timeout      => 4,
-			throttle_max => 2,
-			front_store => POE::Component::MessageQueue::Storage::BigMemory->new(),
-			back_store => POE::Component::MessageQueue::Storage::Throttled->new({
-				storage => My::Persistent::But::Slow::Datastore->new(),	
-			}),
-			expire_messages => sub {
-				my $arrayref_of_message_ids = shift;
-				do_something($arrayref_of_message_ids);
-			},
-		})
-	});
+  POE::Component::MessageQueue->new({
+    storage => POE::Component::MessageQueue::Storage::Complex->new({
+      timeout      => 4,
+      throttle_max => 2,
 
-	POE::Kernel->run();
-	exit;
+      front_store => POE::Component::MessageQueue::Storage::Memory->new(),
+      # Or alternative memory store available!
+      #front_store => POE::Component::MessageQueue::Storage::BigMemory->new(),
+
+      back_store => POE::Component::MessageQueue::Storage::Throttled->new({
+        storage => My::Persistent::But::Slow::Datastore->new()
+
+        # Examples, include:
+        #storage => POE::Component::MessageQueue::Storage::DBI->new({ ... });
+        #storage => POE::Component::MessageQueue::Storage::FileSystem->new({ ... });
+      }),
+
+      # Optional: Action to perform on after timeout.  By default moves all
+      # persistent messages into the backstore.
+      expire_messages => sub {
+        my $arrayref_of_message_ids = shift;
+        do_something($arrayref_of_message_ids);
+      },
+    })
+  });
+
+POE::Kernel->run();
+exit;
 
 =head1 DESCRIPTION
 
@@ -268,7 +279,25 @@ Takes a reference to a storage engine to use as the front store / back store.
 
 =head1 SEE ALSO
 
-L<POE::Component::MessageQueue::Storage::Complex::Default> for the most common
-case.
+L<POE::Component::MessageQueue::Storage::Complex::Default> - The most common case.  Based on this storage engine.
+
+I<External references:>
+
+L<DBI>,
+L<DBD::SQLite>
+
+I<Other storage engines:>
+
+L<POE::Component::MessageQueue>,
+L<POE::Component::MessageQueue::Storage>,
+L<POE::Component::MessageQueue::Storage::Default>,
+L<POE::Component::MessageQueue::Storage::Memory>,
+L<POE::Component::MessageQueue::Storage::BigMemory>,
+L<POE::Component::MessageQueue::Storage::FileSystem>,
+L<POE::Component::MessageQueue::Storage::DBI>,
+L<POE::Component::MessageQueue::Storage::Generic>,
+L<POE::Component::MessageQueue::Storage::Generic::DBI>,
+L<POE::Component::MessageQueue::Storage::Throttled>
+L<POE::Component::MessageQueue::Storage::Default>
 
 =cut

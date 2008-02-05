@@ -1,5 +1,5 @@
 #
-# Copyright 2007 David Snopek <dsnopek@gmail.com>
+# Copyright 2007, 2008 David Snopek <dsnopek@gmail.com>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -45,28 +45,28 @@ POE::Component::MessageQueue::Storage::DBI -- A storage engine that uses L<DBI>
 
 =head1 SYNOPSIS
 
-	use POE;
-	use POE::Component::MessageQueue;
-	use POE::Component::MessageQueue::Storage::DBI;
-	use strict;
+  use POE;
+  use POE::Component::MessageQueue;
+  use POE::Component::MessageQueue::Storage::DBI;
+  use strict;
 
-	# For mysql:
-	my $DB_DSN      = 'DBI:mysql:database=perl_mq';
-	my $DB_USERNAME = 'perl_mq';
-	my $DB_PASSWORD = 'perl_mq';
-	my $DB_OPTIONS  = undef;
+  # For mysql:
+  my $DB_DSN      = 'DBI:mysql:database=perl_mq';
+  my $DB_USERNAME = 'perl_mq';
+  my $DB_PASSWORD = 'perl_mq';
+  my $DB_OPTIONS  = undef;
 
-	POE::Component::MessageQueue->new({
-			storage => POE::Component::MessageQueue::Storage::DBI->new({
-			dsn      => $DB_DSN,
-			username => $DB_USERNAME,
-			password => $DB_PASSWORD,
-			options  => $DB_OPTIONS
-		})
-	});
+  POE::Component::MessageQueue->new({
+    storage => POE::Component::MessageQueue::Storage::DBI->new({
+      dsn      => $DB_DSN,
+      username => $DB_USERNAME,
+      password => $DB_PASSWORD,
+      options  => $DB_OPTIONS
+    })
+  });
 
-	POE::Kernel->run();
-	exit;
+  POE::Kernel->run();
+  exit;
 
 =head1 DESCRIPTION
 
@@ -98,15 +98,20 @@ L<POE::Component::MessageQueue::Storage::Generic::DBI>).
 
 =head1 SEE ALSO
 
-L<DBI>,
+L<DBI>
+
+I<Other storage engines:>
+
 L<POE::Component::MessageQueue>,
 L<POE::Component::MessageQueue::Storage>,
 L<POE::Component::MessageQueue::Storage::Memory>,
+L<POE::Component::MessageQueue::Storage::BigMemory>,
 L<POE::Component::MessageQueue::Storage::FileSystem>,
 L<POE::Component::MessageQueue::Storage::Generic>,
 L<POE::Component::MessageQueue::Storage::Generic::DBI>,
 L<POE::Component::MessageQueue::Storage::Throttled>,
-L<POE::Component::MessageQueue::Storage::Complex>
+L<POE::Component::MessageQueue::Storage::Complex>,
+L<POE::Component::MessageQueue::Storage::Default>
 
 =cut
 

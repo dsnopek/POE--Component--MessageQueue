@@ -1,5 +1,5 @@
 #
-# Copyright 2007 Paul Driver <frodwith@gmail.com>
+# Copyright 2007, 2008 Paul Driver <frodwith@gmail.com>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -206,30 +206,33 @@ for large values of N
 
 =head1 SYNOPSIS
 
-	use POE;
-	use POE::Component::MessageQueue;
-	use POE::Component::MessageQueue::Storage::BigMemory;
-	use strict;
+  use POE;
+  use POE::Component::MessageQueue;
+  use POE::Component::MessageQueue::Storage::BigMemory;
+  use strict;
 
-	POE::Component::MessageQueue->new({
-		storage => POE::Component::MessageQueue::Storage::BigMemory->new()
-	});
+  POE::Component::MessageQueue->new({
+    storage => POE::Component::MessageQueue::Storage::BigMemory->new()
+  });
 
-	POE::Kernel->run();
-	exit;
+  POE::Kernel->run();
+  exit;
 
 =head1 DESCRIPTION
 
-This is basically Storage::Memory, but optimized to handle large numbers of
-messages.  Memory stores everything as a simple list, which can slow the MQ to
-a CRAWL when the number of messsages in this store gets big.
+An in-memory storage engine that is optimised for a large number of messages.
+Its an alternative to L<POE::Componenent::MessageQueue::Storage::Memory>, which
+stores everything in a Perl ARARY, which can slow the MQ to a CRAWL when the
+number of messsages in this store gets big.  
 
-store() is a little bit slower per message in this module, and it uses
+store() is a little bit slower per message in this module and it uses
 more memory per message. Everything else should be considerably more efficient,
-though, especially when the number of messages starts to climb.  Many things in 
-Storage::Memory are O(n*n).  Most things in this module are O(1)!
+though, especially when the number of messages starts to climb.  Many operations
+in Storage::Memory are O(n*n).  Most operations in this module are O(1)!
 
 =head1 SEE ALSO
+
+I<Other storage engines:>
 
 L<POE::Component::MessageQueue>,
 L<POE::Component::MessageQueue::Storage>,
@@ -239,6 +242,7 @@ L<POE::Component::MessageQueue::Storage::DBI>,
 L<POE::Component::MessageQueue::Storage::Generic>,
 L<POE::Component::MessageQueue::Storage::Generic::DBI>,
 L<POE::Component::MessageQueue::Storage::Throttled>,
-L<POE::Component::MessageQueue::Storage::Complex>
+L<POE::Component::MessageQueue::Storage::Complex>,
+L<POE::Component::MessageQueue::Storage::Default>
 
 =cut

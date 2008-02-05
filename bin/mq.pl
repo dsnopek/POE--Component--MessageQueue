@@ -54,7 +54,9 @@ GetOptions(
 sub version
 {
 	print "POE::Component::MessageQueue version $POE::Component::MessageQueue::VERSION\n";
-	print "Copyright 2007 David Snopek\n";
+	print "Copyright 2007, 2008 David Snopek (http://www.hackyourlife.org)\n";
+	print "Copyright 2007, 2008 Paul Driver <frodwith\@gmail.com>\n";
+	print "Copyright 2007 Daisuke Maki <daisuke\@endeworks.jp>\n";
 }
 
 sub usage

@@ -1,5 +1,5 @@
 #
-# Copyright 2007 David Snopek <dsnopek@gmail.com>
+# Copyright 2007, 2008 David Snopek <dsnopek@gmail.com>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -265,13 +265,19 @@ None to speak of!
 
 =head1 SEE ALSO
 
+L<POE::Component::MessageQueue::Storage::BigMemory> -- Alternative memory-based storage engine.
+
+I<Other storage engines:>
+
 L<POE::Component::MessageQueue>,
 L<POE::Component::MessageQueue::Storage>,
+L<POE::Component::MessageQueue::Storage::BigMemory>,
 L<POE::Component::MessageQueue::Storage::FileSystem>,
 L<POE::Component::MessageQueue::Storage::DBI>,
 L<POE::Component::MessageQueue::Storage::Generic>,
 L<POE::Component::MessageQueue::Storage::Generic::DBI>,
 L<POE::Component::MessageQueue::Storage::Throttled>,
-L<POE::Component::MessageQueue::Storage::Complex>
+L<POE::Component::MessageQueue::Storage::Complex>,
+L<POE::Component::MessageQueue::Storage::Default>
 
 =cut
