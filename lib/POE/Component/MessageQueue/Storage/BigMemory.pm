@@ -230,6 +230,11 @@ more memory per message. Everything else should be considerably more efficient,
 though, especially when the number of messages starts to climb.  Many operations
 in Storage::Memory are O(n*n).  Most operations in this module are O(1)!
 
+I wouldn't suggest using this as your main storage engine because if messages aren't
+removed by consumers, it will continue to consume more memory until it explodes.  Check-out
+L<POE::Component::MessageQueue::Storage::Complex> which uses this module internally to keep
+messages in memory for a period of time before moving them into persistent storage.
+
 =head1 SEE ALSO
 
 I<Other storage engines:>

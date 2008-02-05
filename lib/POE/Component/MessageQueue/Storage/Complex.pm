@@ -223,13 +223,13 @@ taken when messages in the front-store expire.
       throttle_max => 2,
 
       front_store => POE::Component::MessageQueue::Storage::Memory->new(),
-      # Or alternative memory store available!
+      # Or, an alternative memory store is available!
       #front_store => POE::Component::MessageQueue::Storage::BigMemory->new(),
 
       back_store => POE::Component::MessageQueue::Storage::Throttled->new({
         storage => My::Persistent::But::Slow::Datastore->new()
 
-        # Examples, include:
+        # Examples include:
         #storage => POE::Component::MessageQueue::Storage::DBI->new({ ... });
         #storage => POE::Component::MessageQueue::Storage::FileSystem->new({ ... });
       }),
@@ -271,9 +271,31 @@ store and store them in the back-store, but you can override that here.
 
 =item front_store => SCALAR
 
+Takes a reference to a storage engine to use as the front store.
+
+Currently, only the following storage engines are capable to be front stores:
+
+=over 2
+
+=item *
+
+L<POE::Component::MessageQueue::Storage::Memory>
+
+=item *
+
+L<POE::Component::MessageQueue::Storage::BigMemory>
+
+=back
+
+Expect this to change in future versions.
+
 =item back_store => SCALAR
 
-Takes a reference to a storage engine to use as the front store / back store.
+Takes a reference to a storage engine to use as the back store.
+
+Using L<POE::Component::MessageQueue::Storage::Throttled> to wrap your main
+storage engine is highly recommended for the reasons explained in its specific
+documentation.
 
 =back
 

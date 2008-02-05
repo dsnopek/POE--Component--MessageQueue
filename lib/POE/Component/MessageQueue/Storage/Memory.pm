@@ -254,6 +254,9 @@ POE::Component::MessageQueue::Storage::Memory -- In memory storage engine.
 A storage engine that keeps all the messages in memory.  Provides no persistence
 what-so-ever.
 
+For an alternative in-memory storage engine optimized for a large number of 
+messages, please see L<POE::Component::MessageQueue::Storage::Memoray>.
+
 I wouldn't suggest using this as your main storage engine because if messages aren't
 removed by consumers, it will continue to consume more memory until it explodes.  Check-out
 L<POE::Component::MessageQueue::Storage::Complex> which uses this module internally to keep
