@@ -17,7 +17,6 @@
 
 package POE::Component::MessageQueue::Message;
 use Moose;
-
 use Net::Stomp::Frame;
 
 has 'id' => (
@@ -62,6 +61,10 @@ has 'timestamp' => (
 	isa     => 'Int',
 	default => sub { time() },
 );
+
+# This speeds up object creation time something fierce, and we make a LOT of
+# message objects.
+__PACKAGE__->meta->make_immutable();
 
 sub create_stomp_frame
 {

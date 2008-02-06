@@ -53,12 +53,12 @@ has 'shutdown_callback' => (
 	predicate => 'shutting_down',
 );
 
-override 'new' => sub {
-	my $self = super();
+sub BUILD 
+{
+	my $self = shift;
 	$self->children({THROTTLED => $self->front, STORAGE => $self->back});
 	$self->add_names qw(THROTTLED);
-	return $self;
-};
+}
 
 sub _message_stored
 {

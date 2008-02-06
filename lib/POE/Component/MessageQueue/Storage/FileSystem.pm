@@ -91,11 +91,11 @@ has 'session' => (
 	},
 );
 
-override 'new' => sub {
-	my $self = super();
+sub BUILD 
+{
+	my $self = shift;
 	$self->children({INFO => $self->info_store});
-	return $self;
-};
+}
 
 after 'set_logger' => sub {
 	my ($self, $logger) = @_;

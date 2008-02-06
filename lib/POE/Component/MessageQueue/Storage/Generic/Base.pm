@@ -17,10 +17,12 @@ has 'log_function' => (
 	predicate => 'has_logger',
 );
 
-after 'new' => sub {
-	foreach my $sig (POE::Component::MessageQueue->SHUTDOWN_SIGNALS) {
+sub BEGIN
+{
+	foreach my $sig (POE::Component::MessageQueue->SHUTDOWN_SIGNALS) 
+	{
 		$SIG{$sig} = 'IGNORE';
 	} 
-};
+}
 
 1;

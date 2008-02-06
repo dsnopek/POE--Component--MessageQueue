@@ -55,12 +55,12 @@ has 'shutting_down' => (
 	default  => 0, 
 );
 
-override 'new' => sub {
-	my $self = super();
+sub BUILD 
+{
+	my $self = shift;
 	$self->children({FRONT => $self->front, BACK => $self->back});
 	$self->add_names qw(COMPLEX);
-	return $self;
-};
+}
 
 sub store
 {
@@ -123,7 +123,7 @@ sub _expiration_check
 		$self->expire_messages(\@expired);
 	}
 		
-	$kernel->delay_set('_expiration_check', 5);
+	$kernel->delay_set('_expiration_check', 1);
 }
 
 before 'remove' => sub {

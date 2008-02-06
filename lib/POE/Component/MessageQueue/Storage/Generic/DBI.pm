@@ -58,18 +58,17 @@ has 'dbh' => (
 	},
 );
 
-sub new {
-	my ($class, @args) = @_;
-	my $self = $class->SUPER::new(@_);
-
+sub BUILD 
+{
+	my ($self, $args) = @_;
 	# Force exception handling
   $self->options->{'HandleError'} = Exception::Class::DBI->handler,
   $self->options->{'PrintError'} = 0;
   $self->options->{'RaiseError'} = 0;
 
-	# This actually makes DBH connect, cause it's lazy
+	# This actually makes DBH connect, and makes sure there's no claims left
+	# over from the last time we shut down MQ.
 	$self->dbh->do( "UPDATE messages SET in_use_by = NULL" );
-	return $self;
 }
 
 sub _make_message { 

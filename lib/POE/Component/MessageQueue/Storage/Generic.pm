@@ -17,11 +17,26 @@
 
 package POE::Component::MessageQueue::Storage::Generic;
 use Moose;
-with qw(POE::Component::MessageQueue::Storage);
-
 use POE;
 use POE::Component::Generic 0.1001;
 use POE::Component::MessageQueue::Logger;
+
+# We're going to proxy some methods to the generic object.  Yay MOP!
+foreach my $method qw(store remove remove_all remove_multiple disown)
+{
+	__PACKAGE__->meta->add_method($method, sub {
+		my ($self, @args) = @_;
+		$self->generic->call(
+			$method, 
+			{session => $self->session->ID(), event => '_general_handler'},
+			@args,
+		);		
+		return;
+	});
+}
+
+# Have to do with after we add those methods, or the role will fail.
+with qw(POE::Component::MessageQueue::Storage);
 
 has 'alias' => (
 	is       => 'ro',
@@ -49,11 +64,10 @@ has 'generic' => (
 );
 
 # Because PoCo::Generic needs the constructor options passed to it in this
-# funny way, we have to override new instead of just declaring generic as an
-# attribute.  See object_options below.
-override 'new' => sub {
-	my $self = super(@_);	
-	my @opts = @_;
+# funny way, we have to set up generic in BUILD.
+sub BUILD 
+{
+	my ($self, $args) = @_;
 	my $package = $self->package_name(); 
 
 	$self->session(POE::Session->create(
@@ -64,7 +78,7 @@ override 'new' => sub {
 
 	$self->generic(POE::Component::Generic->spawn(
 		package => $package, 
-		object_options => \@opts,
+		object_options => [%$args],
 		packages => {
 			$package => {
 				callbacks => [qw(
@@ -86,8 +100,6 @@ override 'new' => sub {
 		session => $self->alias, 
 		event   => '_log_proxy'
 	});
-
-	return $self;
 };
 
 sub _start
@@ -103,23 +115,6 @@ sub _shutdown
 	$kernel->alias_remove($self->alias);
 	$self->log('alert', 'Generic storage engine is shutdown!');
 	$callback->();
-}
-
-# We're going to proxy some methods to the generic object.  Yay MOP!
-BEGIN
-{
-	foreach my $method qw(store remove remove_all remove_multiple disown)
-	{
-		__PACKAGE__->meta->add_method($method, sub {
-			my ($self, @args) = @_;
-			$self->generic->call(
-				$method, 
-				{session => $self->session->ID(), event => '_general_handler'},
-				@args,
-			);		
-			return;
-		});
-	}
 }
 
 sub package_name
