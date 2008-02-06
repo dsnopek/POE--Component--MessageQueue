@@ -29,6 +29,8 @@ has 'unclaimed' => empty_hashref;
 # message_id => DLList[Message] ... messages = claimed UNION unclaimed
 has 'messages'  => empty_hashref;
 
+make_immutable;
+
 sub _force_store {
 	my ($self, $hashname, $key, $message) = @_;
 

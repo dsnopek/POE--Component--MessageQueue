@@ -55,6 +55,23 @@ has 'shutting_down' => (
 	default  => 0, 
 );
 
+before 'remove' => sub {
+	my ($self, $id) = @_;
+	delete $self->timestamps->{$id};
+};
+
+before 'remove_multiple' => sub {
+	my ($self, $aref) = @_;
+	delete $self->timestamps->{$_} foreach (@$aref);
+};
+
+before 'remove_all' => sub {
+	my ($self) = @_;
+	%{$self->timestamps} = ();
+};
+
+make_immutable;
+
 sub BUILD 
 {
 	my $self = shift;
@@ -125,21 +142,6 @@ sub _expiration_check
 		
 	$kernel->delay_set('_expiration_check', 1);
 }
-
-before 'remove' => sub {
-	my ($self, $id) = @_;
-	delete $self->timestamps->{$id};
-};
-
-before 'remove_multiple' => sub {
-	my ($self, $aref) = @_;
-	delete $self->timestamps->{$_} foreach (@$aref);
-};
-
-before 'remove_all' => sub {
-	my ($self) = @_;
-	%{$self->timestamps} = ();
-};
 
 sub storage_shutdown
 {

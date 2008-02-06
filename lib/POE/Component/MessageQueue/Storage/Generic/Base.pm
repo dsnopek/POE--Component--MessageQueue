@@ -9,15 +9,15 @@ override 'log' => sub {
 	$self->log_function->(@_) if $self->has_logger;
 };
 
-with qw(POE::Component::MessageQueue::Storage);
-
 has 'log_function' => (
 	is        => 'rw',
 	writer    => 'set_log_function',
 	predicate => 'has_logger',
 );
 
-sub BEGIN
+with qw(POE::Component::MessageQueue::Storage);
+
+sub BUILD
 {
 	foreach my $sig (POE::Component::MessageQueue->SHUTDOWN_SIGNALS) 
 	{

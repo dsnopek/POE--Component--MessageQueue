@@ -17,12 +17,15 @@
 
 package POE::Component::MessageQueue::Storage::DBI;
 use Moose;
+
 extends qw(POE::Component::MessageQueue::Storage::Generic);
 
-sub package_name 
-{
-	return 'POE::Component::MessageQueue::Storage::Generic::DBI';
-}
+has 'package_name' => (
+	is      => 'ro',
+	default => 'POE::Component::MessageQueue::Storage::Generic::DBI',
+);
+
+make_immutable;
 
 1;
 

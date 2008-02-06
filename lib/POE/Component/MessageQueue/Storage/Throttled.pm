@@ -53,6 +53,25 @@ has 'shutdown_callback' => (
 	predicate => 'shutting_down',
 );
 
+after 'remove' => sub {
+	my ($self, $id) = @_;
+	$self->throttle_remove($id);
+};
+
+after 'remove_multiple' => sub {
+	my ($self, $aref) = @_;
+	$self->throttle_remove($_) foreach (@$aref);
+};
+
+after 'remove_all' => sub {
+	my ($self) = @_;
+	$self->queue->_break();
+	$self->queue(POE::Component::MessageQueue::Storage::Structure::DLList->new());
+	%{$self->messages} = ();
+};
+
+make_immutable;
+
 sub BUILD 
 {
 	my $self = shift;
@@ -94,23 +113,6 @@ sub throttle_remove
 	my $cell = delete $self->messages->{$id};
 	$cell->delete() if $cell;
 }
-
-after 'remove' => sub {
-	my ($self, $id) = @_;
-	$self->throttle_remove($id);
-};
-
-after 'remove_multiple' => sub {
-	my ($self, $aref) = @_;
-	$self->throttle_remove($_) foreach (@$aref);
-};
-
-after 'remove_all' => sub {
-	my ($self) = @_;
-	$self->queue->_break();
-	$self->queue(POE::Component::MessageQueue::Storage::Structure::DLList->new());
-	%{$self->messages} = ();
-};
 
 sub store
 {

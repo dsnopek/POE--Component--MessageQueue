@@ -63,12 +63,14 @@ has 'generic' => (
 	isa      => 'POE::Component::Generic',
 );
 
+make_immutable;
+
 # Because PoCo::Generic needs the constructor options passed to it in this
 # funny way, we have to set up generic in BUILD.
 sub BUILD 
 {
 	my ($self, $args) = @_;
-	my $package = $self->package_name(); 
+	my $package = $self->package_name; 
 
 	$self->session(POE::Session->create(
 		object_states => [
@@ -102,6 +104,11 @@ sub BUILD
 	});
 };
 
+sub package_name
+{
+	die "Abstract.";
+}
+
 sub _start
 {
 	my ($self, $kernel) = @_[OBJECT, KERNEL];
@@ -115,11 +122,6 @@ sub _shutdown
 	$kernel->alias_remove($self->alias);
 	$self->log('alert', 'Generic storage engine is shutdown!');
 	$callback->();
-}
-
-sub package_name
-{
-	die "Don't use this class directly!";
 }
 
 sub claim_and_retrieve

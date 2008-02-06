@@ -22,6 +22,8 @@ with qw(POE::Component::MessageQueue::Storage);
 # destination => @messages
 has 'messages' => (is => 'ro', default => sub { {} });
 
+make_immutable;
+
 sub store
 {
 	my ($self, $message, $callback) = @_;

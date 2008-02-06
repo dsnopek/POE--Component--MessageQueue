@@ -17,6 +17,7 @@
 
 package POE::Component::MessageQueue::Storage::Generic::DBI;
 use Moose;
+
 with qw(POE::Component::MessageQueue::Storage::Generic::Base);
 
 use DBI;
@@ -57,6 +58,8 @@ has 'dbh' => (
 		DBI->connect($self->dsn, $self->username, $self->password, $self->options);
 	},
 );
+
+make_immutable();
 
 sub BUILD 
 {

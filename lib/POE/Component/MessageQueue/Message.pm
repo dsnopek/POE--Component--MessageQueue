@@ -62,9 +62,7 @@ has 'timestamp' => (
 	default => sub { time() },
 );
 
-# This speeds up object creation time something fierce, and we make a LOT of
-# message objects.
-__PACKAGE__->meta->make_immutable();
+make_immutable;
 
 sub create_stomp_frame
 {

@@ -91,16 +91,18 @@ has 'session' => (
 	},
 );
 
+after 'set_logger' => sub {
+	my ($self, $logger) = @_;
+	$self->info_store->set_logger($logger);
+};
+
+make_immutable;
+
 sub BUILD 
 {
 	my $self = shift;
 	$self->children({INFO => $self->info_store});
 }
-
-after 'set_logger' => sub {
-	my ($self, $logger) = @_;
-	$self->info_store->set_logger($logger);
-};
 
 sub store
 {
