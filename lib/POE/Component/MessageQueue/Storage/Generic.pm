@@ -33,7 +33,8 @@ has 'alias' => (
 # We lock per destination: this is the set of locked destinations.
 has 'claiming' => (
 	is      => 'ro',
-	default => sub { {} },
+	isa     => 'HashRef',
+  default => sub { {} },
 );	
 
 # This is the place for PoCo::Generic to post events back to.

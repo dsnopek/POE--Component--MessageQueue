@@ -20,45 +20,46 @@ use Moose;
 
 use Net::Stomp::Frame;
 
-has 'id'  => (
-	is => 'ro',
-	isa => 'Str',
+has 'id' => (
+	is       => 'ro',
+	isa      => 'Str',
 	required => 1,
 );
 
 has 'destination' => (
-	is => 'ro',
-	isa => 'Str',
+	is       => 'ro',
+	isa      => 'Str',
 	required => 1,
 );
 
-has 'body'        => (
+has 'body' => (
 	is => 'rw',
 );
 
-has 'persistent'  => (
-	is => 'ro',
-	isa => 'Int',
+has 'persistent' => (
+	is       => 'ro',
+	isa      => 'Int',
 	required => 1,
 );
 
-has 'claimant'    => (
-	is => 'rw',
-	isa => 'Maybe[Int]',
+has 'claimant' => (
+	is        => 'rw',
+	isa       => 'Maybe[Int]',
+	writer    => 'claim',
 	predicate => 'claimed',
-	clearer => 'disown',
+	clearer   => 'disown',
 );
 
-has 'size'        => (
-	is => 'ro',
-	isa => 'Int',
-	lazy => 1,
+has 'size' => (
+	is      => 'ro',
+	isa     => 'Int',
+	lazy    => 1,
 	default => sub {length $_[0]->body},
 );
 
-has 'timestamp'   => (
-	is => 'ro',
-	isa => 'Int',
+has 'timestamp' => (
+	is      => 'ro',
+	isa     => 'Int',
 	default => sub { time() },
 );
 

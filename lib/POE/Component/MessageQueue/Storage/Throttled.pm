@@ -33,7 +33,7 @@ has 'sent' => (
 );
 
 has 'queue' => (
-	is      => 'ro',
+	is      => 'rw',
   isa     => 'POE::Component::MessageQueue::Storage::Structure::DLList',
 	default => sub {
 		POE::Component::MessageQueue::Storage::Structure::DLList->new();
@@ -49,7 +49,7 @@ has 'messages' => (
 has 'shutdown_callback' => (
 	is        => 'rw',
 	isa       => 'CodeRef',
-	clearer   => 'disable_shutdown',
+	clearer   => 'stop_shutdown',
 	predicate => 'shutting_down',
 );
 
@@ -69,13 +69,12 @@ sub _message_stored
 	# Send the next throttled message off to the backing store.
 	if (my $msg = $self->queue->shift())
 	{
-		my $id = $msg->{message_id};
-		delete $self->messages->{$id};	
+		delete $self->messages->{$msg->id};	
 
 		my $count = keys %{$self->messages};
 		$self->log('info', "Sending throttled message ($count left)");
 
-		$self->front->remove($id, sub {
+		$self->front->remove($msg->id, sub {
 			my $message = shift;
 			$self->back->store($message, sub {
 				$self->_message_stored($message, $callback);
@@ -101,9 +100,16 @@ after 'remove' => sub {
 	$self->throttle_remove($id);
 };
 
-after qw(remove_multiple remove_all) => sub {
+after 'remove_multiple' => sub {
 	my ($self, $aref) = @_;
 	$self->throttle_remove($_) foreach (@$aref);
+};
+
+after 'remove_all' => sub {
+	my ($self) = @_;
+	$self->queue->_break();
+	$self->queue(POE::Component::MessageQueue::Storage::Structure::DLList->new());
+	%{$self->messages} = ();
 };
 
 sub store
@@ -120,7 +126,7 @@ sub store
 	else
 	{
 		$self->front->store($message, sub {
-			$self->messages->{$message->{message_id}} = $self->queue->push($message);
+			$self->messages->{$message->id} = $self->queue->push($message);
 			$self->log('info', sprintf('Throttling (Total throttled: %d)',
 				scalar keys %{$self->messages}));
 		});
@@ -136,7 +142,7 @@ sub _shutdown_throttle_check
 		# However, we'll still get message_storeds as our backstore finishes, and
 		# we don't want to continue calling shutdown_callback.
 		$self->shutdown_callback->();
-		$self->disable_shutdown();
+		$self->stop_shutdown();
 	}
 	return;
 }

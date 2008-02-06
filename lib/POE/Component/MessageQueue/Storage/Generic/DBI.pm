@@ -72,7 +72,18 @@ sub new {
 	return $self;
 }
 
-sub _make_message { POE::Component::MessageQueue::Message->new(shift) }	
+sub _make_message { 
+	my $h = shift;
+	POE::Component::MessageQueue::Message->new(
+		id          => $h->{message_id},
+		destination => $h->{destination},
+		body        => $h->{body},
+		persistent  => $h->{persistent},
+		claimant    => $h->{in_use_by},
+		size        => $h->{size},
+		timestamp   => $h->{timestamp},
+	);
+};
 
 sub store
 {
@@ -82,16 +93,13 @@ sub store
 
 	try eval
 	{
+		my $m = $message;
 		my $stmt;
 		$stmt = $self->{dbh}->prepare($SQL);
 		$stmt->execute(
-			$message->{message_id},
-			$message->{destination},
-			$message->{body},
-			$message->{persistent},
-			$message->{in_use_by},
-			$message->{timestamp},
-			$message->{size},
+			$m->id,         $m->destination, $m->body, 
+			$m->persistent, $m->claimant, 
+			$m->timestamp,  $m->size,
 		);
 	};
 	my $err = catch;
@@ -99,12 +107,12 @@ sub store
 	if ( $err )
 	{
 		$self->log('error', sprintf("Error storing %s in %s: $err", 
-			$message->{message_id}, $message->{destination}));
+			$message->id, $message->destination));
 	}
 	else
 	{
-		$self->log('info', 'Message %s stored in %s', 
-			$message->{message_id}, $message->{destination});
+		$self->log('info', sprintf('Message %s stored in %s', 
+			$message->id, $message->destination));
 	}
 
 	# Call the callback, even if we just send it undef (that's the interface).
@@ -201,19 +209,19 @@ sub _claim
 	{
 		my $stmt;
 		$stmt = $self->dbh->prepare($SQL);
-		$stmt->execute($message->{in_use_by}, $message->{message_id});
+		$stmt->execute($message->claimant, $message->id);
 	};
 	my $err = catch;
 
 	if ( $err )
 	{
 		$self->log('error', sprintf("Error claiming message %s for client %s: $err",
-			$message->{message_id}, $message->{in_use_by}));
+			$message->id, $message->claimant));
 	}
 	else
 	{
 		$self->log('info', sprintf('Message %s claimed by %s', 
-			$message->{message_id}, $message->{in_use_by}));
+			$message->id, $message->claimant));
 	}
 
 	return;
@@ -226,7 +234,7 @@ sub claim_and_retrieve
 	my $message = $self->_retrieve( $destination );
 	
 	# if we actually got a message, claim it
-	$message->{in_use_by} = $client_id if ($message);
+	$message->claim($client_id) if ($message);
 
 	# Might as well do this now so the other thread can get on its way. :)
 	$dispatch->($message, $destination, $client_id);

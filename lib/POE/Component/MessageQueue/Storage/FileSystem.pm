@@ -46,6 +46,7 @@ use constant empty_hashref => (
 	isa      => 'HashRef',
 	default  => sub{ {} },
 );
+
 has 'file_wheels'          => empty_hashref;
 has 'wheel_to_message_map' => empty_hashref;
 has 'pending_writes'       => empty_hashref;
@@ -115,7 +116,7 @@ sub store
 	#  (3) We start writing message to disk
 	#
 	# Mark message as needing to be written.
-	$self->pending_writes->{$message->{message_id}} = $body;
+	$self->pending_writes->{$message->id} = $body;
 
 	# initiate file writing process (only the body will be written)
 	$poe_kernel->post( $self->session, '_write_message_to_disk', 
@@ -162,6 +163,7 @@ sub _unlink_file
 {
 	my ($self, $message_id) = @_;
 	my $fn = $self->_get_filename($message_id);
+	return unless (-f $fn);
 	$self->log( 'debug', "Deleting $fn" );
 	unlink $fn || 
 		$self->log( 'error', "Unable to remove $fn: $!" );
@@ -195,11 +197,10 @@ sub _remove_underneath
 			return $callback->(\@output) unless $index < $max;
 
 			my $message = $messages->[$index];
-			my $id = $message->{message_id};
-			my $body = $self->pending_writes->{$id};
+			my $body = $self->pending_writes->{$message->id};
 			if ($body) 
 			{
-				$self->_hard_delete($id);
+				$self->_hard_delete($message->id);
 				$message->{body} = $body;
 				push(@output, $message);
 				$recurse->($recurse, $index++)
@@ -207,20 +208,20 @@ sub _remove_underneath
 			else
 			{
 				# Don't have the body any more, so read from disk.
-				$poe_kernel->post($self->session, '_read_message_from_disk', $id, 
-					sub { 
-						$body = shift;
-						$message->{body} = $body;
-						# If didn't get a body, there wasn't one to get.
-						if ($body)
-						{
-							push(@output, $message);
-							$self->_unlink_file($id);
-						}
-						$recurse->($recurse, $index++);
-						return;
-					},
-				);
+				my $read_finished = sub {
+					$body = shift;
+					$message->body($body);
+					# If didn't get a body, there wasn't one to get.
+					if ($body)
+					{
+						push(@output, $message);
+						$self->_unlink_file($message->id);
+					}
+					$recurse->($recurse, $index++);
+					return;
+				};
+				$poe_kernel->post($self->session, 
+					'_read_message_from_disk', $message->id, $read_finished);
 			}
 		};
 		$loop->($loop, 0);
@@ -325,14 +326,14 @@ sub _dispatch_message
 
 	return $dispatch->(undef, $destination, $client_id) unless $message;
 
-	my $id = $message->{message_id};
-	my $body = $self->pending_writes->{$id};
+	my $body = $self->pending_writes->{$message->id};
 
 	# check to see if we even finished writing to disk
 	if ( $body )
 	{
-		$self->log('debug', "Dispatching message $id before disk write"); 
-		$message->{body} = $body;
+		$self->log('debug', 
+			sprintf('Dispatching message %s before disk write', $message->id));
+		$message->body($body);
 
 		# We don't stop writing, because if the message is not ACK'd,
 		# we want it to get saved to disk.
@@ -342,7 +343,7 @@ sub _dispatch_message
 	else
 	{
 		# pull the message body from disk
-		$poe_kernel->post($self->session, '_read_message_from_disk', $id, sub {
+		my $read_finished = sub {
 			my $body = shift;
 			if ($body)
 			{
@@ -350,13 +351,17 @@ sub _dispatch_message
 			}
 			else
 			{
-				$self->log('warning', "Can't find message $id!  Discarding"); 
-				$self->remove($id);
+				$self->log('warning', 
+					sprintf("Can't find message %s!  Discarding", $message->id));
+				$self->remove($message->id);
 				$message = undef;
 			}
 
 			$dispatch->($message, $destination, $client_id); 
-		});
+		};
+
+		$poe_kernel->post($self->session, 
+			'_read_message_from_disk', $message->id, $read_finished);
 	}
 }
 
@@ -366,27 +371,28 @@ sub _dispatch_message
 sub _write_message_to_disk
 {
 	my ($self, $kernel, $message, $body) = @_[ OBJECT, KERNEL, ARG0, ARG1 ];
-	my $id = $message->{message_id};
 
-	if ($self->file_wheels->{$id})
+	if ($self->file_wheels->{$message->id})
 	{
-		my $here = __PACKAGE__.'::_write_message_to_disk()';
-		$self->log('emergency',
-			"$here: wheel already exists for message $id! This shouldn't happen!");
+		$self->log('emergency', sprintf(
+			'%s::_write_message_to_disk: wheel already exists for message %s!',
+			__PACKAGE__, $message->id
+		));
 		return;
 	}
 	 
-	unless ($self->pending_writes->{$id})
+	unless ($self->pending_writes->{$message->id})
 	{
-		$self->log('debug', "Abort write of message $id to disk");
-		delete $self->file_wheels->{$id};
+		$self->log('debug', sprintf('Abort write of message %s to disk',
+			$message->id));
+		delete $self->file_wheels->{$message->id};
 		return;
 	}
 
 	# Yes, we do want to die if we can't open the file for writing.  It
 	# means something is wrong and it's very unlikely we can persist other
 	# messages.
-	my $fn = $self->_get_filename($id);
+	my $fn = $self->_get_filename($message->id);
 	my $fh = IO::File->new( ">$fn" ) || die "Unable to save message in $fn: $!";
 
 	my $wheel = POE::Wheel::ReadWrite->new(
@@ -399,9 +405,9 @@ sub _write_message_to_disk
 	$wheel->put( $body );
 
 	# stash the wheel in our maps
-	$self->file_wheels->{$id} = {write_wheel => $wheel};
+	$self->file_wheels->{$message->id} = {write_wheel => $wheel};
 
-	$self->wheel_to_message_map->{$wheel->ID()} = $id;
+	$self->wheel_to_message_map->{$wheel->ID()} = $message->id;
 }
 
 sub _read_message_from_disk

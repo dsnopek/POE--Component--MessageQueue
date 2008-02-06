@@ -21,7 +21,7 @@ with qw(POE::Component::MessageQueue::Storage);
 
 use POE::Component::MessageQueue::Storage::Structure::DLList;
 
-use constant empty_hashref => (default => sub { {} });
+use constant empty_hashref => (is => 'ro', default => sub { {} });
 # claimer_id => DLList[Message]
 has 'claimed'   => empty_hashref;
 # queue_name => DLList[Message]
@@ -31,31 +31,32 @@ has 'messages'  => empty_hashref;
 
 sub _force_store {
 	my ($self, $hashname, $key, $message) = @_;
-	my $id = $message->{message_id}; 
+
 	unless ( exists $self->{$hashname}->{$key} )
 	{
 		$self->{$hashname}->{$key} = 
 			POE::Component::MessageQueue::Storage::Structure::DLList->new();
 	}
-	$self->{messages}->{$id} = $self->{$hashname}->{$key}->enqueue($message); 
+
+	$self->{messages}->{$message->id} = 
+		$self->{$hashname}->{$key}->enqueue($message); 
 	return;
 }
 
 sub store
 {
 	my ($self, $message, $callback) = @_;
-	my $claimant = $message->{in_use_by};
 
-	if ( defined $claimant )
+	if ( $message->claimed )
 	{
-		$self->_force_store('claimed', $claimant, $message);
+		$self->_force_store('claimed', $message->claimant, $message);
 	}
 	else
 	{
-		$self->_force_store('unclaimed', $message->{destination}, $message);
+		$self->_force_store('unclaimed', $message->destination, $message);
 	}
 
-	$self->log('info', "Added $message->{message_id}.");
+	$self->log('info', sprintf('Added %s.', $message->id));
 	$callback->($message) if $callback;
 	return;
 }
@@ -63,7 +64,7 @@ sub store
 sub remove
 {
 	my ($self, $id, $callback) = @_;
-	my $cell = delete $self->{messages}->{$id};
+	my $cell = delete $self->messages->{$id};
 
 	unless ($cell)
 	{
@@ -72,15 +73,14 @@ sub remove
 	}
 
 	my $message = $cell->delete();
-	my $claimant = $message->{in_use_by};
 
-	if ( $claimant )
+	if ( $message->claimed )
 	{
-		delete $self->{claimed}->{$claimant};
+		delete $self->claimed->{$message->claimant};
 	}
 	else
 	{
-		delete $self->{unclaimed}->{$message->{destination}};
+		delete $self->unclaimed->{$message->destination};
 	}
 
 	$callback->($message) if $callback;
@@ -121,14 +121,14 @@ sub claim_and_retrieve
 	my ($q, $message);
 
 	# Find an unclaimed message
-	if (($q = $self->{unclaimed}->{$destination}) &&
+	if (($q = $self->unclaimed->{$destination}) &&
 	    ($message = $q->dequeue()))
 	{
 		# Claim it
-		$message->{in_use_by} = $client_id;
+		$message->claim($client_id);
 		$self->_force_store('claimed', $client_id, $message);
 		$self->log('info', sprintf('Message %s claimed by client %s',
-			$message->{message_id}, $client_id));
+			$message->id, $client_id));
 	}
 
 	# Dispatch it (even if undef)
@@ -139,16 +139,16 @@ sub claim_and_retrieve
 sub disown
 {
 	my ($self, $destination, $client_id) = @_;
-	my $q = $self->{claimed}->{$client_id} || return;
+	my $q = $self->claimed->{$client_id} || return;
 
 	for(my $i = $q->first(); $i; $i = $i->next())
 	{
 		my $message = $i->data();
-		if ($message->{destination} eq $destination)
+		if ($message->destination eq $destination)
 		{
 			$i->delete(); # ->next() still valid though.
 			$self->_force_store('unclaimed', $destination, $message);
-			delete $message->{in_use_by};
+			$message->disown();
 		}
 	}
 	return;

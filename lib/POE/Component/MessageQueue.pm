@@ -159,7 +159,7 @@ sub __closure
 	return $func;
 }
 
-sub _log
+sub log
 {
 	my $self = shift;
 	$self->{logger}->log(@_);
@@ -207,7 +207,7 @@ sub remove_client
 	my $self      = shift;
 	my $client_id = shift;
 
-	$self->_log( 'notice', "MASTER: Removing client $client_id" );
+	$self->log( 'notice', "MASTER: Removing client $client_id" );
 	
 	my $client = $self->get_client( $client_id );
 
@@ -269,7 +269,7 @@ sub _client_error
 	}
 	else
 	{
-		$self->_log( 'error', "$name $number $message" );
+		$self->log( 'error', "$name $number $message" );
 	}
 }
 
@@ -299,15 +299,15 @@ sub _shutdown_complete
 {
 	my ($self) = @_;
 
-	$self->_log('alert', 'Storage engine has finished shutting down');
+	$self->log('alert', 'Storage engine has finished shutting down');
 
 	# Really, really take us down!
-	$self->_log('alert', 'Sending TERM signal to master sessions');
+	$self->log('alert', 'Sending TERM signal to master sessions');
 	$poe_kernel->signal( $self->{server_alias}, 'TERM' );
 	$poe_kernel->signal( $self->{master_alias}, 'TERM' );
 
 	# shutdown the logger
-	$self->_log('alert', 'Shutting down the logger');
+	$self->log('alert', 'Shutting down the logger');
 	$self->{logger}->shutdown();
 
 	# Shutdown anyone watching us
@@ -383,28 +383,28 @@ sub route_frame
 			my $login = $frame->headers->{login};
 			my $passcode = $frame->headers->{passcode};
 
-			$self->_log('notice', "RECV ($cid): CONNECT $login:$passcode");
+			$self->log('notice', "RECV ($cid): CONNECT $login:$passcode");
 			$client->connect({login => $login, passcode => $passcode});
 		},
 
 		DISCONNECT => sub {
-			$self->_log( 'notice', "RECV ($cid): DISCONNECT");
+			$self->log( 'notice', "RECV ($cid): DISCONNECT");
 			$self->remove_client($cid);
 		},
 
 		SEND => sub {
 			my $persistent  = $frame->headers->{persistent} eq 'true';
 
-			$self->_log('notice',
+			$self->log('notice',
 				sprintf ("RECV (%s): SEND message (%i bytes) to %s (persistent: %i)",
 					$cid, length $frame->body, $destination, $persistent));
 
-			my $message = $self->create_message({
+			my $message = POE::Component::MessageQueue::Message->new(
+				id          => $self->{idgen}->generate(),
 				destination => $destination,
 				persistent  => $persistent,
 				body        => $frame->body,
-				stored      => 0
-			});
+			);
 
 			if (my $queue_name = _destination_to_queue($destination))
 			{
@@ -437,7 +437,7 @@ sub route_frame
 			}
 			else
 			{
-				$self->_log('error', 
+				$self->log('error', 
 					"Don't know how to handle destination: $destination");
 			}
 		},
@@ -445,23 +445,23 @@ sub route_frame
 		SUBSCRIBE => sub {
 			my $ack_type = $frame->headers->{ack} || 'auto';
 
-			$self->_log('notice',
+			$self->log('notice',
 				"RECV ($cid): SUBSCRIBE $destination (ack: $ack_type)");
 
 			if (my $thing = $queue_or_topic->())
 			{
-				$self->_log('notice', 
+				$self->log('notice', 
 					"MASTER: Subscribing client $cid to $destination"); 
 				$thing->add_subscription($client, $ack_type);
 			}
 		},
 
 		UNSUBSCRIBE => sub {
-			$self->_log('notice', "RECV ($cid): UNSUBSCRIBE $destination");
+			$self->log('notice', "RECV ($cid): UNSUBSCRIBE $destination");
 
 			if (my $thing = $queue_or_topic->())
 			{
-				$self->_log('notice', 
+				$self->log('notice', 
 					"MASTER: Unsubscribing client $cid from $destination");
 				$thing->remove_subscription($client);
 			}
@@ -469,7 +469,7 @@ sub route_frame
 
 		ACK => sub {
 			my $message_id = $frame->headers->{'message-id'};
-			$self->_log('notice', "RECV ($cid): ACK - message $message_id");
+			$self->log('notice', "RECV ($cid): ACK - message $message_id");
 			$self->ack_message($client, $message_id);
 		},
 	);
@@ -490,39 +490,19 @@ sub route_frame
 	}
 	else
 	{
-		$self->_log('error', 
+		$self->log('error', 
 			"ERROR: Don't know how to handle frame: " . $frame->as_string);
 	}
 }
 
-sub create_message
-{
-	my $self = shift;
-	my $message = POE::Component::MessageQueue::Message->new(@_);
-
-	if ( not defined $message->{message_id} )
-	{
-		$message->{message_id} = $self->{idgen}->generate($message);
-	}
-
-	return $message;
-}
-
 sub push_unacked_message
 {
-	my ($self, $message, $client) = @_;
+	my ($self, $message) = @_;
 
-	my $unacked = {
-		client     => $client,
-		message_id => $message->{message_id},
-		queue_name => _destination_to_queue($message->destination),
-		timestamp  => $message->{timestamp},
-		size       => $message->{size}
-	};
-	
-	$self->{needs_ack}->{$message->{message_id}} = $unacked;
+	$self->{needs_ack}->{$message->id} = $message;
 
-	$self->_log( 'notice', "MASTER: message $message->{message_id} needs ACK from client $client->{client_id}" );
+	$self->log('notice', sprintf('MASTER: message %s needs ACK from client %s',
+		$message->id, $message->claimant));
 }
 
 sub pop_unacked_message
@@ -530,13 +510,16 @@ sub pop_unacked_message
 	my ($self, $message_id, $client) = @_;
 
 	my $unacked = $self->{needs_ack}->{$message_id};
+	my $client_id = $client->{client_id};
+	my $claimant_id = $unacked->claimant;
 
-	if ( $client != $unacked->{client} )
+	if ( $client_id != $claimant_id )
 	{
-		$self->_log( 'alert', "DANGER! Someone is trying to ACK a message that isn't theirs" );
-		$self->_log( 'alert', "message id: $message_id" );;
-		$self->_log( 'alert', "needs_ack says $unacked->{client}->{client_id}" );
-		$self->_log( 'alert', "but we got a message from $client->{client_id}" );
+		$self->log( 'alert', 
+			"DANGER! Someone is trying to ACK a message that isn't theirs" );
+		$self->log( 'alert', "message id: $message_id" );;
+		$self->log( 'alert', "needs_ack says $claimant_id" );
+		$self->log( 'alert', "but we got a message from $client_id" );
 		return undef;
 	}
 	else
@@ -554,16 +537,16 @@ sub ack_message
 
 	my $unacked = $self->pop_unacked_message( $message_id, $client );
 
-	if ( not defined $unacked )
+	unless ($unacked)
 	{
-		$self->_log( 'alert', "Error ACK'ing message: $message_id" );
+		$self->log( 'alert', "Error ACK'ing message: $message_id" );
 		return;
 	}
 	
 	# remove from the backing store
 	$self->get_storage()->remove( $message_id );
 
-	my $queue = $self->get_queue( $unacked->{queue_name} );
+	my $queue = $self->get_queue(_destination_to_queue($unacked->destination));
 
 	# ACK the subscriber back into ready mode.
 	my $sub = $queue->get_subscription( $client );
@@ -586,7 +569,7 @@ sub ack_message
 sub _shutdown 
 {
 	my ($self, $kernel, $signal) = @_[ OBJECT, KERNEL, ARG0 ];
-	$self->_log('alert', "Got SIG$signal. Shutting down.");
+	$self->log('alert', "Got SIG$signal. Shutting down.");
 	$kernel->sig_handled();
 	$self->shutdown(); 
 }
@@ -604,7 +587,7 @@ sub shutdown
 			# development, this is necessary because the graceful shutdown doesn't work
 			# at all.
 			my $msg = "Shutdown called $self->{shutdown} times!  Forcing ungraceful quit.";
-			$self->_log('emergency', $msg);
+			$self->log('emergency', $msg);
 			print STDERR "$msg\n";
 			$poe_kernel->stop();
 		}
@@ -612,7 +595,7 @@ sub shutdown
 	}
 	$self->{shutdown} = 1;
 
-	$self->_log('alert', 'Initiating message queue shutdown...');
+	$self->log('alert', 'Initiating message queue shutdown...');
 
 	# stop listening for connections
 	$poe_kernel->post( $self->{server_alias} => 'shutdown' );

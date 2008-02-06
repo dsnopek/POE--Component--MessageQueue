@@ -34,7 +34,7 @@ sub new
 
 sub generate 
 {
-	my ($self, $message) = @_;
+	my ($self) = @_;
 	# We could return something more compact (like a b64string) but that would
 	# screw with Storage::Filesystem, and anyone elese that doesn't like special
 	# characters.

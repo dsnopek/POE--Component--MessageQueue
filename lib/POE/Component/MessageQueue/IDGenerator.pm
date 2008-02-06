@@ -27,7 +27,7 @@ sub new
 
 sub generate 
 {
-	my ($self, $message) = @_;
+	my ($self) = @_;
 	die "Abstract";
 }
 
@@ -54,9 +54,7 @@ reading from persistence, or whatnot here.
 
 =item generate => SCALAR
 
-Returns some kind of unique string.  The parameter is an an otherwise 
-filled-out Message object, to be used potentially as seed/unique data for the 
-ID generation.
+Returns some kind of unique string.  
 
 =back
 

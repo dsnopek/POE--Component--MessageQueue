@@ -32,6 +32,12 @@ has 'names' => (
 	default => sub { [] },
 );
 
+has 'namestr' => (
+	is      => 'rw',
+	isa     => 'Str',
+	default => q{},
+);
+
 has 'children' => (
 	is => 'rw',
 	isa => 'HashRef',
@@ -58,12 +64,13 @@ after 'set_names' => sub {
 	{
 		$store->set_names([@$names, $name]);
 	}
+	$self->namestr(join(': ', @$names));
 };
 
 sub log
 {
 	my ($self, $type, $msg, @rest) = @_;
-	my $namestr = join(': ', @{$self->names});
+	my $namestr = $self->namestr;
 	return $self->logger->log($type, "STORE: $namestr: $msg", @rest);
 }
 

@@ -156,7 +156,7 @@ sub notify_recv
 	$stats->{avg_size_recvd} = reaverage(
 		$stats->{total_recvd},
 		$stats->{avg_size_recvd},
-		$data->{message}->{size},
+		$data->{message}->size,
 	);
 }
 

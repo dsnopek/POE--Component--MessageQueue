@@ -35,49 +35,24 @@ has 'alias' => (
 
 has 'session' => (
 	is      => 'ro',
-	lazy    => 1,
 	default => sub {
 		my $self = shift;
 		return POE::Session->create(
-			inline_states => {
-				'_start' => sub {$poe_kernel->alias_set($self->alias) },
-				'_expire_message' => sub {
-					my ($kernel, @args) = @_[KERNEL, ARG0, ARG1];
-					$kernel->delay_set('_timer_up', $self->timeout, @args);
-				},
-				'_timer_up' => sub { $self->expire_message()->(@_[ARG0,ARG1]) },	
-			},
+			object_states => [ $self => [qw(_start _expiration_check)] ],
 		);
 	},
 );
 
-has 'expire_message' => (
-	is       => 'ro',
-	isa      => 'CodeRef',
-	required => 1,
-	default  => sub { 
-		my $self = shift;
-		return sub {
-			my ($message, $callback) = @_;
+has 'timestamps' => (
+	is => 'ro',
+	isa => 'HashRef',
+	default => sub { {} },
+);
 
-			$self->front->remove($message->{message_id}, sub {
-				# The message may not be there if it was removed before it expired.
-				my $message = shift;
-				return unless $message;
-
-				if ($message->{persistent}) 
-				{
-					$self->log('info', sprintf('Moving expired message %s into backstore',
-						$message->{message_id}));
-					$self->back->store($message, $callback);
-				}
-				elsif($callback)
-				{
-					$callback->($message);
-				}
-			});
-		};
-	},
+has 'shutting_down' => (
+	is       => 'rw',
+	isa      => 'Int',
+	default  => 0, 
 );
 
 override 'new' => sub {
@@ -92,16 +67,85 @@ sub store
 	my ($self, $message, $callback) = @_;
 
 	$self->front->store($message, sub {
-		# Don't start ticking the clock until it finishes storing.
 		my $message = shift;
-		$poe_kernel->post($self->session, '_expire_message', $message, $callback);
+		$self->timestamps->{$message->id} = {
+			stamp    => time(),
+			callback => $callback,
+		};
 		$callback->($message);
 	});
 }
 
+sub _start
+{
+	my ($self, $kernel) = @_[OBJECT, KERNEL];
+	$poe_kernel->alias_set($self->alias);
+	$kernel->yield('_expiration_check');
+}
+
+sub expire_messages
+{
+	my ($self, $message_ids) = @_;
+	$self->front->remove_multiple($message_ids, sub {
+		my $aref = shift;
+		foreach my $msg (@$aref)
+		{
+			# It's possible for a message to get removed midway through expiring, in
+			# which case msg would be undefined.
+			next unless $msg;
+
+			my $info = delete $self->timestamps->{$msg->id};
+			if ($msg->persistent)
+			{
+				$self->log('info', 
+					sprintf('Moving expired message %s into backstore', $msg->id));
+			
+				$self->back->store($msg, $info->{callback});
+			}
+		}
+	});
+}
+
+sub _expiration_check
+{
+	my ($self, $kernel) = @_[OBJECT, KERNEL];
+
+	return if $self->shutting_down;
+
+	$self->log('debug', 'Checking for outdated messages...');
+
+	my @expired = grep { 
+		$self->timestamps->{$_}->{stamp} < (time() - $self->timeout) 
+	} (keys %{$self->timestamps});
+
+	if (scalar @expired)
+	{
+		$self->expire_messages(\@expired);
+	}
+		
+	$kernel->delay_set('_expiration_check', 5);
+}
+
+before 'remove' => sub {
+	my ($self, $id) = @_;
+	delete $self->timestamps->{$id};
+};
+
+before 'remove_multiple' => sub {
+	my ($self, $aref) = @_;
+	delete $self->timestamps->{$_} foreach (@$aref);
+};
+
+before 'remove_all' => sub {
+	my ($self) = @_;
+	%{$self->timestamps} = ();
+};
+
 sub storage_shutdown
 {
 	my ($self, $complete) = @_;
+
+	$self->shutting_down(1);
 
 	# shutdown our check messages session
 	$poe_kernel->alias_remove($self->alias);
@@ -110,11 +154,12 @@ sub storage_shutdown
 
 	$self->front->remove_all(sub {
 		my $message_aref = shift;
-		my @messages = grep { $_->{persistent} } (@$message_aref);
+		my @messages = grep { $_->persistent } (@$message_aref);
 		
 		foreach my $msg (@messages)
 		{
-			$self->log('info', "Moving message $msg->{message_id} into backstore.");
+			$self->log('info', 
+				sprintf("Moving message %s into backstore.", $msg->id));
 			$self->back->store($msg, sub {});
 		}	
 
@@ -135,7 +180,8 @@ __END__
 POE::Component::MessageQueue::Storage::Complex -- A configurable storage
 engine that keeps a front-store (something fast) and a back-store 
 (something persistent), allowing you to specify a timeout and an action to be 
-taken when messages in the front-store expire. 
+taken when messages in the front-store expire.  If a different behavior is
+desired after timeout expiration, subclass and override "expire_messages".
 
 =head1 SYNOPSIS
 
@@ -152,10 +198,6 @@ taken when messages in the front-store expire.
 			back       => POE::Component::MessageQueue::Storage::Throttled->new({
 				storage => My::Persistent::But::Slow::Datastore->new(),	
 			}),
-			expire_message => sub {
-				my ($self, $message, $callback) = @_;;
-				do_something($message);
-			},
 		})
 	});
 
@@ -167,7 +209,8 @@ taken when messages in the front-store expire.
 The idea of having a front store (something quick) and a back store (something
 persistent) is common and recommended, so this class exists as a helper to
 implementing that pattern.  It wraps any front and back store that you
-specify, a timeout that you specify, and tells you when messages expire.
+specify, a timeout that you specify, and moves messages from front to back
+when the timeout expires.
 
 =head1 CONSTRUCTOR PARAMETERS
 
@@ -177,14 +220,7 @@ specify, a timeout that you specify, and tells you when messages expire.
 
 The number of seconds after a message enters the front-store before it
 expires.  After this time, if the message hasn't been removed, it will be
-passed to expire_message. 
-
-=item expire_message => CODEREF
-
-A function of three arguments (the storage engine (self), a message, and
-optionally a callback to call when the action is finished) that does something
-with expired messages.  The default action is to delete them from the front
-store and store them in the back-store, but you can override that here.
+moved into the backstore.
 
 =item front => SCALAR
 

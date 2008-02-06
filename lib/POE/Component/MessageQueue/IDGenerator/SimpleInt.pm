@@ -51,7 +51,7 @@ sub new
 
 sub generate 
 {
-	my ($self, $message) = @_;
+	my ($self) = @_;
 	my $id = ++$self->{last_id};
 	return "$id";
 }

@@ -56,10 +56,10 @@ sub new
 
 sub get_parent { return shift->{parent}; }
 
-sub _log
+sub log
 {
 	my $self = shift;
-	$self->get_parent()->_log(@_);
+	$self->get_parent()->log(@_);
 }
 
 sub add_subscription
@@ -164,7 +164,7 @@ sub pump
 {
 	my $self = shift;
 
-	$self->_log( 'debug', " -- PUMP QUEUE: $self->{queue_name} -- " );
+	$self->log( 'debug', " -- PUMP QUEUE: $self->{queue_name} -- " );
 	$self->get_parent->{notify}->notify('pump');
 
 	if (my $sub = $self->get_available_subscriber())
@@ -183,10 +183,9 @@ sub dispatch_message_to
 	my ($self, $message, $subscriber) = @_;
 	my $client = $subscriber->get_client();
 	my $client_id = $client->{client_id};
-	my $message_id = $message->{message_id};
 
-	$self->_log('info', 
-		"QUEUE: Sending message $message_id to client $client_id");
+	$self->log('info', sprintf('QUEUE: Sending message %s to client %s', 
+		$message->id, $client_id));
 
 	# send actual message
 	if($client->send_frame($message->create_stomp_frame()))
@@ -194,11 +193,11 @@ sub dispatch_message_to
 		if ( $subscriber->{ack_type} eq 'client' )
 		{
 			$subscriber->set_handling_message();
-			$self->get_parent()->push_unacked_message($message, $client);
+			$self->get_parent()->push_unacked_message($message);
 		}
 		else
 		{
-			$self->get_parent()->get_storage()->remove($message_id);
+			$self->get_parent()->get_storage()->remove($message->id);
 		}
 
 		# We've dispatched the message for sure: THIS IS WHERE THIS GOES.
@@ -212,9 +211,9 @@ sub dispatch_message_to
 	{
 		my $dest = $self->destination();
 
-		$self->_log('warning', sprintf(
+		$self->log('warning', sprintf(
 			"QUEUE: Message %s intended for %s on %s could not be delivered", 
-			$message_id, $client_id, $dest,
+			$message->id, $client_id, $dest,
 		));
 
 		# The message *NEEDS* to be disowned in the storage layer, otherwise
@@ -236,11 +235,12 @@ sub enqueue
 	if ( my $sub = $self->get_available_subscriber() )
 	{
 		my $client_id = $sub->{client}->{client_id};
-		$message->set_in_use_by( $client_id );
-		$self->_log('info', 
-			"QUEUE: Message $message->{message_id} ".
-			"claimed by client $client_id during enqueue"
-		);
+		$message->claim($client_id);
+		$self->log('info', sprintf(
+			'QUEUE: Message %s claimed by client %s during enqueue',
+			$message->id, $client_id,
+		));
+
 		$self->dispatch_message_to( $message, $sub );
 	}
 
