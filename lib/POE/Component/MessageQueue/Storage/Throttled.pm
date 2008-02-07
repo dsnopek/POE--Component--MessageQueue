@@ -53,17 +53,12 @@ has 'shutdown_callback' => (
 	predicate => 'shutting_down',
 );
 
-after 'remove' => sub {
-	my ($self, $id) = @_;
-	$self->throttle_remove($id);
-};
-
-after 'remove_multiple' => sub {
+before 'remove' => sub {
 	my ($self, $aref) = @_;
 	$self->throttle_remove($_) foreach (@$aref);
 };
 
-after 'remove_all' => sub {
+before 'empty' => sub {
 	my ($self) = @_;
 	$self->queue->_break();
 	$self->queue(POE::Component::MessageQueue::Storage::Structure::DLList->new());
@@ -93,8 +88,8 @@ sub _message_stored
 		my $count = keys %{$self->messages};
 		$self->log('info', "Sending throttled message ($count left)");
 
-		$self->front->remove($msg->id, sub {
-			my $message = shift;
+		$self->front->remove([$msg->id], sub {
+			my $message = $_[0]->[0];
 			$self->back->store($message, sub {
 				$self->_message_stored($message, $callback);
 			});	

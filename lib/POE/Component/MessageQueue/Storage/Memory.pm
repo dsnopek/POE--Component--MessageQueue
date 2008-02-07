@@ -39,34 +39,6 @@ sub store
 
 sub remove
 {
-	my ($self, $message_id, $callback) = @_;
-	my $removed;
-
-	OUTER: foreach my $dest ( keys %{$self->messages} )
-	{
-		my $messages = $self->messages->{$dest};
-		my $max = scalar @$messages;
-
-		# find the message and remove it
-		for ( my $i = 0; $i < $max; $i++ )
-		{
-			my $message = $messages->[$i];
-			if ( $message->id eq $message_id )
-			{
-				splice(@$messages, $i, 1);
-				$self->log('info', "Removed $message_id");
-				$removed = $message;
-				last OUTER;
-			}
-		}
-	}
-
-	$callback->($removed) if $callback;
-	return;
-}
-
-sub remove_multiple
-{
 	my ($self, $message_ids, $callback) = @_;
 	my @removed = ();
 	# Stuff IDs into a hash so we can quickly check if a message is on the list
@@ -92,7 +64,7 @@ sub remove_multiple
 	return;
 }
 
-sub remove_all 
+sub empty 
 {
 	my ($self, $callback) = @_;
 	my $destinations = $self->messages;

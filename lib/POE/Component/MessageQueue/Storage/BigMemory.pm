@@ -65,47 +65,31 @@ sub store
 
 sub remove
 {
-	my ($self, $id, $callback) = @_;
-	my $cell = delete $self->messages->{$id};
+	my ($self, $ids, $callback) = @_;
+	my @removed;
 
-	unless ($cell)
+	foreach my $id (@$ids)
 	{
-		$callback->(undef) if $callback;
-		return;
+		my $cell = delete $self->messages->{$id};
+		next unless $cell;
+		my $message = $cell->delete();
+		push(@removed, $message);
+		
+		if ( $message->claimed )
+		{
+			delete $self->claimed->{$message->claimant};
+		}
+		else
+		{
+			delete $self->unclaimed->{$message->destination};
+		}
 	}
-
-	my $message = $cell->delete();
-
-	if ( $message->claimed )
-	{
-		delete $self->claimed->{$message->claimant};
-	}
-	else
-	{
-		delete $self->unclaimed->{$message->destination};
-	}
-
-	$callback->($message) if $callback;
-	$self->log('info', "Removed $id");
+	$callback->(\@removed) if $callback;
+	$self->log('info', sprintf('Removed %d messages', scalar (@removed)));
 	return;
 }
 
-sub remove_multiple
-{
-	my ($self, $message_ids, $callback) = @_;
-	my @messages = ();
-
-	my $pusher = $callback && sub { 
-		my $m = shift;
-		push(@messages, $m) if $m;
-	};
-
-	$self->remove($_, $pusher) foreach (@$message_ids);
-	$callback->(\@messages) if $callback;	
-	return;
-}
-
-sub remove_all 
+sub empty 
 {
 	my ($self, $callback) = @_;
 	if ($callback)

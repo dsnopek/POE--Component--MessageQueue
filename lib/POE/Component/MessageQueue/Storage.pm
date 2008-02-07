@@ -20,9 +20,8 @@ use Moose::Role;
 use POE::Component::MessageQueue::Logger;
 
 requires qw(
-	remove_multiple     remove_all   remove
+	storage_shutdown    remove       empty
 	claim_and_retrieve  disown       store
-	storage_shutdown
 );
 
 has 'names' => (
@@ -103,18 +102,13 @@ be stored.  The supplied coderef will be called with the stored message as an
 argument when storage has completed.  If a message could not be claimed, the
 message argument will be undefined.
 
-=item remove I<SCALAR,CODEREF>
-
-Takes a message_id to be removed from the storage engine.  If a coderef is
-supplied, it will be called with the message as its argument after removal.
-
-=item remove_multiple I<ARRAYREF,CODEREF>
+=item remove I<ARRAYREF,CODEREF>
 
 Takes an arrayref of message_ids to be removed from the storage engine. If a
 coderef is supplied, it will be called with an arrayref of the removed
 messages after removal.
 
-=item remove_all I<CODEREF>
+=item empty I<CODEREF>
 
 Takes an optional coderef argument that will be called with an arrayref of all
 the message that were in the store after they have been removed.

@@ -56,16 +56,11 @@ has 'shutting_down' => (
 );
 
 before 'remove' => sub {
-	my ($self, $id) = @_;
-	delete $self->timestamps->{$id};
-};
-
-before 'remove_multiple' => sub {
 	my ($self, $aref) = @_;
 	delete $self->timestamps->{$_} foreach (@$aref);
 };
 
-before 'remove_all' => sub {
+before 'empty' => sub {
 	my ($self) = @_;
 	%{$self->timestamps} = ();
 };
@@ -103,7 +98,7 @@ sub _start
 sub expire_messages
 {
 	my ($self, $message_ids) = @_;
-	$self->front->remove_multiple($message_ids, sub {
+	$self->front->remove($message_ids, sub {
 		my $aref = shift;
 		foreach my $msg (@$aref)
 		{
@@ -154,7 +149,7 @@ sub storage_shutdown
 
 	$self->log('alert', 'Forcing messages from frontstore to backstore');
 
-	$self->front->remove_all(sub {
+	$self->front->empty(sub {
 		my $message_aref = shift;
 		my @messages = grep { $_->persistent } (@$message_aref);
 		

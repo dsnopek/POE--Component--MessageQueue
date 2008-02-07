@@ -172,92 +172,55 @@ sub _unlink_file
 	return;
 }
 
-# A word to the wise: the remove functions make heavy use of continuation
-# passing style to deal with the async nature of getting data out of stores in
-# this API.  If you don't understand CPS, read about it before you mess with
-# this or you'll break it!
+# We can't use an iterative loop, because we may have to read messages from
+# disk.  So, here's our recursive function that may pause in the middle to
+# wait for disk reads.
+sub _remove_loop
+{
+	my ($self, $to_remove, $removed, $callback) = @_;
+	$callback->($removed) unless (scalar @$to_remove);	
+	my $message = pop(@$to_remove);
+	my $body = $self->pending_writes->{$message->id};
+	if ($body) 
+	{
+		$self->_hard_delete($message->id);
+		$message->{body} = $body;
+		push(@$removed, $message);
+		$self->_remove_loop($to_remove, $removed, $callback);
+	}
+	else
+	{
+		# Don't have the body anymore, so we'll have to read it from disk.  This
+		# is what to do when the read completes:
+		my $read_finished = sub {
+			if (my $body = shift())
+			{
+				$message->body($body);
+				push(@$removed, $message);
+				$self->_unlink_file($message->id);
+			}
+			$self->_remove_loop($to_remove, $removed, $callback);
+			return;
+		};
+
+		# Go ahead and read.
+		$poe_kernel->post($self->session, 
+			'_read_message_from_disk', $message->id, $read_finished);
+	}
+}
+
 sub _remove_underneath
 {
 	my ($self, $remover, $callback) = @_;
 
-	# Remover does the info-storage remove call and sends us an aref of messages
-	# (if necessary - if $callback wasn't specified, then we just discard them).
 	$remover->($callback && sub {
-		my $messages = shift;
-		my @output = ();
-		my $max = scalar (@$messages);
-
-		# We loop by recursing so that we can get to the next iteration from a
-		# callback in case of needing to read from disk.  Isn't CPS fun?
-		# You can pretend this is a for loop, if it makes you feel better.
-		my $loop = sub {
-			# We can't refer to $loop while we're defining it, so we'll have to pass
-			# it in as a paremeter.  Is your mind bent yet?
-			my ($recurse, $index) = @_;
-
-			# This is where the loop ends and we have a result.
-			return $callback->(\@output) unless $index < $max;
-
-			my $message = $messages->[$index];
-			my $body = $self->pending_writes->{$message->id};
-			if ($body) 
-			{
-				$self->_hard_delete($message->id);
-				$message->{body} = $body;
-				push(@output, $message);
-				$recurse->($recurse, $index++)
-			}
-			else
-			{
-				# Don't have the body any more, so read from disk.
-				my $read_finished = sub {
-					$body = shift;
-					$message->body($body);
-					# If didn't get a body, there wasn't one to get.
-					if ($body)
-					{
-						push(@output, $message);
-						$self->_unlink_file($message->id);
-					}
-					$recurse->($recurse, $index++);
-					return;
-				};
-				$poe_kernel->post($self->session, 
-					'_read_message_from_disk', $message->id, $read_finished);
-			}
-		};
-		$loop->($loop, 0);
-		return;
+		my $info_messages = shift;
+		$self->_remove_loop($info_messages, [], $callback);
 	});
+	return;
 }
 
 sub remove
-{
-	my ($self, $message_id, $callback) = @_;
-	
-	# Kill the file if we're not going to care what's in it
-	$self->_hard_delete($message_id) unless $callback;
-
-	$self->_remove_underneath(sub {
-		# remover: Remove single message and pack it up in an aref 
-		my $send = shift;
-	
-		$self->info_store->remove($message_id, $send && sub {
-			my $message = shift;
-			$send->([$message]);
-		});
-	}, $callback && sub {
-		# Unpack from aref and send along
-		my $result = shift;
-		my $val = scalar @{$result} ? $result->[0] : undef;
-		$callback->($val);
-	});
-}
-
-# These two expect to receive and send arefs, so we don't need to instrument
-# them like we did with remove.
-
-sub remove_multiple
 {
 	my ($self, $message_ids, $callback) = @_;
 
@@ -266,12 +229,11 @@ sub remove_multiple
 		$self->_hard_delete($_) foreach (@$message_ids);
 	}
 
-	$self->_remove_underneath(sub {
-		$self->info_store->remove_multiple($message_ids, shift)
-	}, $callback);
+	$self->_remove_underneath(
+		sub {$self->info_store->remove($message_ids, shift)}, $callback);
 }
 
-sub remove_all
+sub empty
 {
 	my ($self, $callback) = @_;
 
@@ -292,9 +254,8 @@ sub remove_all
 		$self->_hard_delete($_) foreach (keys %{$self->pending_writes});
 	}
 
-	$self->_remove_underneath(sub {
-		$self->info_store->remove_all(shift);
-	}, $callback);	
+	$self->_remove_underneath(
+		sub {$self->info_store->empty(shift)}, $callback);	
 }
 
 sub claim_and_retrieve
@@ -355,7 +316,7 @@ sub _dispatch_message
 			{
 				$self->log('warning', 
 					sprintf("Can't find message %s!  Discarding", $message->id));
-				$self->remove($message->id);
+				$self->remove([$message->id]);
 				$message = undef;
 			}
 
@@ -457,7 +418,7 @@ sub _read_input
 	my ($self, $kernel, $input, $wheel_id) = @_[ OBJECT, KERNEL, ARG0, ARG1 ];
 
 	# We do care about reading during shutdown! Maybe.  We may be using this as
-	# a front-store (HA!), and doing remove_all.
+	# a front-store (HA!), and doing empty.
 
 	my $id = $self->wheel_to_message_map->{$wheel_id};
 	$self->file_wheels->{$id}->{accumulator} .= $input;	

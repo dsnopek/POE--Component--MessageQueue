@@ -544,7 +544,7 @@ sub ack_message
 	}
 	
 	# remove from the backing store
-	$self->get_storage()->remove( $message_id );
+	$self->get_storage()->remove([$message_id]);
 
 	my $queue = $self->get_queue(_destination_to_queue($unacked->destination));
 

@@ -148,20 +148,6 @@ sub _remove_underneath
 
 sub remove
 {
-	my ($self, $message_id, $callback) = @_;
-	my $where = " WHERE message_id = '$message_id'";
-	my $ret = $self->_remove_underneath(
-		$callback, 
-		$where,
-		"removing message $message_id",
-	);
-	my $val = (scalar @$ret) ? $ret->[0] : undef;
-	$callback->($val) if $callback;
-	return;
-}
-
-sub remove_multiple
-{
 	my ($self, $message_ids, $callback) = @_;
 	my $ret = $self->_remove_underneath(
 		$callback,
@@ -172,7 +158,7 @@ sub remove_multiple
 	return;	
 }
 
-sub remove_all
+sub empty
 {
 	my ($self, $callback) = @_;
 	my $ret = $self->_remove_underneath($callback, '', 'removing all messages');

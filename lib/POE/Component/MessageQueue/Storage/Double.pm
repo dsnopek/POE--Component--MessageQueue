@@ -39,77 +39,49 @@ after 'set_logger' => sub {
 	$self->back->set_logger($logger);
 };
 
-# For these remove functions, the control flow is the same, but the
-# particulars vary.
-# front, back: call remove on their respective stores.
-# combine: a function that aggregates the results of front and back.
-# callback: the thing to callback with the results of the remove op.
 sub _remove_underneath
 {
-	my %a = @_;
-
-	# There are no results, so just call everything in parallel.
-	unless ($a{callback}) 
+	my ($front, $back, $cb) = @_;
+	if ($cb)
 	{
-		$a{front}->();
-		$a{back}->();
-		return;
-	}
-
-	# Save the results of front and back, aggregate them, and pass them on.
-	$a{front}->(sub {
-		my $fresult = shift;
-		$a{back}->(sub {
-			my $bresult = shift;	
-			$a{callback}->($a{combine}->($fresult, $bresult));
+		$front->(sub {
+			my $fronts = $_[0];
+			$back->(sub {
+				my $backs = $_[0];
+				push(@$fronts, @$backs);
+				$cb->($fronts);
+			});
 		});
-	});
+	}
+	else
+	{
+		$front->();
+		$back->();
+	}
 	return;
-}
-
-sub remove
-{
-	my ($self, $id, $cb) = @_;
-	_remove_underneath(
-		front    => sub { $self->front->remove($id, shift) },
-		back     => sub { $self->back ->remove($id, shift) },
-		combine  => sub { $_[0] || $_[1] },
-		callback => $cb,
-	);
-	return;
-}
-
-# Combine for _multiple and _all
-sub __append
-{
-	my ($one, $two) = @_;
-	push(@$one, @$two);
-	return $one;
 }
 
 # We'll call remove_multiple on the full range of ids - well-behaved stores
 # will just ignore IDs they don't have.
-sub remove_multiple
+sub remove
 {
-	my ($self, $ids, $cb);
+	my ($self, $ids, $cb) = @_;
 	_remove_underneath(
-		front    => sub { $self->front->remove_multiple($ids, shift) },
-		back     => sub { $self->back ->remove_multiple($ids, shift) },
-		combine  => \&__append,
-		callback => $cb,
+		sub { $self->front->remove($ids, shift) },
+		sub { $self->back ->remove($ids, shift) },
+		$cb
 	);
 	return;
 }
 
-sub remove_all
+sub empty
 {
-	my ($self, $cb);
+	my ($self, $cb) = @_;
 	_remove_underneath(
-		front    => sub { $self->front->remove_all(shift) },
-		back     => sub { $self->back ->remove_all(shift) },
-		combine  => \&__append,
-		callback => $cb,
-	);	
+		sub { $self->front->empty(shift) },
+		sub { $self->back ->empty(shift) },
+		$cb
+	);
 	return;
 }
 
