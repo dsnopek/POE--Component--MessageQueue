@@ -543,27 +543,27 @@ sub ack_message
 		return;
 	}
 	
-	# remove from the backing store
-	$self->get_storage()->remove([$message_id]);
-
 	my $queue = $self->get_queue(_destination_to_queue($unacked->destination));
-
 	# ACK the subscriber back into ready mode.
 	my $sub = $queue->get_subscription( $client );
 	$sub->set_done_with_message() if $sub;
 
+	# pump the queue, so that this subscriber will get another message
+	$queue->pump();
+
+	# notify stats
 	$self->{notify}->notify('ack', {
 		queue => $queue,
 		client => $client,
 		message_info => {
-			message_id => $unacked->{message_id},
-			timestamp  => $unacked->{timestamp},
-			size       => $unacked->{size},
+			message_id => $unacked->id,
+			timestamp  => $unacked->timestamp,
+			size       => $unacked->size,
 		}
 	});
 
-	# pump the queue, so that this subscriber will get another message
-	$queue->pump();
+	# remove from the backing store
+	$self->get_storage()->remove([$message_id]);
 }
 
 sub _shutdown 

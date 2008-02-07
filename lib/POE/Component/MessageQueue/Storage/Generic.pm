@@ -128,31 +128,47 @@ sub _shutdown
 	$callback->();
 }
 
+# For the next two functions:  We only want DBI servicing one claim request at
+# a time, so we'll serialize incoming claim requests at this level and send
+# them to DBI one at a time as they finish.
+
+sub _qclaim
+{
+	my ($self, $destination) = @_;
+	my $q = $self->claiming->{$destination};
+	my $next = shift(@$q);
+	unless ($next)
+	{
+		delete $self->claiming->{$destination};
+		return;
+	}
+	
+	$self->generic->claim_and_retrieve(
+		{session => $self->session->ID(), event => '_general_handler'},
+		$destination, $next->{cid},
+		sub {
+			$next->{cb}->(@_);
+			$self->_qclaim($destination);				
+		},
+	);
+}
+
 sub claim_and_retrieve
 {
 	my ($self, $destination, $client_id, $dispatch) = @_;
 
-	# Skip if we're already claiming for this destination
-	if ($self->claiming->{$destination})
+	my $request = {cid => $client_id, cb => $dispatch};
+	my $q = $self->claiming->{$destination};
+
+	if ($q)
 	{
-		$dispatch->(undef, $destination, $client_id);
+		push(@$q, $request);
 	}
 	else
 	{
-		# Lock destination 
-		$self->claiming->{$destination} = $client_id;
-
-		my $done_claiming = sub {
-			# Unlock and move along
-			delete $self->claiming->{$destination};
-			$dispatch->(@_);
-		};
-
-		$self->generic->claim_and_retrieve(
-			{$self->{session}->ID(), '_general_handler'},
-			$destination, $client_id, $done_claiming);
+		$self->claiming->{$destination} = [$request];
+		$self->_qclaim($destination);
 	}
-
 	return;
 }
 

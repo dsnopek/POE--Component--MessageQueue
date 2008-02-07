@@ -51,11 +51,6 @@ has 'file_wheels'          => empty_hashref;
 has 'wheel_to_message_map' => empty_hashref;
 has 'pending_writes'       => empty_hashref;
 
-has 'shutdown_callback' => (
-	is        => 'rw',
-	predicate => 'shutting_down',
-);
-
 has 'alias' => (
 	is       => 'ro',
 	isa      => 'Str',
@@ -63,32 +58,17 @@ has 'alias' => (
 	required => 1,
 );
 
-has 'session' => (
-	is      => 'ro',
-	isa     => 'POE::Session',
-	default => sub {
-		my $self = shift;
-		POE::Session->create(
-			inline_states => {
-				_start => sub {
-					$_[KERNEL]->alias_set($self->alias)
-				},
-			},
+has 'session' => (is => 'rw');
 
-			object_states => [
-				$self => [
-					'_write_message_to_disk',
-					'_read_message_from_disk',
-					'_read_input',
-					'_read_error',
-					'_write_flushed_event',
+has 'shutdown_callback' => (
+	is        => 'rw',
+	predicate => 'shutting_down',
+	clearer   => 'stop_shutdown',
+);
 
-					# for debug!
-					'_log_state'
-				]
-			],
-		);
-	},
+has 'live_session' => (
+	is      => 'rw',
+	default => 1,
 );
 
 after 'set_logger' => sub {
@@ -102,6 +82,37 @@ sub BUILD
 {
 	my $self = shift;
 	$self->children({INFO => $self->info_store});
+	$self->session(POE::Session->create(
+		object_states => [
+			$self => [qw(
+				_start                   _stop                 _shutdown
+				_read_message_from_disk  _read_input           _read_error  
+				_write_message_to_disk   _write_flushed_event  _log_state
+			)]
+		],
+	));
+}
+
+sub _start
+{
+	my ($self, $kernel) = @_[OBJECT, KERNEL];
+	$kernel->alias_set($self->alias);
+}
+
+sub _shutdown
+{
+	my ($self, $kernel) = @_[OBJECT, KERNEL];
+	$kernel->alias_remove($self->alias);
+}
+
+sub _stop
+{
+	my ($self) = $_[OBJECT];
+	$self->live_session(0);
+	if ($self->shutting_down)
+	{
+		$self->shutdown_callback();
+	}
 }
 
 sub store
@@ -121,6 +132,7 @@ sub store
 	$self->pending_writes->{$message->id} = $body;
 
 	# initiate file writing process (only the body will be written)
+
 	$poe_kernel->post( $self->session, '_write_message_to_disk', 
 		$message, $body );
 
@@ -270,14 +282,16 @@ sub storage_shutdown
 {
 	my ($self, $complete) = @_;
 
-	$self->shutdown_callback(sub {
-		$self->info_store->storage_shutdown(sub {
-			$poe_kernel->signal($self->session, 'TERM');
-			$complete->();
-		});
+	$self->shutdown_callback($complete);
+
+	$self->info_store->storage_shutdown(sub {
+		return if ($self->live_session);
+		$self->stop_shutdown();
+		$complete->();
 	});
 
-	$self->_wheel_check();
+	# Session will die when it runs out of wheels now.
+	$poe_kernel->post($self->alias, '_shutdown');
 }
 
 #
@@ -451,29 +465,10 @@ sub _read_error
 
 		# send the message out!
 		$callback->($body);
-
-		# Might be time to shut down.
-		$self->_wheel_check();
 	}
 	else
 	{
 		$self->log( 'error', "$op: Error $errnum $errstr" );
-	}
-}
-
-sub _wheel_check
-{
-	my $self = shift;
-	if ($self->shutting_down)
-	{
-		if (scalar keys %{$self->file_wheels})
-		{
-			$self->log('alert', 'Waiting for disk...');
-		}
-		else
-		{
-			$self->shutdown_callback->();
-		}
 	}
 }
 
@@ -496,9 +491,6 @@ sub _write_flushed_event
 	# came, we cannot actually delete it until the FD gets flushed, or the FD
 	# will live until the program dies.
 	$self->_unlink_file($id) if ($info->{delete_me});
-
-	# Shutdown if wheels are done
-	$self->_wheel_check();
 }
 
 sub _log_state

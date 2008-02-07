@@ -167,12 +167,22 @@ sub pump
 	$self->log( 'debug', " -- PUMP QUEUE: $self->{queue_name} -- " );
 	$self->get_parent->{notify}->notify('pump');
 
-	if (my $sub = $self->get_available_subscriber())
+	foreach my $sub (@{$self->{subscriptions}})
 	{
+		next unless $sub->is_ready();
+		$sub->set_handling_message();
+
 		my $done_claiming = sub {
-			my $message = shift;
-			$self->dispatch_message_to($message, $sub) if $message;
+			if (my $message = shift)
+			{
+				$self->dispatch_message_to($message, $sub);
+			}
+			else
+			{
+				$sub->set_done_with_message();
+			}
 		};
+
 		$self->get_parent()->get_storage()->claim_and_retrieve(
 			$self->destination(), $sub->{client}->{client_id}, $done_claiming);
 	}
