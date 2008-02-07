@@ -1,6 +1,5 @@
 package POE::Component::MessageQueue::Storage::Generic::Base;
 use Moose::Role;
-use POE::Component::MessageQueue;
 
 # In generics, we just want log to call the postback (we have to do this
 # before "with" injects a log method in here.
@@ -17,12 +16,10 @@ has 'log_function' => (
 
 with qw(POE::Component::MessageQueue::Storage);
 
-sub BUILD
+sub ignore_signals
 {
-	foreach my $sig (POE::Component::MessageQueue->SHUTDOWN_SIGNALS) 
-	{
-		$SIG{$sig} = 'IGNORE';
-	} 
+	my ($self, @signals) = @_;
+	$SIG{$_} = 'IGNORE' foreach (@signals);
 }
 
 1;

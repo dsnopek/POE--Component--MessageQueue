@@ -102,6 +102,10 @@ sub BUILD
 		session => $self->alias, 
 		event   => '_log_proxy'
 	});
+
+	use POE::Component::MessageQueue;
+	$self->generic->ignore_signals({}, 
+		POE::Component::MessageQueue->SHUTDOWN_SIGNALS);
 };
 
 sub package_name
