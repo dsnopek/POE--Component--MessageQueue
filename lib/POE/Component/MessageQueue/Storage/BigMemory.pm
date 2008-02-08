@@ -85,7 +85,6 @@ sub remove
 		}
 	}
 	$callback->(\@removed) if $callback;
-	$self->log('info', sprintf('Removed %d messages', scalar (@removed)));
 	return;
 }
 

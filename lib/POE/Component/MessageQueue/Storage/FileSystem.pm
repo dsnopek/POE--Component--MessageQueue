@@ -177,7 +177,6 @@ sub _unlink_file
 {
 	my ($self, $message_id) = @_;
 	my $fn = $self->_get_filename($message_id);
-	return unless (-f $fn);
 	$self->log( 'debug', "Deleting $fn" );
 	unlink $fn || 
 		$self->log( 'error', "Unable to remove $fn: $!" );
