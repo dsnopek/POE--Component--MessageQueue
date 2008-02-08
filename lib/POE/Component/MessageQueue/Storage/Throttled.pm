@@ -74,11 +74,9 @@ sub BUILD
 	$self->add_names qw(THROTTLED);
 }
 
-sub _message_stored
+sub _backstore_ready
 {
-	my ($self, $message, $callback) = @_;
-
-	$callback->($message) if $callback;
+	my $self = shift;
 
 	# Send the next throttled message off to the backing store.
 	if (my $msg = $self->queue->shift())
@@ -90,9 +88,7 @@ sub _message_stored
 
 		$self->front->remove([$msg->id], sub {
 			my $message = $_[0]->[0];
-			$self->back->store($message, sub {
-				$self->_message_stored($message, $callback);
-			});	
+			$self->back->store($message, sub { $self->_backstore_ready() });
 		});
 	}
 	else
@@ -115,19 +111,16 @@ sub store
 
 	if ($self->{sent} < $self->throttle_max)
 	{
-		$self->back->store($message, sub {
-			$self->_message_stored(shift, $callback);
-		});
+		$self->back->store($message, sub { $self->_backstore_ready() });
 		$self->{sent}++;
 	}
 	else
 	{
-		$self->front->store($message, sub {
-			$self->messages->{$message->id} = $self->queue->push($message);
-			$self->log('info', sprintf('Throttling (Total throttled: %d)',
-				scalar keys %{$self->messages}));
-		});
+		my $id = $message->id;
+		$self->messages->{$id} = $self->queue->push($message);
+		$self->front->store($message);
 	}
+	$callback->($message) if $callback;
 }
 
 sub _shutdown_throttle_check

@@ -8,7 +8,7 @@ use warnings;
 use POE::Component::MessageQueue::Storage::Throttled;
 use POE::Component::MessageQueue::Storage::DBI;
 use POE::Component::MessageQueue::Storage::FileSystem;
-use POE::Component::MessageQueue::Storage::Memory;
+use POE::Component::MessageQueue::Storage::BigMemory;
 use POE::Component::MessageQueue::Storage::Complex;
 use DBI;
 
@@ -198,7 +198,7 @@ sub new
 	return POE::Component::MessageQueue::Storage::Complex->new(
 		timeout => $args{timeout} || 4,	
 		front   => $args{front} ||
-			POE::Component::MessageQueue::Storage::Memory->new(),
+			POE::Component::MessageQueue::Storage::BigMemory->new(),
 		back    => $throttled,
 	);
 }

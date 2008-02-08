@@ -80,10 +80,7 @@ sub store
 
 	$self->front->store($message, sub {
 		my $message = shift;
-		$self->timestamps->{$message->id} = {
-			stamp    => time(),
-			callback => $callback,
-		};
+		$self->timestamps->{$message->id} = time();
 		$callback->($message);
 	});
 }
@@ -106,13 +103,13 @@ sub expire_messages
 			# which case msg would be undefined.
 			next unless $msg;
 
-			my $info = delete $self->timestamps->{$msg->id};
+			delete $self->timestamps->{$msg->id};
 			if ($msg->persistent)
 			{
 				$self->log('info', 
 					sprintf('Moving expired message %s into backstore', $msg->id));
 			
-				$self->back->store($msg, $info->{callback});
+				$self->back->store($msg);
 			}
 		}
 	});
@@ -126,14 +123,11 @@ sub _expiration_check
 
 	$self->log('debug', 'Checking for outdated messages...');
 
-	my @expired = grep { 
-		$self->timestamps->{$_}->{stamp} < (time() - $self->timeout) 
-	} (keys %{$self->timestamps});
+	my $threshold = time() - $self->timeout;
+	my @expired = grep { $self->timestamps->{$_} < $threshold } 
+	                   (keys %{$self->timestamps});
 
-	if (scalar @expired)
-	{
-		$self->expire_messages(\@expired);
-	}
+	$self->expire_messages(\@expired) if (@expired > 0);
 		
 	$kernel->delay_set('_expiration_check', 1);
 }
