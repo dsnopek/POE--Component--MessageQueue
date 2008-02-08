@@ -220,16 +220,14 @@ sub claim_and_retrieve
 	my ($self, $destination, $client_id, $dispatch) = @_;
 
 	my $message = $self->_retrieve( $destination );
-	
-	# if we actually got a message, claim it
-	$message->claim($client_id) if ($message);
+	if ($message)
+	{
+		$message->claim($client_id);
+		# Write the claim info to database
+		$self->_claim($message);
+	}
 
-	# Might as well do this now so the other thread can get on its way. :)
 	$dispatch->($message, $destination, $client_id);
-
-	# Write the claim info to database (if we got one)
-	$self->_claim($message) if $message;
-
 	return;
 }
 

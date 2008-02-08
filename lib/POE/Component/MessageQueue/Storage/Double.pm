@@ -90,8 +90,7 @@ sub claim_and_retrieve
 	my ($self, $destination, $client_id, $dispatch) = @_;
 
 	$self->front->claim_and_retrieve($destination, $client_id, sub {
-		my $message = shift;
-		if ($message)
+		if (my $message = $_[0])
 		{
 			$dispatch->($message, $destination, $client_id);
 		}

@@ -18,6 +18,8 @@
 package POE::Component::MessageQueue::Queue;
 
 use POE::Component::MessageQueue::Subscription;
+use POE;
+use POE::Session;
 use strict;
 
 use Data::Dumper;
@@ -46,15 +48,40 @@ sub new
 	my $self = {
 		parent               => $parent,
 		queue_name           => $queue_name,
+		alias                => "MQ-Queue-$queue_name",
 		subscriptions        => [ ],
 		sub_map              => { },
 	};
 
 	bless  $self, $class;
+
+	$self->{session} = POE::Session->create(
+		object_states => [$self => [qw(_start _pump _shutdown)] ],
+	);
+
 	return $self;
 }
 
 sub get_parent { return shift->{parent}; }
+
+sub _start
+{
+	my ($self, $kernel) = @_[OBJECT, KERNEL];
+	$kernel->alias_set($self->{alias});
+}
+
+sub _shutdown
+{
+	my ($self, $kernel) = @_[OBJECT, KERNEL];
+	$kernel->alias_remove($self->{alias});
+	$self->{shutting_down} = 1;
+}
+
+sub shutdown
+{
+	my $self = shift;
+	$poe_kernel->post($self->{session}, '_shutdown');
+}
 
 sub log
 {
@@ -164,28 +191,45 @@ sub pump
 {
 	my $self = shift;
 
+	# Ignore repeated calls until we have pumped once.
+	return if $self->{pumping};
+	$self->{pumping} = 1;
+
+	$poe_kernel->post($self->{session}, '_pump');
+}
+
+sub _pump
+{
+	my ($self, $kernel) = @_[OBJECT, KERNEL];
+
+	return if $self->{shutting_down};
+	$self->{pumping} = 0;
+
 	$self->log( 'debug', " -- PUMP QUEUE: $self->{queue_name} -- " );
 	$self->get_parent->{notify}->notify('pump');
 
-	foreach my $sub (@{$self->{subscriptions}})
+	foreach my $subscriber (grep {$_->{ready}} (@{$self->{subscriptions}}))
 	{
-		next unless $sub->is_ready();
-		$sub->set_handling_message();
-
-		my $done_claiming = sub {
-			if (my $message = shift)
-			{
-				$self->dispatch_message_to($message, $sub);
-			}
-			else
-			{
-				$sub->set_done_with_message();
-			}
-		};
-
+		$subscriber->{ready} = 0;
 		$self->get_parent()->get_storage()->claim_and_retrieve(
-			$self->destination(), $sub->{client}->{client_id}, $done_claiming);
+			$self->destination(), 
+			$subscriber->{client}->{client_id}, 
+			sub {
+				if(my $message = $_[0])
+				{
+					$self->dispatch_message_to($message, $subscriber);	
+				}
+				else
+				{
+					$subscriber->{ready} = 1;
+				}
+			},
+		);
 	}
+
+	# This overwrites old delays, so we only ever pump from this timer if we've
+	# been idle longer than the delay.
+	$kernel->delay('_pump', 1);
 }
 
 sub dispatch_message_to

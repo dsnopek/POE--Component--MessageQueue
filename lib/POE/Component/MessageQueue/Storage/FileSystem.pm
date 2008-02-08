@@ -271,10 +271,42 @@ sub empty
 
 sub claim_and_retrieve
 {
-	my ($self, @args) = @_;
-	my $old_callback = pop(@args);
-	my $new_callback = sub { $self->_dispatch_message(@_, $old_callback) };
-	return $self->info_store->claim_and_retrieve(@args, $new_callback);
+	my ($self, $destination, $client_id, $dispatch) = @_;
+	my $fail = sub { $dispatch->(undef, $destination, $client_id) };
+
+	$self->info_store->claim_and_retrieve($destination, $client_id, sub {
+		my ($message, $destination, $client_id) = @_;
+
+		return $fail->() unless $message;
+
+		my $body = $self->pending_writes->{$message->id};
+
+		# check to see if we even finished writing to disk
+		if ( $body )
+		{
+			$self->log('debug', 
+				sprintf('Dispatching message %s before disk write', $message->id));
+			$message->body($body);
+
+			$dispatch->($message, $destination, $client_id);
+			return;
+		}
+		# pull the message body from disk
+		$poe_kernel->post($self->session, '_read_message_from_disk', $message->id,
+			sub {
+				if (my $body = $_[0])
+				{
+					$message->body($body);
+					$dispatch->($message, $destination, $client_id);
+					return;
+				}
+				$self->log('warning', 
+					sprintf("Can't find message %s!  Discarding", $message->id));
+				$self->remove([$message->id]);
+				$fail->();
+			},
+		);
+	});
 }
 
 sub storage_shutdown
@@ -298,47 +330,6 @@ sub storage_shutdown
 #
 sub _dispatch_message
 {
-	my ($self, $message, $destination, $client_id, $dispatch) = @_;
-
-	return $dispatch->(undef, $destination, $client_id) unless $message;
-
-	my $body = $self->pending_writes->{$message->id};
-
-	# check to see if we even finished writing to disk
-	if ( $body )
-	{
-		$self->log('debug', 
-			sprintf('Dispatching message %s before disk write', $message->id));
-		$message->body($body);
-
-		# We don't stop writing, because if the message is not ACK'd,
-		# we want it to get saved to disk.
-
-		$dispatch->($message, $destination, $client_id);
-	}
-	else
-	{
-		# pull the message body from disk
-		my $read_finished = sub {
-			my $body = shift;
-			if ($body)
-			{
-				$message->{body} = $body;
-			}
-			else
-			{
-				$self->log('warning', 
-					sprintf("Can't find message %s!  Discarding", $message->id));
-				$self->remove([$message->id]);
-				$message = undef;
-			}
-
-			$dispatch->($message, $destination, $client_id); 
-		};
-
-		$poe_kernel->post($self->session, 
-			'_read_message_from_disk', $message->id, $read_finished);
-	}
 }
 
 #

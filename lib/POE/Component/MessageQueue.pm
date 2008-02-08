@@ -112,10 +112,6 @@ sub new
 		HandleFrame        => $self->__closure('_handle_frame'),
 		ClientDisconnected => $self->__closure('_client_disconnected'),
 		ClientError        => $self->__closure('_client_error'),
-
-		ObjectStates => [
-			$self => [ '_pump' ]
-		],
 	);
 
 	# a custom session for non-STOMP responsive tasks
@@ -134,7 +130,7 @@ sub new
 			},
 		},
 		object_states => [
-			$self => [ '_pump', '_shutdown' ]
+			$self => [qw(_shutdown)]
 		],
 	);
 
@@ -287,14 +283,6 @@ sub _destination_to_topic
 	return $1;
 }
 
-sub pump_by_destination
-{
-	my ($self, $dest) = @_;
-	my $queue_name = _destination_to_queue($dest);
-	return unless $queue_name;
-	$self->get_queue($queue_name)->pump();
-}
-
 sub _shutdown_complete
 {
 	my ($self) = @_;
@@ -316,32 +304,6 @@ sub _shutdown_complete
 	{
 		$_->shutdown() for (@$oref);
 	}
-}
-
-sub _pump
-{
-	my ($self, $kernel, $destination) = @_[ OBJECT, KERNEL, ARG0 ];
-
-	$self->pump_by_destination($destination);
-}
-
-sub pump_deferred
-{
-	my $self = shift;
-	my $args = shift;
-
-	my $destination;
-
-	if ( ref($args) eq 'HASH' )
-	{
-		$destination = $args->{destination};
-	}
-	else
-	{
-		$destination = $args;
-	}
-
-	$poe_kernel->post( $self->{session}, '_pump', $destination );
 }
 
 sub route_frame
@@ -606,6 +568,9 @@ sub shutdown
 	{
 		$poe_kernel->post( $client_id => 'shutdown' );
 	}
+
+	$self->log('alert', 'Shutting down individual queues...');
+	$_->shutdown() foreach (values %{$self->{queues}});
 
 	# shutdown the storage
 	$self->{storage}->storage_shutdown($self->__closure('_shutdown_complete'));

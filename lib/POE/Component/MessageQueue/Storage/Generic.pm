@@ -45,13 +45,6 @@ has 'alias' => (
 	required => 1,
 );
 
-# We lock per destination: this is the set of locked destinations.
-has 'claiming' => (
-	is      => 'ro',
-	isa     => 'HashRef',
-  default => sub { {} },
-);	
-
 # This is the place for PoCo::Generic to post events back to.
 has 'session' => (
 	is       => 'rw',
@@ -84,8 +77,8 @@ sub BUILD
 		packages => {
 			$package => {
 				callbacks => [qw(
-					remove    remove_multiple     remove_all
-					store     claim_and_retrieve  storage_shutdown
+					remove              empty             store     
+					claim_and_retrieve  storage_shutdown
 				)],
 				postbacks => [qw(set_log_function)],
 			},
@@ -128,47 +121,14 @@ sub _shutdown
 	$callback->();
 }
 
-# For the next two functions:  We only want DBI servicing one claim request at
-# a time, so we'll serialize incoming claim requests at this level and send
-# them to DBI one at a time as they finish.
-
-sub _qclaim
-{
-	my ($self, $destination) = @_;
-	my $q = $self->claiming->{$destination};
-	my $next = shift(@$q);
-	unless ($next)
-	{
-		delete $self->claiming->{$destination};
-		return;
-	}
-	
-	$self->generic->claim_and_retrieve(
-		{session => $self->session->ID(), event => '_general_handler'},
-		$destination, $next->{cid},
-		sub {
-			$next->{cb}->(@_);
-			$self->_qclaim($destination);				
-		},
-	);
-}
-
 sub claim_and_retrieve
 {
 	my ($self, $destination, $client_id, $dispatch) = @_;
 
-	my $request = {cid => $client_id, cb => $dispatch};
-	my $q = $self->claiming->{$destination};
-
-	if ($q)
-	{
-		push(@$q, $request);
-	}
-	else
-	{
-		$self->claiming->{$destination} = [$request];
-		$self->_qclaim($destination);
-	}
+	$self->generic->claim_and_retrieve(
+		{session => $self->session->ID(), event => '_general_handler'},
+		$destination, $client_id, $dispatch
+	);
 	return;
 }
 
