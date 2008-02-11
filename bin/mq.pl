@@ -194,7 +194,7 @@ else
 {
 	use POE::Component::MessageQueue::IDGenerator::SimpleInt;
 	$idgen = POE::Component::MessageQueue::IDGenerator::SimpleInt->new(
-		"$DATA_DIR/last_id.mq",
+		filename => "$DATA_DIR/last_id.mq",
 	);
 }
 
@@ -224,7 +224,7 @@ if ($statistics) {
 	);
 	$args{observers} = [ $stat ];
 }
-my $mq = POE::Component::MessageQueue->new(\%args);
+my $mq = POE::Component::MessageQueue->new(%args);
 
 # install the debug shell if requested
 if ( $debug_shell )

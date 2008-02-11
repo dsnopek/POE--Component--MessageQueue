@@ -16,58 +16,23 @@
 #
 
 package POE::Component::MessageQueue::Topic;
+use Moose;
 
-use strict;
-use warnings;
+sub destination { return '/topic/'.$_[0]->name };
+sub is_persistent { return 0 }
 
-sub new
-{
-	my ($class, $name, $notify) = @_;
-	my $self = {
-		name    => $name,
-		clients => {},
-		notify  => $notify,
-	};
-	bless  $self, $class;
-	return $self;
-}
+with qw(POE::Component::MessageQueue::Place);
 
-sub notify
-{
-	my ($self, @rest) = @_;
-	$self->{notify}->notify(@rest);
-}
+make_immutable;
 
-sub add_subscription
-{
-	my ($self, $client) = @_;
-	my ($cid, $list) = ($client->{client_id}, $self->{clients});
-
-	unless (exists $list->{$cid}) {
-		$list->{$cid} = $client;
-		$self->notify('subscribe', { topic => $self });
-	}
-	return;
-}
-
-sub remove_subscription
-{
-	my ($self, $client) = @_;
-	my $deleted = delete $self->{clients}->{$client->{client_id}};
-	$self->notify('unsubscribe', { topic => $self }) if $deleted;
-	return;
-}
-
-sub send_message
+sub send
 {
 	my ($self, $message) = @_;
 
-	foreach my $client (values %{$self->{clients}})
+	foreach my $subscriber (values %{$self->subscriptions})
 	{
-		$client->send_frame($message->create_stomp_frame());
+		$self->dispatch_message($message, $subscriber);
 	}
-
-	$self->notify('dispatch', {topic => $self, message => $message});
 
 	return;
 }
