@@ -39,6 +39,18 @@ after 'set_logger' => sub {
 	$self->back->set_logger($logger);
 };
 
+sub peek
+{
+	my ($self, $ids, $callback) = @_;
+	$self->front->peek($ids, sub {
+		my $messages = $_[0];
+		$self->back->peek($ids, sub {
+			push(@$messages, @{$_[0]});
+			$callback->($messages);
+		});
+	});
+}
+
 sub _remove_underneath
 {
 	my ($front, $back, $cb) = @_;

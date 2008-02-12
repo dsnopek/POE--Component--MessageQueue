@@ -183,21 +183,27 @@ sub _unlink_file
 	return;
 }
 
+sub peek
+{
+	my ($self, $ids, $callback) = @_;
+	$self->_read_loop($ids, [], $callback);	
+	return;
+}
+
 # We can't use an iterative loop, because we may have to read messages from
 # disk.  So, here's our recursive function that may pause in the middle to
 # wait for disk reads.
-sub _remove_loop
+sub _read_loop
 {
-	my ($self, $to_remove, $removed, $callback) = @_;
-	$callback->($removed) unless (scalar @$to_remove);	
-	my $message = pop(@$to_remove);
+	my ($self, $to_read, $done_reading, $callback) = @_;
+	$callback->($done_reading) unless (scalar @$to_read);	
+	my $message = pop(@$to_read);
 	my $body = $self->pending_writes->{$message->id};
 	if ($body) 
 	{
-		$self->_hard_delete($message->id);
 		$message->{body} = $body;
-		push(@$removed, $message);
-		$self->_remove_loop($to_remove, $removed, $callback);
+		push(@$done_reading, $message);
+		$self->_read_loop($to_read, $done_reading, $callback);
 	}
 	else
 	{
@@ -207,10 +213,9 @@ sub _remove_loop
 			if (my $body = shift())
 			{
 				$message->body($body);
-				push(@$removed, $message);
-				$self->_unlink_file($message->id);
+				push(@$done_reading, $message);
 			}
-			$self->_remove_loop($to_remove, $removed, $callback);
+			$self->_read_loop($to_read, $done_reading, $callback);
 			return;
 		};
 
@@ -226,7 +231,11 @@ sub _remove_underneath
 
 	$remover->($callback && sub {
 		my $info_messages = shift;
-		$self->_remove_loop($info_messages, [], $callback);
+		$self->_read_loop($info_messages, [], sub {
+			my $embodied_messages = shift;
+			$self->_hard_delete($_->id) foreach (@$embodied_messages);
+			$callback->($embodied_messages);
+		});
 	});
 	return;
 }

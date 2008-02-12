@@ -63,6 +63,19 @@ sub store
 	return;
 }
 
+sub peek
+{
+	my ($self, $ids, $callback) = @_;
+	my @messages; # can't just map cause they may not all be there...
+	foreach my $id (@$ids)
+	{
+		my $msg = $self->messages->{$id};
+		push(@messages, $msg) if $msg;
+	}
+	$callback->(\@messages);
+	return;
+}
+
 sub remove
 {
 	my ($self, $ids, $callback) = @_;

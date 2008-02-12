@@ -22,7 +22,7 @@ use POE::Component::Generic 0.1001;
 use POE::Component::MessageQueue::Logger;
 
 # We're going to proxy some methods to the generic object.  Yay MOP!
-foreach my $method qw(store remove empty disown)
+foreach my $method qw(store peek remove empty disown)
 {
 	__PACKAGE__->meta->add_method($method, sub {
 		my ($self, @args) = @_;

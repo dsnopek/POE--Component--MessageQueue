@@ -37,6 +37,26 @@ sub store
 	$callback->($message) if $callback;
 }
 
+sub peek
+{
+	my ($self, $message_ids, $callback) = @_;
+	my @messages = ();
+	my %id_hash = map { ($_, 1) } (@$message_ids);
+
+	foreach my $messages (values %{$self->messages})
+	{
+		foreach my $msg (@$messages)
+		{
+			if (exists $id_hash{$msg->id})
+			{
+				push(@messages, $msg);
+			}
+		}
+	}
+	$callback->(\@messages);
+	return;
+}
+
 sub remove
 {
 	my ($self, $message_ids, $callback) = @_;

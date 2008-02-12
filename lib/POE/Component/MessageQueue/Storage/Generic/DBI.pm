@@ -59,7 +59,7 @@ has 'dbh' => (
 	},
 );
 
-make_immutable();
+make_immutable;
 
 sub BUILD 
 {
@@ -131,12 +131,8 @@ sub _remove_underneath
 		if ($get)
 		{
 			my $sth = $self->dbh->prepare('SELECT * FROM messages'.$where); 
-			$sth->execute();
-	
-			while(my $result = $sth->fetchrow_hashref())
-			{
-				push(@messages, _make_message($result));
-			}
+			my $results = $sth->fetchall_arrayref({});
+			my @messages = map { _make_message($_) } (@$results);
 		}
 		$self->dbh->do('DELETE FROM messages'.$where);
 	};
@@ -144,6 +140,22 @@ sub _remove_underneath
 	$self->log('error', "Error $errdesc: $err") if ($err);
 
 	return \@messages;
+}
+
+sub peek
+{
+	my ($self, $message_ids, $callback) = @_;
+	my $where = join(' OR ', map { "message_id = '$_'" } (@$message_ids));
+	my @messages;
+	try eval {
+		my $sth = $self->dbh->prepare("SELECT * FROM messages	WHERE $where");
+		my $results = $sth->fetchall_arrayref({});	
+		@messages = map { _make_message($_) } (@$results);
+	};
+	my $err = catch;
+	$self->log('error', "Error peeking: $err") if ($err);
+	$callback->(\@messages);
+	return;
 }
 
 sub remove

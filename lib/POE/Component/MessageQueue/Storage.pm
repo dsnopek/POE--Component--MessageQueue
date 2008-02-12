@@ -20,8 +20,8 @@ use Moose::Role;
 use POE::Component::MessageQueue::Logger;
 
 requires qw(
-	storage_shutdown    remove       empty
-	claim_and_retrieve  disown       store
+	storage_shutdown    remove  empty  peek 
+	claim_and_retrieve  disown  store
 );
 
 has 'names' => (
