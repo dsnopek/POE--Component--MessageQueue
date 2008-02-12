@@ -1,5 +1,5 @@
 #
-# Copyright 2007, 2008 Paul Driver <frodwith@gmail.com>
+# Copyright 2007 Paul Driver <frodwith@gmail.com>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -15,41 +15,27 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-package POE::Component::MessageQueue::IDGenerator;
+package POE::Component::MessageQueue::Place;
 use Moose::Role;
 
-requires qw(generate);
+has 'parent' => (
+	is       => 'ro',
+	required => 1,
+	handles  => [qw(log notify storage dispatch_message)],
+);
+
+has 'subscriptions' => (
+	is      => 'ro',
+	isa     => 'HashRef',
+	default => sub { {} },
+);
+
+has 'name' => (
+	is       => 'ro',
+	required => 1,
+);
+
+requires qw(destination send is_persistent);
 
 1;
 
-=head1 NAME
-
-POE::Component::MessageQueue::IDGenerator - Role for id generators.
-
-=head1 DESCRIPTION
-
-This can't be used directly, but just defines the interface for ID
-generators.
-
-=head1 METHODS
-
-=over 4
-
-=item new
-
-Returns a new instance of the ID generator.  You should do any seeding,
-reading from persistence, or whatnot here.
-
-=item generate => SCALAR
-
-Returns some kind of unique string.  
-
-=back
-
-SEE ALSO
-
-L<POE::Component::MessageQueue::Message::ID>
-
-=head1 AUTHOR
-
-Paul Driver <frodwith@gmail.com>

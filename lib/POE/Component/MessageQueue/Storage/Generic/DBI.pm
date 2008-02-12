@@ -1,55 +1,91 @@
+#
+# Copyright 2007 David Snopek <dsnopek@gmail.com>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
 
 package POE::Component::MessageQueue::Storage::Generic::DBI;
-use base qw(POE::Component::MessageQueue::Storage::Generic::Base);
+use Moose;
+
+with qw(POE::Component::MessageQueue::Storage::Generic::Base);
 
 use DBI;
 use Exception::Class::DBI;
 use Exception::Class::TryCatch;
-use Data::UUID;
-use strict;
 
-sub new
+has 'dsn' => (
+	is       => 'ro',
+	isa      => 'Str',
+	required => 1,	
+);
+
+has 'username' => (
+	is       => 'ro',
+	isa      => 'Str',
+	required => 1,	
+);
+
+has 'password' => (
+	is       => 'ro',
+	isa      => 'Str',
+	required => 1,	
+);
+
+has 'options' => (
+	is => 'ro',
+	isa => 'HashRef',
+	default => sub { {} },
+	required => 1,
+);
+
+has 'dbh' => (
+	is => 'ro',
+	isa => 'Object',
+	lazy => 1,
+	default => sub {
+		my $self = shift;
+		DBI->connect($self->dsn, $self->username, $self->password, $self->options);
+	},
+);
+
+make_immutable();
+
+sub BUILD 
 {
-	my $class = shift;
-	my $args  = shift;
+	my ($self, $args) = @_;
+	# Force exception handling
+  $self->options->{'HandleError'} = Exception::Class::DBI->handler,
+  $self->options->{'PrintError'} = 0;
+  $self->options->{'RaiseError'} = 0;
 
-	my $dsn;
-	my $username;
-	my $password;
-	my $options;
-
-	if ( ref($args) eq 'HASH' )
-	{
-		$dsn      = $args->{dsn};
-		$username = $args->{username};
-		$password = $args->{password};
-		$options  = $args->{options};
-	}
-	else
-	{
-		$dsn      = $args;
-		$username = shift;
-		$password = shift;
-		$options  = shift;
-	}
-
-	# force use of exceptions
-	$options->{'HandleError'} = Exception::Class::DBI->handler,
-	$options->{'PrintError'} = 0;
-	$options->{'RaiseError'} = 0;
-
-	my $dbh = DBI->connect($dsn, $username, $password, $options);
-
-	# before going any further, clear some old state
-	$dbh->do( "UPDATE messages SET in_use_by = NULL" );
-
-	my $self = $class->SUPER::new( $args );
-	$self->{dbh}        = $dbh;
-
-	return bless $self, $class;
+	# This actually makes DBH connect, and makes sure there's no claims left
+	# over from the last time we shut down MQ.
+	$self->dbh->do( "UPDATE messages SET in_use_by = NULL" );
 }
 
-sub _make_message { POE::Component::MessageQueue::Message->new(shift) }	
+sub _make_message { 
+	my $h = shift;
+	POE::Component::MessageQueue::Message->new(
+		id          => $h->{message_id},
+		destination => $h->{destination},
+		body        => $h->{body},
+		persistent  => $h->{persistent},
+		claimant    => $h->{in_use_by},
+		size        => $h->{size},
+		timestamp   => $h->{timestamp},
+	);
+};
 
 sub store
 {
@@ -59,27 +95,26 @@ sub store
 
 	try eval
 	{
+		my $m = $message;
 		my $stmt;
 		$stmt = $self->{dbh}->prepare($SQL);
 		$stmt->execute(
-			$message->{message_id},
-			$message->{destination},
-			$message->{body},
-			$message->{persistent},
-			$message->{in_use_by},
-			$message->{timestamp},
-			$message->{size},
+			$m->id,         $m->destination, $m->body, 
+			$m->persistent, $m->claimant, 
+			$m->timestamp,  $m->size,
 		);
 	};
 	my $err = catch;
 
 	if ( $err )
 	{
-		$self->_log('error', "STORE: DBI: Error storing $message->{message_id} in $message->{destination}: $err");
+		$self->log('error', sprintf("Error storing %s in %s: $err", 
+			$message->id, $message->destination));
 	}
 	else
 	{
-		$self->_log("STORE: DBI: Message $message->{message_id} stored in $message->{destination}");
+		$self->log('info', sprintf('Message %s stored in %s', 
+			$message->id, $message->destination));
 	}
 
 	# Call the callback, even if we just send it undef (that's the interface).
@@ -95,7 +130,7 @@ sub _remove_underneath
 	try eval {
 		if ($get)
 		{
-			my $sth = $self->{dbh}->prepare('SELECT * FROM messages'.$where); 
+			my $sth = $self->dbh->prepare('SELECT * FROM messages'.$where); 
 			$sth->execute();
 	
 			while(my $result = $sth->fetchrow_hashref())
@@ -103,29 +138,15 @@ sub _remove_underneath
 				push(@messages, _make_message($result));
 			}
 		}
-		$self->{dbh}->do('DELETE FROM messages'.$where);
+		$self->dbh->do('DELETE FROM messages'.$where);
 	};
 	my $err = catch;
-	$self->_log("STORE: DBI: Error $errdesc: $err") if ($err);
+	$self->log('error', "Error $errdesc: $err") if ($err);
 
 	return \@messages;
 }
 
 sub remove
-{
-	my ($self, $message_id, $callback) = @_;
-	my $where = " WHERE message_id = '$message_id'";
-	my $ret = $self->_remove_underneath(
-		$callback, 
-		$where,
-		"removing message $message_id",
-	);
-	my $val = (scalar @$ret) ? $ret->[0] : undef;
-	$callback->($val) if $callback;
-	return;
-}
-
-sub remove_multiple
 {
 	my ($self, $message_ids, $callback) = @_;
 	my $ret = $self->_remove_underneath(
@@ -137,7 +158,7 @@ sub remove_multiple
 	return;	
 }
 
-sub remove_all
+sub empty
 {
 	my ($self, $callback) = @_;
 	my $ret = $self->_remove_underneath($callback, '', 'removing all messages');
@@ -156,12 +177,12 @@ sub _retrieve
 	try eval
 	{
 		my $stmt;
-		$stmt = $self->{dbh}->prepare($SQL);
+		$stmt = $self->dbh->prepare($SQL);
 		$stmt->execute($destination);
 		$result = $stmt->fetchrow_hashref;
 	};
 	my $err = catch;
-	$self->_log("error", "STORE: DBI: $err") if $err;
+	$self->log("error", "$err") if $err;
 
 	return $result && _make_message($result);
 }
@@ -175,21 +196,20 @@ sub _claim
 	try eval
 	{
 		my $stmt;
-		$stmt = $self->{dbh}->prepare($SQL);
-		$stmt->execute($message->{in_use_by}, $message->{message_id});
+		$stmt = $self->dbh->prepare($SQL);
+		$stmt->execute($message->claimant, $message->id);
 	};
 	my $err = catch;
 
 	if ( $err )
 	{
-		$self->_log("error", "STORE: DBI: Error claiming message $message->{message_id} for $message->{in_use_by}: $err");
+		$self->log('error', sprintf("Error claiming message %s for client %s: $err",
+			$message->id, $message->claimant));
 	}
 	else
 	{
-		$self->_log('info', 
-			"STORE: DBI: Message $message->{message_id} ".
-			"claimed by $message->{in_use_by}"
-		);
+		$self->log('info', sprintf('Message %s claimed by %s', 
+			$message->id, $message->claimant));
 	}
 
 	return;
@@ -200,16 +220,14 @@ sub claim_and_retrieve
 	my ($self, $destination, $client_id, $dispatch) = @_;
 
 	my $message = $self->_retrieve( $destination );
-	
-	# if we actually got a message, claim it
-	$message->{in_use_by} = $client_id if ($message);
+	if ($message)
+	{
+		$message->claim($client_id);
+		# Write the claim info to database
+		$self->_claim($message);
+	}
 
-	# Might as well do this now so the other thread can get on its way. :)
 	$dispatch->($message, $destination, $client_id);
-
-	# Write the claim info to database (if we got one)
-	$self->_claim($message) if $message;
-
 	return;
 }
 
@@ -221,19 +239,20 @@ sub disown
 
 	try eval
 	{
-		my $stmt;
-		$stmt = $self->{dbh}->prepare($SQL);
+		my $stmt = $self->dbh->prepare($SQL);
 		$stmt->execute($destination, $client_id);
 	};
 	my $err = catch;
 
 	if ( $err )
 	{
-		$self->_log("error", "STORE: DBI: Error disowning all messages on $destination for $client_id: $err");
+		$self->log('error', 
+			"Error disowning all messages on $destination for $client_id: $err");
 	}
 	else
 	{
-		$self->_log("STORE: DBI: All messages on $destination disowned for client $client_id");
+		$self->log('info', 
+			"All messages on $destination disowned for client $client_id");
 	}
 
 	return;
@@ -243,10 +262,10 @@ sub storage_shutdown
 {
 	my ($self, $complete) = @_;
 
-	$self->_log('alert', 'Shutting down DBI storage engine...');
+	$self->log('alert', 'Shutting down DBI storage engine...');
 
 	# close the database handle.
-	$self->{dbh}->disconnect();
+	$self->dbh->disconnect();
 
 	# call the shutdown handler.
 	$complete->();

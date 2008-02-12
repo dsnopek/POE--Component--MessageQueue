@@ -16,236 +16,133 @@
 #
 
 package POE::Component::MessageQueue::Storage::Throttled;
-use base qw(POE::Component::MessageQueue::Storage);
-
+use Moose;
+with qw(POE::Component::MessageQueue::Storage::Double);
 use POE;
-use strict;
 
-use Data::Dumper;
+has 'throttle_max' => (
+	is       => 'ro',
+	isa      => 'Int',
+	default  => 2,
+	required => 1,
+);
 
-sub new
+has 'sent' => (
+	isa     => 'Int',
+	default => 0,
+);
+
+has 'queue' => (
+	is      => 'rw',
+  isa     => 'POE::Component::MessageQueue::Storage::Structure::DLList',
+	default => sub {
+		POE::Component::MessageQueue::Storage::Structure::DLList->new();
+	},
+);
+
+has 'messages' => (
+	is  => 'ro',
+	isa => 'HashRef',
+	default => sub { {} },
+);
+
+has 'shutdown_callback' => (
+	is        => 'rw',
+	isa       => 'CodeRef',
+	clearer   => 'stop_shutdown',
+	predicate => 'shutting_down',
+);
+
+before 'remove' => sub {
+	my ($self, $aref) = @_;
+	$self->throttle_remove($_) foreach (@$aref);
+};
+
+before 'empty' => sub {
+	my ($self) = @_;
+	$self->queue->_break();
+	$self->queue(POE::Component::MessageQueue::Storage::Structure::DLList->new());
+	%{$self->messages} = ();
+};
+
+make_immutable;
+
+sub BUILD 
 {
-	my $class = shift;
-	my $args  = shift;
+	my $self = shift;
+	$self->children({THROTTLED => $self->front, STORAGE => $self->back});
+	$self->add_names qw(THROTTLED);
+}
 
-	my $storage;
-	my $throttle_max = 2;
+sub _backstore_ready
+{
+	my $self = shift;
 
-	if ( ref($args) eq 'HASH' )
+	# Send the next throttled message off to the backing store.
+	if (my $msg = $self->queue->shift())
 	{
-		$storage      = $args->{storage};
-		$throttle_max = $args->{throttle_max} if exists $args->{throttle_max};
+		delete $self->messages->{$msg->id};	
+
+		my $count = keys %{$self->messages};
+		$self->log('info', "Sending throttled message ($count left)");
+
+		$self->front->remove([$msg->id], sub {
+			my $message = $_[0]->[0];
+			$self->back->store($message, sub { $self->_backstore_ready() });
+		});
 	}
 	else
 	{
-		$storage = $args;
+		$self->{sent}--;
+		$self->_shutdown_throttle_check();
 	}
-
-	my $self = $class->SUPER::new( $args );
-
-	$self->{storage} = $storage;
-
-	# for throttling data to the engine
-	$self->{throttle_buffer} = { };
-	$self->{throttle_order}  = [ ];
-	$self->{throttle_max}    = $throttle_max;
-	$self->{throttle_count}  = 0;
-
-	# a flag for shutting down
-	$self->{shutdown} = 0;
-
-	return bless $self, $class;
 }
 
-sub set_logger
+sub throttle_remove
 {
-	my ($self, $logger) = @_;
-	$self->SUPER::set_logger( $logger );
-	$self->{storage}->set_logger( $logger );
-}
-
-sub _throttle_push
-{
-	my ($self, $message) = @_;
-
-	# stash in an ordered-lookup kind of way
-	$self->{throttle_buffer}->{$message->{message_id}} = $message;
-	push @{$self->{throttle_order}}, $message->{message_id};
-}
-
-sub _throttle_pop
-{
-	my ($self) = @_;
-
-	while ( scalar @{$self->{throttle_order}} > 0 )
-	{
-		my $message_id = shift @{$self->{throttle_order}};
-
-		# if there is still a message with that id in the buffer
-		# then return it.
-		if ( exists $self->{throttle_buffer}->{$message_id} )
-		{
-			return delete $self->{throttle_buffer}->{$message_id};
-		}
-	}
-
-	undef;
-}
-
-sub _message_stored
-{
-	my ($self, $message, $callback) = @_;
-
-	# first, check if there are any throttled messages we can now push to
-	# the underlying storage engine.
-	if ( $self->{throttle_max} )
-	{
-		my $to_store = $self->_throttle_pop();
-		if ( $to_store )
-		{
-			my $count = (scalar @{$self->{throttle_order}});
-
-			# if we have a throttled message then send it!
-			$self->_log('STORE: Sending throttled message from the buffer to the '. 
-			            "storage engine.  (Total throttled: $count)");
-			$self->{storage}->store($to_store, sub {
-				$self->_message_stored(shift, $callback);
-			});
-		}
-		else
-		{
-			# else, simple decrease the throttle count
-			$self->{throttle_count}--;
-		}
-	}
-
-	# Then, call the user handler!
-	$callback->($message) if $callback;
-
-	# if we are shutting down and there are no more message throttled, then
-	# we shutdown the underlying engine.
-	$self->_shutdown_throttle_check();
+	my ($self, $id) = @_;
+	my $cell = delete $self->messages->{$id};
+	$cell->delete() if $cell;
 }
 
 sub store
 {
 	my ($self, $message, $callback) = @_;
 
-	if ( $self->{throttle_max} )
+	if ($self->{sent} < $self->throttle_max)
 	{
-		if ( $self->{throttle_count} >= $self->{throttle_max} )
-		{
-			my $c = (scalar @{$self->{throttle_order}}) + 1;
-
-			$self->_log("STORE: THROTTLED: Already have sent $self->{throttle_max} messages to store engine.  Throttling.  Message will be buffered until engine has stored some messages.  (Total throttled: $c)");
-
-			# push into buffer
-			$self->_throttle_push($message);
-			
-			# don't send, yet!
-			return;
-		}
-		else
-		{
-			# increment so we know that another message was sent to the 
-			# underlying engine.
-			$self->{throttle_count} ++;
-		}
-	}
-
-	# We have our own routine to run after the message is stored.
-	$self->{storage}->store($message, sub {
-		$self->_message_stored(shift, $callback);
-	});
-}
-
-sub remove
-{
-	my ($self, $message_id, $callback) = @_;
-	my $message = delete $self->{throttle_buffer}->{$message_id};
-	if ($message)
-	{
-		$callback->($message) if $callback;
+		$self->back->store($message, sub { $self->_backstore_ready() });
+		$self->{sent}++;
 	}
 	else
 	{
-		$self->{storage}->remove($message_id, $callback);
+		my $id = $message->id;
+		$self->messages->{$id} = $self->queue->push($message);
+		$self->front->store($message);
 	}
-}
-
-sub remove_multiple
-{
-	my ($self, $message_ids, $callback) = @_;
-	my @result = ();
-	my @in_storage = ();
-	# Collect the ones in the throttle buffer
-	foreach my $id (@$message_ids) {
-		my $message = delete $self->{throttle_buffer}->{$id};
-		if ($message)
-		{
-			push(@result, $message);
-		}
-		else
-		{
-			push(@in_storage, $id);
-		}
-	}
-	
-	# Pull the rest out of real storage, if there is any such thing as "rest"
-	if (scalar @in_storage)
-	{
-		$self->{storage}->remove_multiple(\@in_storage, $callback && sub {
-			my $aref = shift;
-			push(@result, @$aref);
-			$callback->(\@result);
-		});
-	}
-	# If there was stuff in storage, the callback has already been handled.
-	elsif ($callback)
-	{
-		$callback->(\@result);
-	}
-	return;
-}
-
-sub remove_all
-{
-	my ($self, $callback) = @_;
-	my @result = ();
-	push(@result, values %{$self->{throttle_buffer}} );
-	$self->{storage}->remove_all($callback && sub {
-		my $aref = shift;
-		push(@result, @$aref);
-		$callback->(\@result);
-	});
-	return;
-}
-
-sub claim_and_retrieve
-{
-	return shift->{storage}->claim_and_retrieve(@_);
-}
-
-sub disown
-{
-	return shift->{storage}->disown(@_);
+	$callback->($message) if $callback;
 }
 
 sub _shutdown_throttle_check
 {
 	my $self = shift;
-	my $shutdown = $self->{shutdown};
-	$shutdown->() if ($shutdown && $self->{throttle_count} == 0);
+	if ($self->shutting_down && (scalar keys %{$self->messages}) == 0)
+	{
+		# We have now finished sending things out of throttled, so -WE- are done.
+		# However, we'll still get message_storeds as our backstore finishes, and
+		# we don't want to continue calling shutdown_callback.
+		$self->shutdown_callback->();
+		$self->stop_shutdown();
+	}
 	return;
 }
 
 sub storage_shutdown
 {
 	my ($self, $complete) = @_;
-
-	$self->{shutdown} = sub {
-		$self->{storage}->storage_shutdown($complete);
-	};
+	$self->shutdown_callback(sub {
+		$self->back->storage_shutdown($complete);
+	});
 
 	$self->_shutdown_throttle_check();
 }
@@ -298,7 +195,7 @@ It is suggested to keep the throttle_max very low.  In an ideal situation, the u
 
 =over 2
 
-=item storage => L<POE::Component::MessageQueue::Storage>
+=item back => L<POE::Component::MessageQueue::Storage>
 
 The storage engine to wrap.
 

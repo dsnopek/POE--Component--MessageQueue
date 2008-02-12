@@ -16,117 +16,61 @@
 #
 
 package POE::Component::MessageQueue::Storage;
-
+use Moose::Role;
 use POE::Component::MessageQueue::Logger;
-use strict;
 
-sub new
+requires qw(
+	storage_shutdown    remove       empty
+	claim_and_retrieve  disown       store
+);
+
+has 'names' => (
+	is      => 'rw',
+	isa     => 'ArrayRef',
+	writer  => 'set_names',
+	default => sub { [] },
+);
+
+has 'namestr' => (
+	is      => 'rw',
+	isa     => 'Str',
+	default => q{},
+);
+
+has 'children' => (
+	is => 'rw',
+	isa => 'HashRef',
+	default => sub { {} },
+);
+
+has 'logger' => (
+	is      => 'rw',
+	writer  => 'set_logger',
+	default => sub { POE::Component::MessageQueue::Logger->new() },
+);
+
+sub add_names
 {
-	my $class = shift;
-	my $args  = shift;
-
-	# a null logger
-	my $logger = POE::Component::MessageQueue::Logger->new();
-	my $self = {
-		logger    => $logger,
-	};
-
-	bless  $self, $class;
-	return $self;
+	my ($self, @names) = @_;
+	my @prev_names = @{$self->names};
+	push(@prev_names, @names);
+	$self->set_names(\@prev_names);
 }
 
-sub _log
-{
-	my $self = shift;
-	$self->{logger}->log(@_);
-	return;
-}
-
-sub set_logger
-{
-	my ($self, $logger) = @_;
-	$self->{logger} = $logger;
-	return;
-}
-
-# A hack to allow POE::Component::Generic to set the log function
-# in a single event.  This allows us to setup the logger before any
-# other events happen.
-sub set_log_function
-{
-	my ($self, $func) = @_;
-	$self->get_logger()->set_log_function($func);
-	return;
-}
-
-sub get_logger
-{
-	my $self = shift;
-	return $self->{logger};
-}
-
-sub store
-{
-	my ($self, $message) = @_;
-
-	die "Abstract.";
-}
-
-sub remove
-{
-	my ($self, $message_id, $callback) = @_;
-
-	die "Abstract.";
-}
-
-sub remove_multiple
-{
-	my ($self, $id_aref, $callback) = @_;
-
-	die "Abstract.";
-}
-
-sub remove_all
-{
-	my ($self, $callback) = @_;
-
-	die "Abstract.";
-}
-
-sub claim_and_retrieve
-{
-	my $self = shift;
-	my $args = shift;
-
-	my $destination;
-	my $client_id;
-
-	if ( ref($args) eq 'HASH' )
+after 'set_names' => sub {
+	my ($self, $names) = @_;
+	while (my ($name, $store) = each %{$self->children})
 	{
-		$destination = $args->{destination};
-		$client_id   = $args->{client_id};
+		$store->set_names([@$names, $name]);
 	}
-	else
-	{
-		$destination = $args;
-		$client_id   = shift;
-	}
+	$self->namestr(join(': ', @$names));
+};
 
-	die "Abstract.";
-}
-
-sub disown
+sub log
 {
-	my ($self, $destination, $client_id) = @_;
-
-	die "Abstract.";
-}
-
-sub storage_shutdown
-{
-	my $self = shift;
-
-	die "Abstract.";
+	my ($self, $type, $msg, @rest) = @_;
+	my $namestr = $self->namestr;
+	return $self->logger->log($type, "STORE: $namestr: $msg", @rest);
 }
 
 1;
@@ -158,18 +102,13 @@ be stored.  The supplied coderef will be called with the stored message as an
 argument when storage has completed.  If a message could not be claimed, the
 message argument will be undefined.
 
-=item remove I<SCALAR,CODEREF>
-
-Takes a message_id to be removed from the storage engine.  If a coderef is
-supplied, it will be called with the message as its argument after removal.
-
-=item remove_multiple I<ARRAYREF,CODEREF>
+=item remove I<ARRAYREF,CODEREF>
 
 Takes an arrayref of message_ids to be removed from the storage engine. If a
 coderef is supplied, it will be called with an arrayref of the removed
 messages after removal.
 
-=item remove_all I<CODEREF>
+=item empty I<CODEREF>
 
 Takes an optional coderef argument that will be called with an arrayref of all
 the message that were in the store after they have been removed.

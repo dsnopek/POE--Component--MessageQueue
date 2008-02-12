@@ -18,244 +18,125 @@
 package POE::Component::MessageQueue::Queue;
 
 use POE::Component::MessageQueue::Subscription;
-use strict;
+use POE;
+use POE::Session;
+use Moose;
 
-use Data::Dumper;
+sub destination { return '/queue/'.$_[0]->name };
+sub is_persistent { return 1 }
 
-sub new
+with qw(POE::Component::MessageQueue::Place);
+
+has 'alias' => (
+	is      => 'ro',
+	lazy    => 1,
+	default => sub {
+		my $name = $_[0]->name;
+		return "MQ-Queue-$name";
+	},
+);
+
+has 'session' => (is => 'rw');
+
+use constant flag => (
+	is      => 'rw',
+	default => 0,
+);
+has 'shutting_down' => flag;
+has 'pumping' => flag;
+
+make_immutable;
+
+sub BUILD
 {
-	my $class = shift;
-	my $args  = shift;
-
-	my $parent;
-	my $queue_name;
-
-	if ( ref($args) eq 'HASH' )
-	{
-		$parent     = $args->{parent};
-		$queue_name = $args->{queue_name};
-	}
-	else
-	{
-		$parent     = $args;
-		$queue_name = shift;
-	}
-
-	# TODO: deal with the circular reference
-
-	my $self = {
-		parent               => $parent,
-		queue_name           => $queue_name,
-		subscriptions        => [ ],
-		sub_map              => { },
-	};
-
-	bless  $self, $class;
-	return $self;
+	my $self = $_[0];
+	$self->session(POE::Session->create(
+		object_states => [$self => [qw(_start _pump _shutdown)] ],
+	));
 }
 
-sub get_parent { return shift->{parent}; }
-
-sub _log
+sub _start
 {
-	my $self = shift;
-	$self->get_parent()->_log(@_);
+	my ($self, $kernel) = @_[OBJECT, KERNEL];
+	$kernel->alias_set($self->{alias});
 }
 
-sub add_subscription
+sub shutdown { $poe_kernel->post($_[0]->session, '_shutdown') }
+sub _shutdown
 {
-	my $self   = shift;
-	my $client = shift;
-	my $ack_type = shift;
-	my $sub    = POE::Component::MessageQueue::Subscription->new( $client, $ack_type );
-	push @{$self->{subscriptions}}, $sub;
-
-	# add the subscription to the sub_map.
-	$self->{sub_map}->{$sub->{client}->{client_id}} = $sub;
-	
-	# add to the client's list of subscriptions
-	$sub->{client}->_add_queue_name( $self->{queue_name} );
-
-	$self->get_parent->{notify}->notify('subscribe', { queue => $self, client => $client });
-	# pump the queue now that we have a new subscriber
-	$self->pump();
-}
-
-sub remove_subscription
-{
-	my $self   = shift;
-	my $client = shift;
-
-	my $i;
-	my $max = scalar @{$self->{subscriptions}};
-
-	for( $i = 0; $i < $max; $i++ )
-	{
-		if ( $self->{subscriptions}->[$i]->{client} == $client )
-		{
-			# remove from the map
-			delete $self->{sub_map}->{$client->{client_id}};
-
-			# remove from the queue list
-			splice @{$self->{subscriptions}}, $i, 1;
-			$client->_remove_queue_name( $self->{queue_name} );
-
-			# disown all messages on the storage layer for this client on
-			# this queue.
-			$self->get_parent()->get_storage()->disown(
-				$self->destination(), $client->{client_id});
-
-			$self->get_parent->{notify}->notify('unsubscribe', { queue => $self, client => $client });
-			return;
-		}
-	}
-}
-
-sub destination
-{
-	my $self = shift;
-	return "/queue/$self->{queue_name}";
-}
-
-sub get_subscription
-{
-	my ($self, $client) = @_;
-
-	return $self->{sub_map}->{$client->{client_id}};
-}
-
-sub get_available_subscriber
-{
-	my $self = shift;
-	my $args = shift;
-
-	my $total = scalar @{$self->{subscriptions}};
-	my $sub;
-	my $i;
-
-	for( $i = 0; $i < $total; $i++ )
-	{
-		if ( $self->{subscriptions}->[$i]->is_ready() )
-		{
-			$sub = $self->{subscriptions}->[$i];
-			last;
-		}
-	}
-
-	if ( $sub and $total != 1 )
-	{
-		# Here we remove the chosen one from the subscription list and 
-		# push it on the end, so that we favor other subscribers.
-		splice @{$self->{subscriptions}}, $i, 1;
-		push   @{$self->{subscriptions}}, $sub;
-	}
-
-	return $sub;
-}
-
-sub has_available_subscribers
-{
-	my $self = shift;
-
-	foreach my $sub ( @{$self->{subscriptions}} )
-	{
-		if ( $sub->is_ready() )
-		{
-			return 1;
-		}
-	}
-
-	return 0;
+	my ($self, $kernel) = @_[OBJECT, KERNEL];
+	$kernel->alias_remove($self->{alias});
+	$self->shutting_down(1);
 }
 
 sub pump
 {
 	my $self = shift;
 
-	$self->_log( 'debug', " -- PUMP QUEUE: $self->{queue_name} -- " );
-	$self->get_parent->{notify}->notify('pump');
+	# Ignore repeated calls until we have pumped once.
+	return if $self->pumping;
+	$self->pumping(1);
 
-	if (my $sub = $self->get_available_subscriber())
-	{
-		my $done_claiming = sub {
-			my $message = shift;
-			$self->dispatch_message_to($message, $sub) if $message;
-		};
-		$self->get_parent()->get_storage()->claim_and_retrieve(
-			$self->destination(), $sub->{client}->{client_id}, $done_claiming);
-	}
+	$poe_kernel->post($self->{session}, '_pump');
 }
 
-sub dispatch_message_to
+sub _pump
 {
-	my ($self, $message, $subscriber) = @_;
-	my $client = $subscriber->get_client();
-	my $client_id = $client->{client_id};
-	my $message_id = $message->{message_id};
+	my ($self, $kernel) = @_[OBJECT, KERNEL];
 
-	$self->_log('info', 
-		"QUEUE: Sending message $message_id to client $client_id");
+	return if $self->shutting_down;
+	$self->pumping(0);
 
-	# send actual message
-	if($client->send_frame($message->create_stomp_frame()))
+	$self->log('debug', sprintf(" -- PUMP QUEUE: %s -- ", $self->name));
+	$self->notify('pump');
+
+	foreach my $subscriber (grep {$_->ready} (values %{$self->subscriptions}))
 	{
-		if ( $subscriber->{ack_type} eq 'client' )
-		{
-			$subscriber->set_handling_message();
-			$self->get_parent()->push_unacked_message($message, $client);
-		}
-		else
-		{
-			$self->get_parent()->get_storage()->remove($message_id);
-		}
-
-		# We've dispatched the message for sure: THIS IS WHERE THIS GOES.
-		$self->get_parent()->{notify}->notify('dispatch', {
-			queue   => $self, 
-			message => $message, 
-			client  => $client,
-		});
-	}
-	else # We failed to send the frame: client is no longer available.
-	{
-		my $dest = $self->destination();
-
-		$self->_log('warning', sprintf(
-			"QUEUE: Message %s intended for %s on %s could not be delivered", 
-			$message_id, $client_id, $dest,
-		));
-
-		# The message *NEEDS* to be disowned in the storage layer, otherwise
-		# it will live forever as being claimed by a client that doesn't exist.
-		$self->get_parent()->get_storage()->disown($dest, $client_id);
+		$subscriber->ready(0);
+		$self->storage->claim_and_retrieve(
+			$self->destination, 
+			$subscriber->client->id, 
+			sub {
+				if(my $message = $_[0])
+				{
+					$self->dispatch_message($message, $subscriber);	
+				}
+				else
+				{
+					$subscriber->ready(1);
+				}
+			},
+		);
 	}
 
-	# This is a good time to pump the queue, since we either succeeded in
-	# sending out a message or just disowned one.
-	$self->pump();
+	# This overwrites old delays, so we only ever pump from this timer if we've
+	# been idle longer than the delay.
+	$kernel->delay('_pump', 1);
 }
 
-sub enqueue
+sub send
 {
 	my ($self, $message) = @_;
 
 	# If we already have a ready subscriber, we'll claim and dispatch before we
 	# store to give the subscriber a headstart on processing.
-	if ( my $sub = $self->get_available_subscriber() )
+	foreach my $subscriber (values %{$self->subscriptions})
 	{
-		my $client_id = $sub->{client}->{client_id};
-		$message->set_in_use_by( $client_id );
-		$self->_log('info', 
-			"QUEUE: Message $message->{message_id} ".
-			"claimed by client $client_id during enqueue"
-		);
-		$self->dispatch_message_to( $message, $sub );
+		if ($subscriber->ready)
+		{
+			my $cid = $subscriber->client->id;
+			my $mid = $message->id;
+			$message->claim($cid);
+			$self->log('info', 
+				"QUEUE: Message $mid claimed by client $cid during enqueue");
+
+			$self->dispatch_message($message, $subscriber);
+			last;
+		}
 	}
 
-	# Store the message, pump when it it's done being stored.
-	$self->get_parent()->get_storage()->store($message, sub {
-		$self->pump();
-	});
+	$self->storage->store($message, sub {$self->pump()});
+	$self->notify('store', { place => $self, message => $message });
 }
 
 1;

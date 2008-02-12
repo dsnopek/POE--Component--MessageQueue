@@ -1,5 +1,4 @@
 #!/usr/bin/perl
-
 use POE;
 use POE::Component::Logger;
 use POE::Component::MessageQueue;
@@ -197,7 +196,7 @@ else
 {
 	use POE::Component::MessageQueue::IDGenerator::SimpleInt;
 	$idgen = POE::Component::MessageQueue::IDGenerator::SimpleInt->new(
-		"$DATA_DIR/last_id.mq",
+		filename => "$DATA_DIR/last_id.mq",
 	);
 }
 
@@ -205,16 +204,17 @@ my %args = (
 	port     => $port,
 	hostname => $hostname,
 
-	storage => POE::Component::MessageQueue::Storage::Default->new({
+	storage => POE::Component::MessageQueue::Storage::Default->new(
 		data_dir     => $DATA_DIR,
 		timeout      => $timeout,
 		throttle_max => $throttle_max,
-		front_store  => $front_store,
-	}),
+		front        => $front_store,
+	),
 
 	idgen => $idgen,
 	logger_alias => $logger_alias,
 );
+
 if ($statistics) {
 	require POE::Component::MessageQueue::Statistics;
 	require POE::Component::MessageQueue::Statistics::Publish::YAML;
@@ -226,7 +226,7 @@ if ($statistics) {
 	);
 	$args{observers} = [ $stat ];
 }
-my $mq = POE::Component::MessageQueue->new(\%args);
+my $mq = POE::Component::MessageQueue->new(%args);
 
 # install the debug shell if requested
 if ( $debug_shell )

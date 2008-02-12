@@ -15,116 +15,80 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-use strict;
 package POE::Component::MessageQueue::Storage::BigMemory;
-use base qw(POE::Component::MessageQueue::Storage);
+use Moose;
+with qw(POE::Component::MessageQueue::Storage);
 
 use POE::Component::MessageQueue::Storage::Structure::DLList;
 
-sub new
-{
-	my $class = shift;
-	my $self  = $class->SUPER::new(@_);
+use constant empty_hashref => (is => 'ro', default => sub { {} });
+# claimer_id => DLList[Message]
+has 'claimed'   => empty_hashref;
+# queue_name => DLList[Message]
+has 'unclaimed' => empty_hashref;
+# message_id => DLList[Message] ... messages = claimed UNION unclaimed
+has 'messages'  => empty_hashref;
 
-	# claimed messages (removed from named queues when claimed).
-	# Key: Client ID.
-	# Value: A doubly linked queue of messages.
-	$self->{claimed} = {};
-
-	# Named queues.
-	# Key: Queue Name
-	# Value: A doubly linked queue of messages
-	$self->{unclaimed} = {};   
-
-	# All messages.
-	# Key: A message id
-	# Value: A cell in a doubly linked queue
-	$self->{messages} = {};
-
-	return bless $self, $class;
-}
-
-sub has_message
-{
-	my ($self, $id) = @_;
-
-	return ( exists($self->{messages}->{$id}) );
-}
+make_immutable;
 
 sub _force_store {
 	my ($self, $hashname, $key, $message) = @_;
-	my $id = $message->{message_id}; 
+
 	unless ( exists $self->{$hashname}->{$key} )
 	{
 		$self->{$hashname}->{$key} = 
 			POE::Component::MessageQueue::Storage::Structure::DLList->new();
 	}
-	$self->{messages}->{$id} = $self->{$hashname}->{$key}->enqueue($message); 
+
+	$self->{messages}->{$message->id} = 
+		$self->{$hashname}->{$key}->enqueue($message); 
 	return;
 }
 
 sub store
 {
 	my ($self, $message, $callback) = @_;
-	my $claimant = $message->{in_use_by};
 
-	if ( defined $claimant )
+	if ( $message->claimed )
 	{
-		$self->_force_store('claimed', $claimant, $message);
+		$self->_force_store('claimed', $message->claimant, $message);
 	}
 	else
 	{
-		$self->_force_store('unclaimed', $message->{destination}, $message);
+		$self->_force_store('unclaimed', $message->destination, $message);
 	}
 
-	$self->_log('info', "STORE: BIGMEMORY: Added $message->{message_id}.");
+	$self->log('info', sprintf('Added %s.', $message->id));
 	$callback->($message) if $callback;
 	return;
 }
 
 sub remove
 {
-	my ($self, $id, $callback) = @_;
-	my $cell = delete $self->{messages}->{$id};
-	unless ($cell)
-	{
-		$callback->(undef) if $callback;
-		return;
-	}
-	my $message = $cell->delete();
+	my ($self, $ids, $callback) = @_;
+	my @removed;
 
-	my $claimant = $message->{in_use_by};
-
-	if ( $claimant )
+	foreach my $id (@$ids)
 	{
-		delete $self->{claimed}->{$claimant};
+		my $cell = delete $self->messages->{$id};
+		next unless $cell;
+		my $message = $cell->delete();
+		push(@removed, $message);
+		
+		if ( $message->claimed )
+		{
+			delete $self->claimed->{$message->claimant};
+		}
+		else
+		{
+			delete $self->unclaimed->{$message->destination};
+		}
 	}
-	else
-	{
-		delete $self->{unclaimed}->{$message->{destination}};
-	}
-
-	$callback->($message) if $callback;
-	$self->_log('info', "STORE: BIGMEMORY: Removed $id from in-memory store");
+	$callback->(\@removed) if $callback;
 	return;
 }
 
-sub remove_multiple
-{
-	my ($self, $message_ids, $callback) = @_;
-	my @messages = ();
-
-	my $pusher = $callback && sub { 
-		my $m = shift;
-		push(@messages, $m) if $m;
-	};
-
-	$self->remove($_, $pusher) foreach (@$message_ids);
-	$callback->(\@messages) if $callback;	
-	return;
-}
-
-sub remove_all 
+sub empty 
 {
 	my ($self, $callback) = @_;
 	if ($callback)
@@ -142,16 +106,14 @@ sub claim_and_retrieve
 	my ($q, $message);
 
 	# Find an unclaimed message
-	if (($q = $self->{unclaimed}->{$destination}) &&
+	if (($q = $self->unclaimed->{$destination}) &&
 	    ($message = $q->dequeue()))
 	{
 		# Claim it
-		$message->{in_use_by} = $client_id;
+		$message->claim($client_id);
 		$self->_force_store('claimed', $client_id, $message);
-		$self->_log('info',
-			"STORE: BIGMEMORY: Message $message->{message_id} ".
-			"claimed by client $client_id."
-		);
+		$self->log('info', sprintf('Message %s claimed by client %s',
+			$message->id, $client_id));
 	}
 
 	# Dispatch it (even if undef)
@@ -162,16 +124,16 @@ sub claim_and_retrieve
 sub disown
 {
 	my ($self, $destination, $client_id) = @_;
-	my $q = $self->{claimed}->{$client_id} || return;
+	my $q = $self->claimed->{$client_id} || return;
 
 	for(my $i = $q->first(); $i; $i = $i->next())
 	{
 		my $message = $i->data();
-		if ($message->{destination} eq $destination)
+		if ($message->destination eq $destination)
 		{
 			$i->delete(); # ->next() still valid though.
 			$self->_force_store('unclaimed', $destination, $message);
-			delete $message->{in_use_by};
+			$message->disown();
 		}
 	}
 	return;

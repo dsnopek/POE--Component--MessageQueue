@@ -16,6 +16,8 @@
 #
 
 package POE::Component::MessageQueue;
+use vars qw($VERSION);
+$VERSION = '0.1.8';
 
 use POE 0.38;
 use POE::Component::Server::Stomp;
@@ -26,132 +28,103 @@ use POE::Component::MessageQueue::Message;
 use POE::Component::MessageQueue::IDGenerator::UUID;
 use Net::Stomp;
 use Event::Notify;
-use vars qw($VERSION);
-use strict;
-
-$VERSION = '0.1.8';
-
-use Carp qw(croak);
-use Data::Dumper;
+use Moose;
 
 use constant SHUTDOWN_SIGNALS => ('TERM', 'HUP', 'INT');
 
-sub new
+
+has 'alias' => (
+	is      => 'ro',
+	default => 'MQ',
+);
+
+sub master_alias { $_[0]->alias.'-master' }
+
+has 'logger'       => (
+	is      => 'ro',
+	lazy    => 1,
+	default => sub {
+		my $self = shift;
+		POE::Component::MessageQueue::Logger->new(
+			logger_alias => $self->logger_alias
+		);
+	},
+	handles => [qw(log)],
+);
+
+has 'notifier' => (
+	is => 'ro',
+	default => sub { Event::Notify->new() },
+	handles => [qw(notify register_event unregister_event)],
+);
+
+has 'idgen' => (
+	is => 'ro',
+	default => sub { POE::Component::MessageQueue::IDGenerator::UUID->new() },
+	handles => { generate_id => 'generate' },
+);
+
+use constant optional => (is => 'ro');
+has 'observers'    => optional;
+has 'logger_alias' => optional;
+has 'address'      => optional;
+has 'domain'       => optional;
+
+use constant required => (is => 'ro', required => 1);
+has 'hostname' => required;
+has 'port'     => required;
+has 'storage'  => required;
+
+use constant empty_hashref => (is => 'ro', default => sub { {} });
+has 'clients'   => empty_hashref;
+has 'queues'    => empty_hashref;
+has 'topics'    => empty_hashref;
+has 'needs_ack' => empty_hashref;
+
+
+sub BUILD
 {
-	my $class = shift;
-	my $args  = shift;
+	my ($self, $args) = @_;
 
-	my $alias;
-	my $address;
-	my $hostname;
-	my $port;
-	my $domain;
-
-	my $storage;
-	my $logger_alias;
-	my $observers;
-	my $idgen;
-
-	if ( ref($args) eq 'HASH' )
+	my $observers = $self->observers;
+	if ($observers) 
 	{
-		$alias    = $args->{alias};
-		$address  = $args->{address};
-		$hostname = $args->{hostname};
-		$port     = $args->{port};
-		$domain   = $args->{domain};
-		
-		$idgen        = $args->{idgen};
-		$storage      = $args->{storage};
-		$logger_alias = $args->{logger_alias};
-		$observers    = $args->{observers};
-	}
-
-	if ( not defined $storage )
-	{
-		# TODO: We could do some kind of default, like using SQLite or memory 
-		# or something.  But for now, require that the storage engine be specified.
-		croak "$class->new(): Must pass a storage object for the message queue to operate on."
-	}
-
-	# create our logger object
-	my $logger = POE::Component::MessageQueue::Logger->new({ logger_alias => $logger_alias });
-
-	my $self = {
-		storage   => $storage,
-		logger    => $logger,
-		clients   => { },
-		queues    => { },
-		topics    => { },
-		needs_ack => { },
-		notify    => Event::Notify->new(),
-		observers => $observers,
-		idgen     => $idgen || 
-			POE::Component::MessageQueue::IDGenerator::UUID->new(),
-	};
-	bless $self, $class;
-
-	if ($observers) {
-		# Register the observers
 		$_->register($self) for (@$observers);
 	}
 
-	# get the storage object using our logger
-	$self->{storage}->set_logger( $self->{logger} );
+	$self->storage->set_logger($self->logger);
 
-	# to name the session for master tasks
-	if ( not defined $alias )
-	{
-		$alias = "MQ";
-	}
-
-	# setup our stomp server
 	POE::Component::Server::Stomp->new(
-		Alias    => $alias,
-		Address  => $address,
-		Hostname => $hostname,
-		Port     => $port,
-		Domain   => $domain,
+		Alias    => $self->alias,
+		Address  => $self->address,
+		Hostname => $self->hostname,
+		Port     => $self->port,
+		Domain   => $self->domain,
 
 		HandleFrame        => $self->__closure('_handle_frame'),
 		ClientDisconnected => $self->__closure('_client_disconnected'),
 		ClientError        => $self->__closure('_client_error'),
-
-		ObjectStates => [
-			$self => [ '_pump' ]
-		],
 	);
 
 	# a custom session for non-STOMP responsive tasks
 	$self->{session} = POE::Session->create(
-		inline_states => {
-			_start => sub { 
-				my $kernel = $_[ KERNEL ];
-				$kernel->alias_set("$alias-master");
-				# install signal handlers to initiate graceful shutdown.
-				# We only respond to user-type signals - crash signals like 
-				# SEGV and BUS should behave normally
-				foreach my $signal ( SHUTDOWN_SIGNALS )
-				{
-					$kernel->sig($signal => '_shutdown'); 
-				}
-			},
-		},
-		object_states => [
-			$self => [ '_pump', '_shutdown' ]
-		],
+		object_states => [ $self => [qw(_start _shutdown)] ],
 	);
-
-	# stash our session aliases for later
-	$self->{server_alias} = $alias;
-	$self->{master_alias} = "$alias-master";
-
-	return $self;
 }
 
-sub register_event { shift->{notify}->register_event(@_) }
-sub unregister_event { shift->{notify}->unregister_event(@_) }
+sub _start
+{
+	my ($self, $kernel) = @_[OBJECT, KERNEL ];
+	$kernel->alias_set($self->master_alias);
 
-sub get_storage { return shift->{storage}; }
+	# install signal handlers to initiate graceful shutdown.
+	# We only respond to user-type signals - crash signals like 
+	# SEGV and BUS should behave normally
+	foreach my $signal ( SHUTDOWN_SIGNALS )
+	{
+		$kernel->sig($signal => '_shutdown'); 
+	}
+}
 
 sub __closure
 {
@@ -162,78 +135,80 @@ sub __closure
 	return $func;
 }
 
-sub _log
+sub _auto_vivify
 {
-	my $self = shift;
-	$self->{logger}->log(@_);
+	my ($self, $hashname, $key, $constructor) = @_;
+	
+	unless (exists $self->{$hashname}->{$key})
+	{
+		$self->{$hashname}->{$key} = $constructor->();
+	}
+	return $self->{$hashname}->{$key};
 }
 
 sub get_client
 {
-	my $self = shift;
-	my $client_id = shift;
+	my ($self, $client_id) = @_;
 
-	if ( not defined $self->{clients}->{$client_id} )
-	{
-		$self->{clients}->{$client_id} = POE::Component::MessageQueue::Client->new( $client_id );
-	}
-
-	return $self->{clients}->{$client_id};
+	return $self->_auto_vivify(clients => "$client_id" => sub {
+		POE::Component::MessageQueue::Client->new(id => $client_id);
+	});
 }
 
 sub get_topic
 {
 	my ($self, $name) = @_;
-	my $topics = $self->{topics};
 
-	return ($topics->{$name}) || 
-	       ($topics->{$name} = POE::Component::MessageQueue::Topic->new(
-	         $name, $self->{notify}
-	       ));
+	return $self->_auto_vivify(topics => $name => sub {
+		POE::Component::MessageQueue::Topic->new(
+			parent => $self,
+			name   => $name,
+		);
+	});
 }
 
 sub get_queue
 {
-	my $self = shift;
-	my $queue_name = shift;
+	my ($self, $name) = @_;
 
-	if ( not defined $self->{queues}->{$queue_name} )
-	{
-		$self->{queues}->{$queue_name} = POE::Component::MessageQueue::Queue->new( $self, $queue_name );
-	}
+	return $self->_auto_vivify(queues => $name => sub {
+		POE::Component::MessageQueue::Queue->new(
+			parent => $self,
+			name   => $name,
+		);
+	});
+}
 
-	return $self->{queues}->{$queue_name};
+sub get_place
+{
+	my ($self, $name) = @_;
+
+	my $queue_name = _destination_to_queue($name);
+	return $self->get_queue($queue_name) if $queue_name;
+
+	my $topic_name = _destination_to_topic($name);
+	return $self->get_topic($topic_name) if $topic_name;
+
+	return;	
 }
 
 sub remove_client
 {
-	my $self      = shift;
-	my $client_id = shift;
+	my ($self, $client_id) = @_; 
 
-	$self->_log( 'notice', "MASTER: Removing client $client_id" );
+	$self->log( 'notice', "MASTER: Removing client $client_id" );
 	
-	my $client = $self->get_client( $client_id );
+	my $client = $self->get_client($client_id);
 
-	# remove subscriptions to all queues
-	my @queue_names = $client->get_subscribed_queue_names();
-	foreach my $queue_name ( @queue_names )
-	{
-		my $queue = $self->get_queue( $queue_name );
-		$queue->remove_subscription( $client );
-	}
-
-	# Unsubscribe from all topics
-	$_->remove_subscription($client) foreach (values %{$self->{topics}});
-
-	# remove from the client list
-	delete $self->{clients}->{$client_id};
+	$client->unsubscribe_all();
+	delete $self->clients->{$client_id};
 
 	# remove all references from needs_ack.
-	while ( my ($key, $value) = each %{$self->{needs_ack}} )
+	while ( my ($id, $message) = each %{$self->needs_ack} )
 	{
-		if ( $value->{client} == $client )
+		if ( $message->claimant == $client )
 		{
-			delete $self->{needs_ack}->{$key};
+			delete $self->needs_ack->{$id};
 		}
 	}
 
@@ -272,7 +247,7 @@ sub _client_error
 	}
 	else
 	{
-		$self->_log( 'error', "$name $number $message" );
+		$self->log( 'error', "$name $number $message" );
 	}
 }
 
@@ -290,189 +265,98 @@ sub _destination_to_topic
 	return $1;
 }
 
-sub pump_by_destination
-{
-	my ($self, $dest) = @_;
-	my $queue_name = _destination_to_queue($dest);
-	return unless $queue_name;
-	$self->get_queue($queue_name)->pump();
-}
-
 sub _shutdown_complete
 {
 	my ($self) = @_;
 
-	$self->_log('alert', 'Storage engine has finished shutting down');
+	$self->log('alert', 'Storage engine has finished shutting down');
 
 	# Really, really take us down!
-	$self->_log('alert', 'Sending TERM signal to master sessions');
-	$poe_kernel->signal( $self->{server_alias}, 'TERM' );
-	$poe_kernel->signal( $self->{master_alias}, 'TERM' );
+	$self->log('alert', 'Sending TERM signal to master sessions');
+	$poe_kernel->signal( $self->alias, 'TERM' );
+	$poe_kernel->signal( $self->master_alias, 'TERM' );
 
 	# shutdown the logger
-	$self->_log('alert', 'Shutting down the logger');
-	$self->{logger}->shutdown();
+	$self->log('alert', 'Shutting down the logger');
+	$self->logger->shutdown();
 
 	# Shutdown anyone watching us
-	my $oref = $self->{observers};
+	my $oref = $self->observers;
 	if ($oref)
 	{
 		$_->shutdown() for (@$oref);
 	}
 }
 
-sub _pump
-{
-	my ($self, $kernel, $destination) = @_[ OBJECT, KERNEL, ARG0 ];
-
-	$self->pump_by_destination($destination);
-}
-
-sub pump_deferred
-{
-	my $self = shift;
-	my $args = shift;
-
-	my $destination;
-
-	if ( ref($args) eq 'HASH' )
-	{
-		$destination = $args->{destination};
-	}
-	else
-	{
-		$destination = $args;
-	}
-
-	$poe_kernel->post( $self->{session}, '_pump', $destination );
-}
-
 sub route_frame
 {
-	my $self = shift;
-	my $args = shift;
-
-	my $client;
-	my $frame;
-
-	if ( ref($args) eq 'HASH' )
-	{
-		$client = $args->{client};
-		$frame  = $args->{frame};
-	}
-	else
-	{
-		$client = $args;
-		$frame  = shift;
-	}
-
-	my $cid = $client->{client_id};
+	my ($self, $client, $frame) = @_;
+	my $cid = $client->id;
 	my $destination = $frame->headers->{destination};
-
-	my $queue_or_topic = sub {
-		if (my $name = _destination_to_queue($destination)) 
-		{
-			return $self->get_queue($name);
-		}
-		elsif (my $name = _destination_to_topic($destination))
-		{
-			return $self->get_topic($name);
-		}
-		return;
-	};
 
 	my %handlers = (
 		CONNECT => sub {
-			my $login = $frame->headers->{login};
-			my $passcode = $frame->headers->{passcode};
+			my $login = $frame->headers->{login} || q{};
+			my $passcode = $frame->headers->{passcode} || q{};
 
-			$self->_log('notice', "RECV ($cid): CONNECT $login:$passcode");
-			$client->connect({login => $login, passcode => $passcode});
+			$self->log('notice', "RECV ($cid): CONNECT $login:$passcode");
+			$client->connect($login, $passcode);
 		},
 
 		DISCONNECT => sub {
-			$self->_log( 'notice', "RECV ($cid): DISCONNECT");
+			$self->log( 'notice', "RECV ($cid): DISCONNECT");
 			$self->remove_client($cid);
 		},
 
 		SEND => sub {
-			my $persistent  = $frame->headers->{persistent} eq 'true';
+			my $persistent  = $frame->headers->{persistent} eq 'true' ? 1 : 0;
 
-			$self->_log('notice',
+			$self->log('notice',
 				sprintf ("RECV (%s): SEND message (%i bytes) to %s (persistent: %i)",
 					$cid, length $frame->body, $destination, $persistent));
 
-			my $message = $self->create_message({
+			my $message = POE::Component::MessageQueue::Message->new(
+				id          => $self->generate_id(),
 				destination => $destination,
 				persistent  => $persistent,
 				body        => $frame->body,
-				stored      => 0
+			);
+
+			my $place = $self->get_place($destination);
+
+			$self->notify( 'recv', {
+				place   => $place,
+				message => $message,
+				client  => $client,
 			});
-
-			if (my $queue_name = _destination_to_queue($destination))
-			{
-				my $queue = $self->get_queue( $queue_name );
-
-				$self->{notify}->notify( 'recv', {
-					message => $message,
-					queue   => $queue,
-					client  => $client,
-				});
-
-				$queue->enqueue( $message );
-
-				$self->{notify}->notify('store', { 
-					queue   => $queue, 
-					message => $message 
-				});
-			}
-			elsif (my $topic_name = _destination_to_topic($destination))
-			{
-				my $topic = $self->get_topic($topic_name);
-
-				$self->{notify}->notify( 'recv', {
-					message => $message,
-					topic   => $topic,
-					client  => $client,
-				});
-
-				$topic->send_message($message);
-			}
-			else
-			{
-				$self->_log('error', 
-					"Don't know how to handle destination: $destination");
-			}
+			
+			$place->send($message);
 		},
 
 		SUBSCRIBE => sub {
 			my $ack_type = $frame->headers->{ack} || 'auto';
 
-			$self->_log('notice',
+			$self->log('notice',
 				"RECV ($cid): SUBSCRIBE $destination (ack: $ack_type)");
 
-			if (my $thing = $queue_or_topic->())
-			{
-				$self->_log('notice', 
-					"MASTER: Subscribing client $cid to $destination"); 
-				$thing->add_subscription($client, $ack_type);
-			}
+			my $place = $self->get_place($destination);
+
+			$client->subscribe($place, $ack_type);
+			$self->notify(subscribe => {place => $place, client => $client});
+			$place->pump() if $place->can('pump');
 		},
 
 		UNSUBSCRIBE => sub {
-			$self->_log('notice', "RECV ($cid): UNSUBSCRIBE $destination");
-
-			if (my $thing = $queue_or_topic->())
-			{
-				$self->_log('notice', 
-					"MASTER: Unsubscribing client $cid from $destination");
-				$thing->remove_subscription($client);
-			}
+			$self->log('notice', "RECV ($cid): UNSUBSCRIBE $destination");
+			my $place = $self->get_place($destination);
+			$client->unsubscribe($place);
+			$self->storage->disown($destination, $client) if $place->is_persistent;
+			$self->notify(unsubscribe => {place => $place, client => $client});
 		},
 
 		ACK => sub {
 			my $message_id = $frame->headers->{'message-id'};
-			$self->_log('notice', "RECV ($cid): ACK - message $message_id");
+			$self->log('notice', "RECV ($cid): ACK - message $message_id");
 			$self->ack_message($client, $message_id);
 		},
 	);
@@ -493,59 +377,42 @@ sub route_frame
 	}
 	else
 	{
-		$self->_log('error', 
+		$self->log('error', 
 			"ERROR: Don't know how to handle frame: " . $frame->as_string);
 	}
 }
 
-sub create_message
-{
-	my $self = shift;
-	my $message = POE::Component::MessageQueue::Message->new(@_);
-
-	if ( not defined $message->{message_id} )
-	{
-		$message->{message_id} = $self->{idgen}->generate($message);
-	}
-
-	return $message;
-}
-
 sub push_unacked_message
 {
-	my ($self, $message, $client) = @_;
+	my ($self, $message) = @_;
 
-	my $unacked = {
-		client     => $client,
-		message_id => $message->{message_id},
-		queue_name => $message->get_queue_name(),
-		timestamp  => $message->{timestamp},
-		size       => $message->{size}
-	};
-	
-	$self->{needs_ack}->{$message->{message_id}} = $unacked;
+	$self->needs_ack->{$message->id} = $message;
 
-	$self->_log( 'notice', "MASTER: message $message->{message_id} needs ACK from client $client->{client_id}" );
+	$self->log('notice', sprintf('MASTER: message %s needs ACK from client %s',
+		$message->id, $message->claimant));
 }
 
 sub pop_unacked_message
 {
 	my ($self, $message_id, $client) = @_;
 
-	my $unacked = $self->{needs_ack}->{$message_id};
+	my $unacked = $self->needs_ack->{$message_id};
+	my $client_id = $client->id;
+	my $claimant_id = $unacked->claimant;
 
-	if ( $client != $unacked->{client} )
+	if ( $client_id != $claimant_id )
 	{
-		$self->_log( 'alert', "DANGER! Someone is trying to ACK a message that isn't theirs" );
-		$self->_log( 'alert', "message id: $message_id" );;
-		$self->_log( 'alert', "needs_ack says $unacked->{client}->{client_id}" );
-		$self->_log( 'alert', "but we got a message from $client->{client_id}" );
+		$self->log( 'alert', 
+			"DANGER! Someone is trying to ACK a message that isn't theirs" );
+		$self->log( 'alert', "message id: $message_id" );;
+		$self->log( 'alert', "needs_ack says $claimant_id" );
+		$self->log( 'alert', "but we got a message from $client_id" );
 		return undef;
 	}
 	else
 	{
 		# remove from our needs ack list
-		delete $self->{needs_ack}->{$message_id};
+		delete $self->needs_ack->{$message_id};
 	}
 
 	return $unacked;
@@ -557,39 +424,39 @@ sub ack_message
 
 	my $unacked = $self->pop_unacked_message( $message_id, $client );
 
-	if ( not defined $unacked )
+	unless ($unacked)
 	{
-		$self->_log( 'alert', "Error ACK'ing message: $message_id" );
+		$self->log( 'alert', "Error ACK'ing message: $message_id" );
 		return;
 	}
 	
-	# remove from the backing store
-	$self->get_storage()->remove( $message_id );
-
-	my $queue = $self->get_queue( $unacked->{queue_name} );
-
+	my $queue = $self->get_queue(_destination_to_queue($unacked->destination));
 	# ACK the subscriber back into ready mode.
-	my $sub = $queue->get_subscription( $client );
-	$sub->set_done_with_message() if $sub;
-
-	$self->{notify}->notify('ack', {
-		queue => $queue,
-		client => $client,
-		message_info => {
-			message_id => $unacked->{message_id},
-			timestamp  => $unacked->{timestamp},
-			size       => $unacked->{size},
-		}
-	});
+	my $sub = $queue->subscriptions->{$client->id};
+	$sub->ready(1) if $sub;
 
 	# pump the queue, so that this subscriber will get another message
 	$queue->pump();
+
+	# notify stats
+	$self->notify(ack => {
+		place  => $queue,
+		client => $client,
+		message_info => {
+			message_id => $unacked->id,
+			timestamp  => $unacked->timestamp,
+			size       => $unacked->size,
+		}
+	});
+
+	# remove from the backing store
+	$self->storage->remove([$message_id]);
 }
 
 sub _shutdown 
 {
 	my ($self, $kernel, $signal) = @_[ OBJECT, KERNEL, ARG0 ];
-	$self->_log('alert', "Got SIG$signal. Shutting down.");
+	$self->log('alert', "Got SIG$signal. Shutting down.");
 	$kernel->sig_handled();
 	$self->shutdown(); 
 }
@@ -607,7 +474,7 @@ sub shutdown
 			# development, this is necessary because the graceful shutdown doesn't work
 			# at all.
 			my $msg = "Shutdown called $self->{shutdown} times!  Forcing ungraceful quit.";
-			$self->_log('emergency', $msg);
+			$self->log('emergency', $msg);
 			print STDERR "$msg\n";
 			$poe_kernel->stop();
 		}
@@ -615,20 +482,72 @@ sub shutdown
 	}
 	$self->{shutdown} = 1;
 
-	$self->_log('alert', 'Initiating message queue shutdown...');
+	$self->log('alert', 'Initiating message queue shutdown...');
 
 	# stop listening for connections
-	$poe_kernel->post( $self->{server_alias} => 'shutdown' );
+	$poe_kernel->post( $self->alias => 'shutdown' );
 
 	# shutdown all client connections
-	my @client_ids = keys %{$self->{clients}};
+	my @client_ids = keys %{$self->clients};
 	foreach my $client_id ( @client_ids )
 	{
 		$poe_kernel->post( $client_id => 'shutdown' );
 	}
 
+	$self->log('alert', 'Shutting down individual queues...');
+	$_->shutdown() foreach (values %{$self->{queues}});
+
 	# shutdown the storage
 	$self->{storage}->storage_shutdown($self->__closure('_shutdown_complete'));
+}
+
+sub dispatch_message
+{
+	my ($self, $message, $subscriber) = @_;
+	my $client = $subscriber->client;
+	my $place = $self->get_place($message->destination);
+	my $is_queue = $place->isa('POE::Component::MessageQueue::Queue');
+
+	if($client && $client->send_frame($message->create_stomp_frame()))
+	{
+		$self->log('info', sprintf('Sending message %s to client %s', 
+			$message->id, $client->id));
+
+		if ($is_queue)
+		{
+			if ( $subscriber->ack_type eq 'client' )
+			{
+				$subscriber->ready(0);
+				$self->push_unacked_message($message);
+			}
+			else
+			{
+				$self->storage->remove($message->id);
+			}
+			$place->pump();
+		}
+
+		$self->notify(dispatch => {
+			place   => $place, 
+			message => $message, 
+			client  => $client,
+		});
+	}
+	else
+	{
+		$self->log('warning', sprintf(
+			"QUEUE: Message %s intended for %s on %s could not be delivered", 
+			$message->id, $message->claimant, $message->destination,
+		));
+
+		# The message *NEEDS* to be disowned in the storage layer, otherwise
+		# it will live forever as being claimed by a client that doesn't exist.
+		if ($is_queue)
+		{
+			$self->storage->disown($message->destination, $message->claimant);
+			$place->pump();
+		}
+	}
 }
 
 1;

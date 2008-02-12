@@ -16,92 +16,35 @@
 #
 
 package POE::Component::MessageQueue::Storage::Memory;
-use base qw(POE::Component::MessageQueue::Storage);
+use Moose;
+with qw(POE::Component::MessageQueue::Storage);
 
-use strict;
+# destination => @messages
+has 'messages' => (is => 'ro', default => sub { {} });
 
-sub new
-{
-	my $class = shift;
-	my $self  = $class->SUPER::new( @_ );
-
-	$self->{messages}   = { }; # destination => @messages
-
-	return bless $self, $class;
-}
-
-sub has_message
-{
-	my ($self, $message_id) = @_;
-
-	foreach my $dest ( keys %{$self->{messages}} )
-	{
-		my $messages = $self->{messages}->{$dest};
-		foreach my $message ( @{$messages} )
-		{
-			if ( $message->{message_id} eq $message_id )
-			{
-				return 1;
-			}
-		}
-	}
-
-	return 0;
-}
+make_immutable;
 
 sub store
 {
 	my ($self, $message, $callback) = @_;
-	my $destination = $message->{destination};
+	my $destination = $message->destination;
 
 	# push onto our array
-	$self->{messages}{ $destination } ||= [];
-	push @{$self->{messages}{$destination}}, $message;
-	$self->_log( 
-		"STORE: MEMORY: Added $message->{message_id} to in-memory store" 
-	);
+	my $aref = ($self->messages->{$destination} ||= []);
+	push(@$aref, $message);
+	$self->log('info', sprintf('Added %s', $message->id));
 
 	$callback->($message) if $callback;
 }
 
 sub remove
 {
-	my ($self, $message_id, $callback) = @_;
-	my $removed = undef;
-
-	OUTER: foreach my $dest ( keys %{$self->{messages}} )
-	{
-		my $messages = $self->{messages}->{$dest};
-		my $max = scalar @{$messages};
-
-		# find the message and remove it
-		for ( my $i = 0; $i < $max; $i++ )
-		{
-			my $message = $messages->[$i];
-			if ( $message->{message_id} eq $message_id )
-			{
-				splice(@$messages, $i, 1);
-				$self->_log('info',
-					"STORE: MEMORY: Removed $message_id from in-memory store"
-				);
-				$removed = $message;
-				last OUTER;
-			}
-		}
-	}
-
-	$callback->($removed) if $callback;
-	return;
-}
-
-sub remove_multiple
-{
 	my ($self, $message_ids, $callback) = @_;
-	my @messages = ();
+	my @removed = ();
 	# Stuff IDs into a hash so we can quickly check if a message is on the list
 	my %id_hash = map { ($_, 1) } (@$message_ids);
 
-	while ( my ($dest, $messages) = each %{ $self->{messages} } ) 
+	while ( my ($dest, $messages) = each %{$self->messages} ) 
 	{
 		my $max = scalar @{$messages};
 
@@ -109,21 +52,22 @@ sub remove_multiple
 		{
 			my $message = $messages->[$i];
 			# Check if this messages is in the "remove" list
-			next unless exists $id_hash{$message->{message_id}};
-			splice @$messages, $i--, 1;
-			push(@messages, $message) if $callback;
+			next unless exists $id_hash{$message->id};
+			splice @$messages, $i, 1;
+			$i--; $max--;
+			push(@removed, $message) if $callback;
 		}
 	}
 
-	$callback->(\@messages) if $callback;
+	$callback->(\@removed) if $callback;
 
 	return;
 }
 
-sub remove_all 
+sub empty 
 {
 	my ($self, $callback) = @_;
-	my $destinations = $self->{messages};
+	my $destinations = $self->messages;
 	if ($callback) 
 	{
 		my @result = ();
@@ -137,25 +81,25 @@ sub remove_all
 sub claim_and_retrieve
 {
 	my ($self, $destination, $client_id, $dispatch) = @_;
-
-	my @messages = @{ $self->{messages}{$destination} || [] };
+	my $messages = $self->messages->{$destination} || [];
 
 	# look for an unclaimed message and take it
-	foreach my $message (@messages)
+	foreach my $message (@$messages)
 	{
-		if ( not defined $message->{in_use_by} )
+		unless ($message->claimed)
 		{
 			# claim it, yo!
-			$message->{in_use_by} = $client_id;
-			$self->_log('info',
-				"STORE: MEMORY: Message $message->{message_id} ".
-				"claimed by client $client_id."
-			);
+			$message->claim($client_id);
+			$self->log('info', sprintf('Message %s claimed by client %s',
+				$message->id, $client_id));
 
 			$dispatch->($message, $destination, $client_id);
+			return;
 		}
 	}
-	
+
+	# Spec says to do this on failure.
+	$dispatch->(undef, $destination, $client_id);
 	return;
 }
 
@@ -163,14 +107,13 @@ sub claim_and_retrieve
 sub disown
 {
 	my ($self, $destination, $client_id) = @_;
+	my $messages = $self->messages->{$destination} || return;
 
-	my $messages = $self->{messages}{$destination} || [];
-	foreach my $message ( @{$messages} )
+	foreach my $msg (grep { 
+		$_->claimed && ($_->claimant == $client_id) 
+	} (@$messages))
 	{
-		if ( $message->{in_use_by} == $client_id )
-		{
-			$message->{in_use_by} = undef;
-		}
+		$msg->disown();
 	}
 }
 

@@ -1,24 +1,25 @@
-
 package POE::Component::MessageQueue::Storage::Generic::Base;
-use base qw(POE::Component::MessageQueue::Storage);
-use POE::Component::MessageQueue;
-use strict;
+use Moose::Role;
 
-sub new
+# In generics, we just want log to call the postback (we have to do this
+# before "with" injects a log method in here.
+override 'log' => sub {
+	my $self = shift;
+	$self->log_function->(@_) if $self->has_logger;
+};
+
+has 'log_function' => (
+	is        => 'rw',
+	writer    => 'set_log_function',
+	predicate => 'has_logger',
+);
+
+with qw(POE::Component::MessageQueue::Storage);
+
+sub ignore_signals
 {
-	my $class = shift;
-	my $args  = shift;
-
-	my $self = $class->SUPER::new( $args );
-
-	# We're in a child process when this happens: if we don't do this, we'll get
-	# killed on these signals and PoCo::MQ::Storage::Generic will get a broken
-	# pipe when it tries to talk to us.
-	foreach my $sig (POE::Component::MessageQueue->SHUTDOWN_SIGNALS) {
-		$SIG{$sig} = 'IGNORE';
-	} 
-
-	return bless $self, $class;
+	my ($self, @signals) = @_;
+	$SIG{$_} = 'IGNORE' foreach (@signals);
 }
 
 1;

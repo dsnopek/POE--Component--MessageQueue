@@ -15,6 +15,9 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+# Note: We don't use Moose in here because perfomance is a factor, and these
+# are basically just structs anywho.  They're arrayrefs underneath.
+
 package POE::Component::MessageQueue::Storage::Structure::DLList;
 use strict;
 use warnings;
@@ -90,9 +93,9 @@ sub DESTROY
 	my $self = shift;
 	my $sentinel = $$self;
 
-	# The cells already have weakened prev pointers, so as soon as we break the
-	# circularity everything will be fine.
-	$sentinel->_break();
+	# This undef's the sentinels pointers: on the offchance it's already been
+	# garbage collected, check for definedness.
+	$sentinel->_break() if $sentinel;
 }
 
 1;

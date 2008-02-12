@@ -70,17 +70,14 @@ sub get_queue
 
 	my $queue = $self->{statistics}{queues}{$name};
 
-	if ( not defined $queue )
+	unless ($queue)
 	{
-		$queue = $self->{statistics}{queues}{$name} = {
-			stored          => 0,
-			sent            => 0,
-			total_stored    => 0,
-			total_sent      => 0,
-			total_recvd     => 0,
-			avg_secs_stored => 0,
-			avg_size_recvd  => 0,
-		};
+		$queue = $self->{statistics}{queues}{$name} = {};
+		$queue->{$_} = 0 foreach qw(
+			sent          stored
+			total_stored  total_sent
+			total_recvd   avg_secs_stored  avg_size_recvd
+		);
 	}
 
 	return $queue;
@@ -127,7 +124,7 @@ sub notify_store
 	$h->{total_stored}++;
 
 	# Per-queue
-	my $stats = $self->get_queue($data->{queue}->{queue_name});
+	my $stats = $self->get_destination($data);
 	$stats->{stored}++;
 	$stats->{total_stored}++;
 	$stats->{last_stored} = scalar localtime();
@@ -142,8 +139,10 @@ sub reaverage {
 sub get_destination
 {
 	my ($self, $data) = @_;
-	return ($data->{queue} && $self->get_queue($data->{queue}->{queue_name})) ||
-	       ($data->{topic} && $self->get_topic($data->{topic}->{name}));
+	my $place = $data->{place};
+	return $place->isa('POE::Component::MessageQueue::Queue') ?
+		$self->get_queue($place->name) :
+		$self->get_topic($place->name);
 }
 
 sub notify_recv
@@ -156,7 +155,7 @@ sub notify_recv
 	$stats->{avg_size_recvd} = reaverage(
 		$stats->{total_recvd},
 		$stats->{avg_size_recvd},
-		$data->{message}->{size},
+		$data->{message}->size,
 	);
 }
 
@@ -178,12 +177,14 @@ sub message_handled
 	$stats->{last_sent} = scalar localtime();
 
 	# Topics don't count. :)
-	$stats->{stored}-- unless exists $data->{topic};
+	$stats->{stored}-- 
+		unless $data->{place}->isa('POE::Component::MessageQueue::Topic');
 
 	# We check if timestamp is set, because it might not be, in the specific
 	# case where the database was upgraded from pre-0.1.6.
 	# Topics don't get stored, so this doesn't make sense for them.
-	if ( $info->{timestamp} && not exists $data->{topic} )
+	if ( $info->{timestamp} && 
+			 $data->{place}->isa('POE::Component::MessageQueue::Queue'))
 	{
 		# recalc the average
 		$stats->{avg_secs_stored} = reaverage(
@@ -197,26 +198,19 @@ sub message_handled
 sub notify_dispatch
 {
 	my ($self, $data) = @_;
+	my $place = $data->{place};
 
-	my $receiver = $data->{client};
-	if (exists $data->{topic})
+	if ($place->isa('POE::Component::MessageQueue::Topic'))
 	{
 		$self->message_handled($data);
 		return;
 	}
 
-	my $sub;
-	if ( ref($receiver) eq 'POE::Component::MessageQueue::Client' )
-	{
-		# automatically convert clients to subscribers!
-		$sub = $data->{queue}->get_subscription( $receiver );
-	}
-	else
-	{
-		$sub = $receiver;
-	}
+	my $destination = $place->destination;
+	my $subscriber = $data->{client}->subscriptions->{$destination};
 
-	if (($sub->{ack_type} || '') eq 'auto') {
+	if ($subscriber->ack_type eq 'auto') 
+	{
 		$self->message_handled($data);
 	}
 }
@@ -224,20 +218,12 @@ sub notify_dispatch
 sub notify_ack {
 	my ($self, $data) = @_;
 
-	my $receiver = $data->{client};
+	my $place = $data->{place};
+	my $client = $data->{client};
+	my $subscriber = $client->subscriptions->{$place->destination};
 
-	my $sub;
-	if ( ref($receiver) eq 'POE::Component::MessageQueue::Client' )
+	if ($subscriber->ack_type eq 'client') 
 	{
-		# automatically convert clients to subscribers!
-		$sub = $data->{queue}->get_subscription( $receiver );
-	}
-	else
-	{
-		$sub = $receiver;
-	}
-
-	if (($sub->{ack_type} || '') eq 'client') {
 		$self->message_handled($data);
 	}
 }
