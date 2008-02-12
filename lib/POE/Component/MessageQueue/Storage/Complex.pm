@@ -1,5 +1,5 @@
 #
-# Copyright 2007 David Snopek <dsnopek@gmail.com>
+# Copyright 2007, 2008 David Snopek <dsnopek@gmail.com>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -282,15 +282,55 @@ store and store them in the back-store, but you can override that here.
 
 =item front_store => SCALAR
 
+Takes a reference to a storage engine to use as the front store.
+
+Currently, only the following storage engines are capable to be front stores:
+
+=over 2
+
+=item *
+
+L<POE::Component::MessageQueue::Storage::Memory>
+
+=item *
+
+L<POE::Component::MessageQueue::Storage::BigMemory>
+
+=back
+
+Expect this to change in future versions.
+
 =item back_store => SCALAR
 
-Takes a reference to a storage engine to use as the front store / back store.
+Takes a reference to a storage engine to use as the back store.
+
+Using L<POE::Component::MessageQueue::Storage::Throttled> to wrap your main
+storage engine is highly recommended for the reasons explained in its specific
+documentation.
 
 =back
 
 =head1 SEE ALSO
 
-L<POE::Component::MessageQueue::Storage::Complex::Default> for the most common
-case.
+L<POE::Component::MessageQueue::Storage::Complex::Default> - The most common case.  Based on this storage engine.
+
+I<External references:>
+
+L<POE::Component::MessageQueue>,
+L<POE::Component::MessageQueue::Storage>,
+L<DBI>,
+L<DBD::SQLite>
+
+I<Other storage engines:>
+
+L<POE::Component::MessageQueue::Storage::Default>,
+L<POE::Component::MessageQueue::Storage::Memory>,
+L<POE::Component::MessageQueue::Storage::BigMemory>,
+L<POE::Component::MessageQueue::Storage::FileSystem>,
+L<POE::Component::MessageQueue::Storage::DBI>,
+L<POE::Component::MessageQueue::Storage::Generic>,
+L<POE::Component::MessageQueue::Storage::Generic::DBI>,
+L<POE::Component::MessageQueue::Storage::Throttled>
+L<POE::Component::MessageQueue::Storage::Default>
 
 =cut

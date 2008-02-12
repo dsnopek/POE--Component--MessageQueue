@@ -1,5 +1,5 @@
 #
-# Copyright 2007 David Snopek <dsnopek@gmail.com>
+# Copyright 2007, 2008 David Snopek <dsnopek@gmail.com>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -683,23 +683,26 @@ If you are only interested in running with the recommended storage backend and
 some predetermined defaults, you can use the included command line script.
 
   POE::Component::MessageQueue version 0.1.8
-  Copyright 2007 David Snopek
+  Copyright 2007, 2008 David Snopek (http://www.hackyourlife.org)
+  Copyright 2007, 2008 Paul Driver <frodwith@gmail.com>
+  Copyright 2007 Daisuke Maki <daisuke@endeworks.jp>
   
   mq.pl [--port|-p <num>] [--hostname|-h <host>]
-  	  [--front-store <str>] [--nouuids]
+        [--front-store <str>] [--nouuids]
         [--timeout|-i <seconds>]   [--throttle|-T <count>]
         [--data-dir <path_to_dir>] [--log-conf <path_to_file>]
         [--stats] [--stats-interval|-i <seconds>]
         [--background|-b] [--pidfile|-p <path_to_file>]
+        [--crash-cmd <path_to_script>]
         [--debug-shell] [--version|-v] [--help|-h]
   
   SERVER OPTIONS:
     --port     -p <num>     The port number to listen on (Default: 61613)
     --hostname -h <host>    The hostname of the interface to listen on 
                             (Default: localhost)
-
+  
   STORAGE OPTIONS:
-    --front-store -f        Specify which in-memory storage engine to use for
+    --front-store -f <str>  Specify which in-memory storage engine to use for
                             the front-store (can be memory or bigmemory).
     --timeout  -i <secs>    The number of seconds to keep messages in the 
                             front-store (Default: 4)
@@ -711,18 +714,22 @@ some predetermined defaults, you can use the included command line script.
                             (Default: /var/lib/perl_mq)
     --log-conf <path>       The path to the log configuration file 
                             (Default: /etc/perl_mq/log.conf
-
+  
   STATISTICS OPTIONS:
     --stats                 If specified the, statistics information will be 
                             written to $DATA_DIR/stats.yml
     --stats-interval <secs> Specifies the number of seconds to wait before 
                             dumping statistics (Default: 10)
-
+  
   DAEMON OPTIONS:
     --background -b         If specified the script will daemonize and run in the
                             background
     --pidfile    -p <path>  The path to a file to store the PID of the process
-
+  
+    --crash-cmd  <path>     The path to a script to call when crashing.
+                            A stacktrace will be printed to the script's STDIN.
+                            (ex. 'mail root@localhost')
+  
   OTHER OPTIONS:
     --debug-shell           Run with POE::Component::DebugShell
     --version    -v         Show the current version.
@@ -945,10 +952,6 @@ Full support for the STOMP protocol.
 
 =item *
 
-Topics a la "topic://" in ActiveMQ.
-
-=item *
-
 Some kind of security based on username/password.
 
 =item *
@@ -962,12 +965,13 @@ Optional add on module via L<POE::Component::IKC::Server> that allows to introsp
 I<External modules:>
 
 L<POE>, L<POE::Component::Server::Stomp>, L<Net::Stomp>, L<POE::Component::Logger>, L<DBD::SQLite>,
-L<POE::Component::Generic>
+L<POE::Component::Generic>, L<POE::Filter::Stomp>
 
 I<Storage modules:>
 
 L<POE::Component::MessageQueue::Storage>,
 L<POE::Component::MessageQueue::Storage::Memory>,
+L<POE::Component::MessageQueue::Storage::BigMemory>,
 L<POE::Component::MessageQueue::Storage::DBI>,
 L<POE::Component::MessageQueue::Storage::FileSystem>,
 L<POE::Component::MessageQueue::Storage::Generic>,
@@ -990,9 +994,13 @@ some probably do exist.  If you find any, please let us know at the Google group
 That said, we are using this in production in a commercial application for
 thousands of large messages daily and we experience very few issues.
 
-=head1 AUTHOR
+=head1 AUTHORS
 
-Copyright 2007 David Snopek (L<http://www.hackyourlife.org/>)
+Copyright 2007, 2008 David Snopek (L<http://www.hackyourlife.org>)
+
+Copyright 2007, 2008 Paul Driver <frodwith@gmail.com>
+
+Copyright 2007 Daisuke Maki <daisuke@endeworks.jp>
 
 =head1 LICENSE
 

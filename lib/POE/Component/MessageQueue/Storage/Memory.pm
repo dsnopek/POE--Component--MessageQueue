@@ -1,5 +1,5 @@
 #
-# Copyright 2007 David Snopek <dsnopek@gmail.com>
+# Copyright 2007, 2008 David Snopek <dsnopek@gmail.com>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -210,6 +210,9 @@ POE::Component::MessageQueue::Storage::Memory -- In memory storage engine.
 A storage engine that keeps all the messages in memory.  Provides no persistence
 what-so-ever.
 
+For an alternative in-memory storage engine optimized for a large number of 
+messages, please see L<POE::Component::MessageQueue::Storage::Memoray>.
+
 I wouldn't suggest using this as your main storage engine because if messages aren't
 removed by consumers, it will continue to consume more memory until it explodes.  Check-out
 L<POE::Component::MessageQueue::Storage::Complex> which uses this module internally to keep
@@ -221,13 +224,20 @@ None to speak of!
 
 =head1 SEE ALSO
 
+L<POE::Component::MessageQueue::Storage::BigMemory> -- Alternative memory-based storage engine.
+
 L<POE::Component::MessageQueue>,
-L<POE::Component::MessageQueue::Storage>,
+L<POE::Component::MessageQueue::Storage>
+
+I<Other storage engines:>
+
+L<POE::Component::MessageQueue::Storage::BigMemory>,
 L<POE::Component::MessageQueue::Storage::FileSystem>,
 L<POE::Component::MessageQueue::Storage::DBI>,
 L<POE::Component::MessageQueue::Storage::Generic>,
 L<POE::Component::MessageQueue::Storage::Generic::DBI>,
 L<POE::Component::MessageQueue::Storage::Throttled>,
-L<POE::Component::MessageQueue::Storage::Complex>
+L<POE::Component::MessageQueue::Storage::Complex>,
+L<POE::Component::MessageQueue::Storage::Default>
 
 =cut

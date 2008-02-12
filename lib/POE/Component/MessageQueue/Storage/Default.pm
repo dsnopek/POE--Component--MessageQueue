@@ -201,6 +201,33 @@ sub new
 
 =pod
 
+=head1 NAME
+
+POE::Component::MessageQueue::Storage::Default -- The default storage engine (based on Complex), recommended for the most common case and used by mq.pl.
+
+=head1 SYNOPSIS
+
+  use POE;
+  use POE::Component::MessageQueue;
+  use POE::Component::MessageQueue::Storage::Default;
+  use strict;
+
+  my $DATA_DIR = '/tmp/perl_mq';
+
+  POE::Component::MessageQueue->new({
+    storage => POE::Component::MessageQueue::Storage::Default->new({
+      data_dir     => $DATA_DIR,
+      timeout      => 4,
+      throttle_max => 2,
+
+      # Alternative memory store available!
+      #front_store => POE::Component::MessageQueue::Storage::BigMemory->new(),
+    })
+  });
+
+  POE::Kernel->run();
+  exit;
+
 =head1 DESCRIPTION
 
 This storage engine combines all the other provided engines.  It uses
@@ -250,13 +277,19 @@ data structure that is optimized for large message loads.
 
 =head1 SEE ALSO
 
-L<DBI>,
-L<DBD::SQLite>,
 L<POE::Component::MessageQueue>,
 L<POE::Component::MessageQueue::Storage>,
+L<DBI>,
+L<DBD::SQLite>
+
+I<Other storage engines:>
+
 L<POE::Component::MessageQueue::Storage::Memory>,
+L<POE::Component::MessageQueue::Storage::BigMemory>,
 L<POE::Component::MessageQueue::Storage::FileSystem>,
 L<POE::Component::MessageQueue::Storage::DBI>,
 L<POE::Component::MessageQueue::Storage::Generic>,
 L<POE::Component::MessageQueue::Storage::Generic::DBI>,
-L<POE::Component::MessageQueue::Storage::Throttled>
+L<POE::Component::MessageQueue::Storage::Throttled>,
+L<POE::Component::MessageQueue::Storage::Complex>
+

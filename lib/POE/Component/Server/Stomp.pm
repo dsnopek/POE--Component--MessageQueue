@@ -1,5 +1,5 @@
 #
-# Copyright 2007 David Snopek <dsnopek@gmail.com>
+# Copyright 2007, 2008 David Snopek <dsnopek@gmail.com>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -102,49 +102,49 @@ POE::Component::Server::Stomp - A generic Stomp server for POE
 
 =head1 SYNOPSIS
 
-	use POE qw(Component::Server::Stomp);
-	use Net::Stomp::Frame;
-	use strict;
+  use POE qw(Component::Server::Stomp);
+  use Net::Stomp::Frame;
+  use strict;
 
-	POE::Component::Server::Stomp->new(
-		HandleFrame        => \&handle_frame,
-		ClientDisconnected => \&client_disconnected,
-		ClientErrorr       => \&client_error
-	);
+  POE::Component::Server::Stomp->new(
+    HandleFrame        => \&handle_frame,
+    ClientDisconnected => \&client_disconnected,
+    ClientErrorr       => \&client_error
+  );
 
-	POE::Kernel->run();
-	exit;
+  POE::Kernel->run();
+  exit;
 
-	sub handle_frame
-	{
-		my ($kernel, $heap, $frame) = @_[ KERNEL, HEAP, ARG0 ];
+  sub handle_frame
+  {
+    my ($kernel, $heap, $frame) = @_[ KERNEL, HEAP, ARG0 ];
 
-		print "Recieved frame:\n";
-		print $frame->as_string() . "\n";
+    print "Recieved frame:\n";
+    print $frame->as_string() . "\n";
 
-		# allow Stomp clients to connect by playing along.
-		if ( $frame->command eq 'CONNECT' )
-		{
-			my $response = Net::Stomp::Frame->new({
-				command => 'CONNECTED'
-			});
-			$heap->{client}->put( $response->as_string . "\n" );
-		}
-	}
+    # allow Stomp clients to connect by playing along.
+    if ( $frame->command eq 'CONNECT' )
+    {
+      my $response = Net::Stomp::Frame->new({
+        command => 'CONNECTED'
+      });
+      $heap->{client}->put( $response->as_string . "\n" );
+    }
+  }
 
-	sub client_disconnected
-	{
-		my ($kernel, $heap) = @_[ KERNEL, HEAP ];
+  sub client_disconnected
+  {
+    my ($kernel, $heap) = @_[ KERNEL, HEAP ];
 
-		print "Client disconnected\n";
-	}
+    print "Client disconnected\n";
+  }
 
-	sub client_error
-	{
-		my ($kernel, $name, $number, $message) = @_[ KERNEL, ARG0, ARG1, ARG2 ];
+  sub client_error
+  {
+    my ($kernel, $name, $number, $message) = @_[ KERNEL, ARG0, ARG1, ARG2 ];
 
-		print "ERROR: $name $number $message\n";
-	}
+    print "ERROR: $name $number $message\n";
+  }
 
 =head1 DESCRIPTION
 
@@ -159,13 +159,19 @@ For a full-fledged message queue that uses this module:
 
 L<POE::Component::MessageQueue>
 
+=head1 SEE ALSO
+
+L<POE::Component::Server::TCP>,
+L<POE::Filter::Stomp>,
+L<Net::Stomp>
+
 =head1 BUGS
 
 Probably.
 
 =head1 AUTHORS
 
-Copyright 2007 David Snopek.
+Copyright 2007, 2008 David Snopek.
 
 =cut
 
