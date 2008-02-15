@@ -67,13 +67,11 @@ has 'idgen' => (
 use constant optional => (is => 'ro');
 has 'observers'    => optional;
 has 'logger_alias' => optional;
-has 'address'      => optional;
-has 'domain'       => optional;
 
-use constant required => (is => 'ro', required => 1);
-has 'hostname' => required;
-has 'port'     => required;
-has 'storage'  => required;
+has 'storage'  => (
+	is => 'ro', 
+	required => 1,
+);
 
 use constant empty_hashref => (is => 'ro', default => sub { {} });
 has 'clients'   => empty_hashref;
@@ -96,10 +94,10 @@ sub BUILD
 
 	POE::Component::Server::Stomp->new(
 		Alias    => $self->alias,
-		Address  => $self->address,
-		Hostname => $self->hostname,
-		Port     => $self->port,
-		Domain   => $self->domain,
+		Address  => $args->{address},
+		Hostname => $args->{hostname},
+		Port     => $args->{port},
+		Domain   => $args->{domain},
 
 		HandleFrame        => $self->__closure('_handle_frame'),
 		ClientDisconnected => $self->__closure('_client_disconnected'),
