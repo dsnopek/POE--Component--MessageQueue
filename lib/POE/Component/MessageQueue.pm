@@ -320,15 +320,21 @@ sub route_frame
 				body        => $frame->body,
 			);
 
-			my $place = $self->get_place($destination);
-
-			$self->notify( 'recv', {
-				place   => $place,
-				message => $message,
-				client  => $client,
-			});
-			
-			$place->send($message);
+			if(my $place = $self->get_place($destination))
+			{
+				$self->notify( 'recv', {
+					place   => $place,
+					message => $message,
+					client  => $client,
+				});
+				$place->send($message);
+			}
+			else
+			{
+				$self->log('error', 
+					"Don't know how to handle destination: $destination"
+				);
+			}
 		},
 
 		SUBSCRIBE => sub {
