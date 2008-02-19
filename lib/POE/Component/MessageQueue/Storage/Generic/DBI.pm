@@ -64,6 +64,7 @@ make_immutable;
 sub BUILD 
 {
 	my ($self, $args) = @_;
+	
 	# Force exception handling
   $self->options->{'HandleError'} = Exception::Class::DBI->handler,
   $self->options->{'PrintError'} = 0;
@@ -126,13 +127,14 @@ sub store
 sub _remove_underneath
 {
 	my ($self, $get, $where, $errdesc) = @_;
-	my @messages = ();
+	my @messages;
 	try eval {
 		if ($get)
 		{
 			my $sth = $self->dbh->prepare('SELECT * FROM messages'.$where); 
+			$sth->execute();
 			my $results = $sth->fetchall_arrayref({});
-			my @messages = map { _make_message($_) } (@$results);
+			@messages = map { _make_message($_) } (@$results);
 		}
 		$self->dbh->do('DELETE FROM messages'.$where);
 	};
@@ -142,6 +144,26 @@ sub _remove_underneath
 	return \@messages;
 }
 
+sub peek_oldest
+{
+	my ($self, $callback) = @_;
+	my $result;
+	try eval {
+		my $sth = $self->dbh->prepare(q{
+			SELECT * FROM messages ORDER BY timestamp ASC LIMIT 1
+		});
+
+		$sth->execute();
+		return $callback(undef) unless $sth->rows;
+		$result = $sth->fetchrow_hashref;
+	};
+	my $err = catch;
+	$self->log("error", "peek_oldest error: $err") if $err;
+
+	$callback->($result ? _make_message($result) : undef);
+	return;
+}
+
 sub peek
 {
 	my ($self, $message_ids, $callback) = @_;
@@ -149,6 +171,7 @@ sub peek
 	my @messages;
 	try eval {
 		my $sth = $self->dbh->prepare("SELECT * FROM messages	WHERE $where");
+		$sth->execute();
 		my $results = $sth->fetchall_arrayref({});	
 		@messages = map { _make_message($_) } (@$results);
 	};

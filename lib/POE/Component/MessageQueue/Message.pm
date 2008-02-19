@@ -19,6 +19,10 @@ package POE::Component::MessageQueue::Message;
 use Moose;
 use Net::Stomp::Frame;
 
+# Use Time::HiRes's time() if available.  Without it, messages that are sent
+# rapidly may come out in an odd order.
+BEGIN { eval { require Time::HiRes; Time::HiRes->import qw(time); } };
+
 has 'id' => (
 	is       => 'ro',
 	isa      => 'Str',
@@ -33,6 +37,7 @@ has 'destination' => (
 
 has 'body' => (
 	is => 'rw',
+	clearer => 'delete_body',
 );
 
 has 'persistent' => (
@@ -58,7 +63,7 @@ has 'size' => (
 
 has 'timestamp' => (
 	is      => 'ro',
-	isa     => 'Int',
+	isa     => 'Num',
 	default => sub { time() },
 );
 

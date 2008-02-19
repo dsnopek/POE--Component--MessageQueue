@@ -57,6 +57,20 @@ sub peek
 	return;
 }
 
+sub peek_oldest
+{
+	my ($self, $callback) = @_;
+	my $oldest;
+	while (my ($destination, $messages) = each (%{$self->messages}))
+	{
+		foreach my $msg (@$messages)
+		{
+			$oldest = $msg unless ($oldest && $oldest->timestamp < $msg->timestamp);
+		}
+	}
+	$callback->($oldest);
+}
+
 sub remove
 {
 	my ($self, $message_ids, $callback) = @_;

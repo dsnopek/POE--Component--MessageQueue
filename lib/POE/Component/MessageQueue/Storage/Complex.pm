@@ -20,49 +20,75 @@ use Moose;
 with qw(POE::Component::MessageQueue::Storage::Double);
 use POE;
 
+# Use Time::HiRes's time() if available (more accurate timeouts)
+BEGIN { eval { require Time::HiRes; Time::HiRes->import qw(time); } };
+
 has 'timeout' => (
 	is       => 'ro',
 	isa      => 'Int',
-	default  => 4,
+	required => 1,
+);
+
+has 'granularity' => (
+	is       => 'ro',
+	isa      => 'Int',
 	required => 1,
 );
 
 has 'alias' => (
-	is      => 'ro',
-	default => 'MQ-Expire-Timer',
+	is       => 'ro',
+	default  => 'MQ-Expire-Timer',
 	required => 1,
 );
 
-has 'session' => (
-	is      => 'ro',
-	default => sub {
-		my $self = shift;
-		return POE::Session->create(
-			object_states => [ $self => [qw(_start _expiration_check)] ],
-		);
-	},
+has 'session' => (is => 'rw');
+
+has 'front_size' => (
+	is      => 'rw',
+	default => 0,
 );
 
+has 'front_max' => (
+	is       => 'ro',
+	isa      => 'Int', 
+	required => 1,
+);
+
+# All messages that currently reside in the front-store have their ids as keys
+# in this hash.  If the value is zero, the message has already been stored in
+# the backstore.  If it's nonzero, it is the time() that this message was
+# stored in the front-store.  You can tell if a message is in the front store
+# by checking for the existence of its ID in this hash.
 has 'timestamps' => (
-	is => 'ro',
-	isa => 'HashRef',
+	is      => 'ro', 
 	default => sub { {} },
 );
 
 has 'shutting_down' => (
 	is       => 'rw',
-	isa      => 'Int',
 	default  => 0, 
 );
 
-before 'remove' => sub {
-	my ($self, $aref) = @_;
-	delete $self->timestamps->{$_} foreach (@$aref);
-};
+around 'remove' => sub {
+	my ($original, $self, $aref, $callback) = @_;
+	$original->($self, $aref, sub {
+		my $messages = $_[0];
+		my $total = $self->front_size;
+		foreach my $msg (@$messages)
+		{
+			my $timestamp = delete $self->timestamps->{$msg->id};
+			$total -= $msg->size if (defined $timestamp);
+		}
+		$self->front_size($total);
+		$callback->($messages) if $callback;
+	});
+}; 
+
 
 before 'empty' => sub {
 	my ($self) = @_;
 	%{$self->timestamps} = ();
+	$self->front_size(0);
 };
 
 make_immutable;
@@ -70,8 +96,33 @@ make_immutable;
 sub BUILD 
 {
 	my $self = shift;
+	$self->session(POE::Session->create(
+		object_states => [ $self => [qw(_start _expiration_check)] ],
+	));
 	$self->children({FRONT => $self->front, BACK => $self->back});
 	$self->add_names qw(COMPLEX);
+}
+
+# Remove oldest messages, storing them in the backstore if they haven't
+# expired yet.
+sub _bump_messages
+{
+	my $self = $_[0];
+	return unless ($self->front_size > $self->front_max);
+	$self->front->peek_oldest(sub {
+		my $message = $_[0];
+		my $callback;
+
+		$self->front_size($self->front_size - $message->size);
+
+		my $timestamp = delete $self->timestamps->{$message->id};
+		$callback = sub {$self->back->store($message)} if ($timestamp);
+
+		$self->log('info', 'Message '.$message->id.' bumped from frontstore.');
+		$self->front->remove([$message->id], $callback);
+
+		$self->_bump_messages();
+	});
 }
 
 sub store
@@ -80,7 +131,9 @@ sub store
 
 	$self->front->store($message, sub {
 		my $message = shift;
-		$self->timestamps->{$message->id} = time();
+		$self->timestamps->{$message->id} = $message->persistent ? time() : 0; 
+		$self->front_size($self->front_size + $message->size);
+		$self->_bump_messages();
 		$callback->($message);
 	});
 }
@@ -95,24 +148,25 @@ sub _start
 sub expire_messages
 {
 	my ($self, $message_ids) = @_;
-	$self->front->remove($message_ids, sub {
+	$self->front->peek($message_ids, sub {
 		my $aref = shift;
 		foreach my $msg (@$aref)
 		{
-			# It's possible for a message to get removed midway through expiring, in
-			# which case msg would be undefined.
-			next unless $msg;
+			$self->timestamps->{$msg->id} = 0;
 
-			delete $self->timestamps->{$msg->id};
-			if ($msg->persistent)
-			{
-				$self->log('info', 
-					sprintf('Moving expired message %s into backstore', $msg->id));
+			$self->log('info', 
+				sprintf('Pushing expired message %s to backstore', $msg->id));
 			
-				$self->back->store($msg);
-			}
+			$self->back->store($msg);
 		}
 	});
+}
+
+sub _is_expired
+{
+	my ($self, $id, $threshold) = @_;
+	my $stamp = $self->timestamps->{$id};
+	return $stamp && $stamp < $threshold;
 }
 
 sub _expiration_check
@@ -123,13 +177,12 @@ sub _expiration_check
 
 	$self->log('debug', 'Checking for outdated messages...');
 
-	my $threshold = time() - $self->timeout;
-	my @expired = grep { $self->timestamps->{$_} < $threshold } 
-	                   (keys %{$self->timestamps});
+	my $t = time() - $self->timeout;
+	my @expired = grep { $self->_is_expired($_, $t) } (keys %{$self->timestamps});
 
 	$self->expire_messages(\@expired) if (@expired > 0);
 		
-	$kernel->delay_set('_expiration_check', 1);
+	$kernel->delay_set('_expiration_check', $self->granularity);
 }
 
 sub storage_shutdown
@@ -145,13 +198,15 @@ sub storage_shutdown
 
 	$self->front->empty(sub {
 		my $message_aref = shift;
-		my @messages = grep { $_->persistent } (@$message_aref);
+		my @messages = grep { 
+			$_->persistent && $self->timestamps->{$_->id} 
+		} (@$message_aref);
 		
 		foreach my $msg (@messages)
 		{
 			$self->log('info', 
 				sprintf("Moving message %s into backstore.", $msg->id));
-			$self->back->store($msg, sub {});
+			$self->back->store($msg);
 		}	
 
 		$self->front->storage_shutdown(sub {
@@ -184,6 +239,7 @@ desired after timeout expiration, subclass and override "expire_messages".
 	POE::Component::MessageQueue->new({
 		storage => POE::Component::MessageQueue::Storage::Complex->new({
 			timeout      => 4,
+			granularity  => 2,
 			throttle_max => 2,
 			front      => POE::Component::MessageQueue::Storage::BigMemory->new(),
 			back       => POE::Component::MessageQueue::Storage::Throttled->new({
@@ -212,6 +268,10 @@ when the timeout expires.
 The number of seconds after a message enters the front-store before it
 expires.  After this time, if the message hasn't been removed, it will be
 moved into the backstore.
+
+=item granularity => SCALAR
+
+The number of seconds to wait between checks for timeout expiration.
 
 =item front => SCALAR
 

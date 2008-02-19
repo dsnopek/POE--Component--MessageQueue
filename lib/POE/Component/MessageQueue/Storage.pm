@@ -21,7 +21,7 @@ use POE::Component::MessageQueue::Logger;
 
 requires qw(
 	storage_shutdown    remove  empty  peek 
-	claim_and_retrieve  disown  store
+	claim_and_retrieve  disown  store  peek_oldest
 );
 
 has 'names' => (

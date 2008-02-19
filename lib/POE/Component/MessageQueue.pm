@@ -200,17 +200,21 @@ sub remove_client
 	
 	my $client = $self->get_client($client_id);
 
-	$client->unsubscribe_all();
+	foreach my $place (map { $_->place } (values %{$client->subscriptions}))
+	{
+		$self->storage->disown($place->destination, $client_id);
+		$client->unsubscribe($place);
+	}
+
 	delete $self->clients->{$client_id};
 
-	# remove all references from needs_ack.
-	while ( my ($id, $message) = each %{$self->needs_ack} )
+	# remove all references from needs_ack (not during iteration though...)
+	my @remove_these;
+	while (my ($id, $unacked) = each %{$self->needs_ack})
 	{
-		if ( $message->claimant == $client )
-		{
-			delete $self->needs_ack->{$id};
-		}
+		push(@remove_these, $id) if ($unacked->{client_id} == $client_id);
 	}
+	delete $self->needs_ack->{$_} foreach (@remove_these);
 
 	# shutdown TCP connection
 	$client->shutdown();
@@ -384,12 +388,15 @@ sub route_frame
 
 sub push_unacked_message
 {
-	my ($self, $message) = @_;
+	my ($self, $message, $client) = @_;
 
-	$self->needs_ack->{$message->id} = $message;
+	$self->needs_ack->{$message->id} = {
+		message   => $message,
+		client_id => $client->id,
+	};
 
 	$self->log('notice', sprintf('MASTER: message %s needs ACK from client %s',
-		$message->id, $message->claimant));
+		$message->id, $client->id));
 }
 
 sub pop_unacked_message
@@ -398,7 +405,7 @@ sub pop_unacked_message
 
 	my $unacked = $self->needs_ack->{$message_id};
 	my $client_id = $client->id;
-	my $claimant_id = $unacked->claimant;
+	my $claimant_id = $unacked->{client_id};
 
 	if ( $client_id != $claimant_id )
 	{
@@ -412,10 +419,8 @@ sub pop_unacked_message
 	else
 	{
 		# remove from our needs ack list
-		delete $self->needs_ack->{$message_id};
+		return delete $self->needs_ack->{$message_id}->{message};
 	}
-
-	return $unacked;
 }
 
 sub ack_message
@@ -518,7 +523,7 @@ sub dispatch_message
 			if ( $subscriber->ack_type eq 'client' )
 			{
 				$subscriber->ready(0);
-				$self->push_unacked_message($message);
+				$self->push_unacked_message($message, $client);
 			}
 			else
 			{

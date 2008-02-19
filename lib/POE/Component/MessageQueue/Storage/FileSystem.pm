@@ -120,7 +120,9 @@ sub store
 	my ($self, $message, $callback) = @_;
 
 	# Grab the body and delete it from the message
-	my $body = delete $message->{body};
+	my $clone = $message->meta->clone_instance($message);
+	my $body = $clone->body;
+	$clone->delete_body();
 
 	# DRS: To avaid a race condition where:
 	#
@@ -137,7 +139,7 @@ sub store
 		$message, $body );
 
 	# hand-off the rest of the message to the info storage
-	$self->info_store->store($message, $callback);
+	$self->info_store->store($clone, $callback);
 }
 
 sub _get_filename
@@ -186,8 +188,20 @@ sub _unlink_file
 sub peek
 {
 	my ($self, $ids, $callback) = @_;
-	$self->_read_loop($ids, [], $callback);	
+	$self->info_store->peek($ids, sub {
+		my $messages = $_[0];
+		$self->_read_loop($messages, [], $callback);	
+	});
 	return;
+}
+
+sub peek_oldest
+{
+	my ($self, $callback) = @_;
+	$self->info_store->peek_oldest(sub {
+		my $message = $_[0];
+		$self->_read_loop([$message], [], $callback);
+	});
 }
 
 # We can't use an iterative loop, because we may have to read messages from
@@ -196,12 +210,12 @@ sub peek
 sub _read_loop
 {
 	my ($self, $to_read, $done_reading, $callback) = @_;
-	$callback->($done_reading) unless (scalar @$to_read);	
+	return $callback->($done_reading) unless (scalar @$to_read);	
 	my $message = pop(@$to_read);
 	my $body = $self->pending_writes->{$message->id};
 	if ($body) 
 	{
-		$message->{body} = $body;
+		$message->body($body);
 		push(@$done_reading, $message);
 		$self->_read_loop($to_read, $done_reading, $callback);
 	}

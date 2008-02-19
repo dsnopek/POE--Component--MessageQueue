@@ -19,6 +19,7 @@ package POE::Component::MessageQueue::Storage::Throttled;
 use Moose;
 with qw(POE::Component::MessageQueue::Storage::Double);
 use POE;
+use POE::Component::MessageQueue::Storage::Structure::DLList;
 
 has 'throttle_max' => (
 	is       => 'ro',

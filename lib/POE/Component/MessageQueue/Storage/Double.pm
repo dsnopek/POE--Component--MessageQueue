@@ -39,6 +39,18 @@ after 'set_logger' => sub {
 	$self->back->set_logger($logger);
 };
 
+sub peek_oldest
+{
+	my ($self, $callback) = @_;
+	$self->front->peek_oldest(sub {
+		my $front = $_[0];
+		$self->back->peek_oldest(sub {
+			my $back = $_[0];
+			return ($front->timestamp < $back->timestamp) ? $front : $back;
+		});
+	});
+}
+
 sub peek
 {
 	my ($self, $ids, $callback) = @_;
@@ -60,8 +72,16 @@ sub _remove_underneath
 			my $fronts = $_[0];
 			$back->(sub {
 				my $backs = $_[0];
-				push(@$fronts, @$backs);
-				$cb->($fronts);
+
+				# We can have messages that exist in both front and back stores, which
+				# is allowed.  They're not allowed to be different though, so we can
+				# throw duplicates away.
+				my %uniques;
+				$uniques{$_->id} = $_ foreach (@$backs);
+				$uniques{$_->id} = $_ foreach (@$fronts);
+				my @messages = values %uniques;
+
+				$cb->(\@messages);
 			});
 		});
 	}
@@ -73,7 +93,7 @@ sub _remove_underneath
 	return;
 }
 
-# We'll call remove_multiple on the full range of ids - well-behaved stores
+# We'll call remove on the full range of ids - well-behaved stores
 # will just ignore IDs they don't have.
 sub remove
 {
