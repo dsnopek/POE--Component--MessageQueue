@@ -22,15 +22,16 @@ use POE::Component::Generic 0.1001;
 use POE::Component::MessageQueue::Logger;
 
 # We're going to proxy some methods to the generic object.  Yay MOP!
-foreach my $method qw(
+my @proxy_methods = qw(
 	store peek peek_oldest remove empty disown claim_and_retrieve
-)
+);
+foreach my $method (@proxy_methods)
 {
 	__PACKAGE__->meta->add_method($method, sub {
 		my ($self, @args) = @_;
 		$self->generic->call(
 			$method, 
-			{session => $self->session->ID(), event => '_general_handler'},
+			{session => $self->session->ID, event => '_general_handler'},
 			@args,
 		);		
 		return;
@@ -78,11 +79,7 @@ sub BUILD
 		object_options => [%$args],
 		packages => {
 			$package => {
-				callbacks => [qw(
-					remove              empty             store     
-					claim_and_retrieve  storage_shutdown  peek
-					peek_oldest
-				)],
+				callbacks => [@proxy_methods, qw(storage_shutdown)],
 				postbacks => [qw(set_log_function)],
 			},
 		},

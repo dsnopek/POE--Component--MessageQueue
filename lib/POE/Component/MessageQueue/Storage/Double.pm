@@ -137,10 +137,19 @@ sub claim_and_retrieve
 # unmark all messages owned by this client
 sub disown
 {
-	my ($self, @args) = @_;
+	my ($self, $destination, $client_id, $callback) = @_;
 
-	$self->front->disown(@args);
-	$self->back->disown(@args);
+	if ($callback) 
+	{
+		$self->front->disown($destination, $client_id, sub {
+			$self->back->disown($destination, $client_id, $callback);
+		});
+	}
+	else
+	{
+		$self->front->disown($destination, $client_id);
+		$self->back->disown($destination, $client_id);
+	}
 }
 
 1;

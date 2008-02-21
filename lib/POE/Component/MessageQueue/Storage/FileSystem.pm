@@ -200,7 +200,9 @@ sub peek_oldest
 	my ($self, $callback) = @_;
 	$self->info_store->peek_oldest(sub {
 		my $message = $_[0];
-		$self->_read_loop([$message], [], $callback);
+		$self->_read_loop([$message], [], sub {
+			$callback->($_[0]->[0]);
+		});
 	});
 }
 

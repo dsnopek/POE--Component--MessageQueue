@@ -184,7 +184,7 @@ sub claim_and_retrieve
 
 sub disown
 {
-	my ($self, $destination, $client_id) = @_;
+	my ($self, $destination, $client_id, $callback) = @_;
 	my $elem = delete $self->claimed->{$client_id}->{$destination};
 	return unless $elem;
 
@@ -192,6 +192,7 @@ sub disown
 	$message->disown();
 	$self->unclaimed->{$destination}->add($elem);
 	$self->messages->{$message->id}->{unclaimed} = $elem;
+	$callback->() if $callback;
 	return;
 }
 

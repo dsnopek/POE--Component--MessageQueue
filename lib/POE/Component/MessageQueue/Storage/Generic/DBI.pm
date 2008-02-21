@@ -76,16 +76,23 @@ sub BUILD
 }
 
 sub _make_message { 
-	my $h = shift;
-	POE::Component::MessageQueue::Message->new(
-		id          => $h->{message_id},
-		destination => $h->{destination},
-		body        => $h->{body},
-		persistent  => $h->{persistent},
-		claimant    => $h->{in_use_by},
-		size        => $h->{size},
-		timestamp   => $h->{timestamp},
+	my $h = $_[0];
+	my %map = (
+		id          => 'message_id',
+		destination => 'destination',
+		body        => 'body',
+		persistent  => 'persistent',
+		claimant    => 'in_use_by',
+		size        => 'size',
+		timestamp   => 'timestamp',
 	);
+	my %args;
+	foreach my $field (keys %map) 
+	{
+		my $val = $h->{$map{$field}};
+		$args{$field} = $val if (defined $val);
+	}
+	POE::Component::MessageQueue::Message->new(%args);
 };
 
 sub store
@@ -154,13 +161,12 @@ sub peek_oldest
 		});
 
 		$sth->execute();
-		return $callback(undef) unless $sth->rows;
 		$result = $sth->fetchrow_hashref;
 	};
 	my $err = catch;
 	$self->log("error", "peek_oldest error: $err") if $err;
 
-	$callback->($result ? _make_message($result) : undef);
+	$callback->($result && _make_message($result));
 	return;
 }
 
@@ -268,7 +274,7 @@ sub claim_and_retrieve
 
 sub disown
 {
-	my ($self, $destination, $client_id) = @_;
+	my ($self, $destination, $client_id, $callback) = @_;
 
 	my $SQL = "UPDATE messages SET in_use_by = NULL WHERE destination = ? AND in_use_by = ?";
 
@@ -290,6 +296,7 @@ sub disown
 			"All messages on $destination disowned for client $client_id");
 	}
 
+	$callback->() if $callback;
 	return;
 }
 

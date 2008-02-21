@@ -140,7 +140,7 @@ sub claim_and_retrieve
 # unmark all messages owned by this client
 sub disown
 {
-	my ($self, $destination, $client_id) = @_;
+	my ($self, $destination, $client_id, $callback) = @_;
 	my $messages = $self->messages->{$destination} || return;
 
 	foreach my $msg (grep { 
@@ -149,6 +149,7 @@ sub disown
 	{
 		$msg->disown();
 	}
+	$callback->() if $callback;
 }
 
 sub storage_shutdown

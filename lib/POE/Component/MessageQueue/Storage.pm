@@ -98,7 +98,7 @@ Takes an object of type L<POE::Component::MessageQueue::Logger> that should be u
 =item store I<SCALAR,CODEREF>
 
 Takes an object of type L<POE::Component::MessageQueue::Message> that should
-be stored.  The supplied coderef will be called with the stored message as an
+be stored.  The optional coderef will be called with the stored message as an
 argument when storage has completed.  If a message could not be claimed, the
 message argument will be undefined.
 
@@ -120,9 +120,12 @@ client id on the given destination.  When this has been done, the supplied
 coderef will be called with the message, destination, and client_id as
 arguments.
 
-=item disown I<SCALAR>, I<SCALAR>
+=item disown I<SCALAR>, I<SCALAR>, I<CODEREF>
 
-Takes a destination and client id.  All messages which are owned by this client id on this destination should be marked as owned by nobody.
+Takes a destination and client id.  All messages which are owned by this
+client id on this destination should be marked as owned by nobody.  If a
+coderef is supplied, it will be called with no arguments when disown has
+finished.
 
 =item storage_shutdown I<CODEREF>
 
