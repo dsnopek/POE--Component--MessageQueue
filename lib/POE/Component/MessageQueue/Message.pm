@@ -42,7 +42,7 @@ has 'body' => (
 
 has 'persistent' => (
 	is       => 'ro',
-	isa      => 'Int',
+	isa      => 'Bool',
 	required => 1,
 );
 

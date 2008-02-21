@@ -134,7 +134,7 @@ sub store
 		$self->timestamps->{$message->id} = $message->persistent ? time() : 0; 
 		$self->front_size($self->front_size + $message->size);
 		$self->_bump_messages();
-		$callback->($message);
+		$callback->($message) if $callback;
 	});
 }
 

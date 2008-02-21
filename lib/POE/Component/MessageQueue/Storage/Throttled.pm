@@ -61,7 +61,6 @@ before 'remove' => sub {
 
 before 'empty' => sub {
 	my ($self) = @_;
-	$self->queue->_break();
 	$self->queue(POE::Component::MessageQueue::Storage::Structure::DLList->new());
 	%{$self->messages} = ();
 };
