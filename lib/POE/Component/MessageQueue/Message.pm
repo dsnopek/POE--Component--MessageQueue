@@ -37,7 +37,6 @@ has 'destination' => (
 
 has 'body' => (
 	is => 'rw',
-	clearer => 'delete_body',
 );
 
 has 'persistent' => (
@@ -55,7 +54,7 @@ has 'claimant' => (
 );
 
 has 'size' => (
-	is      => 'ro',
+	is      => 'rw',
 	isa     => 'Int',
 	lazy    => 1,
 	default => sub {length $_[0]->body},
@@ -66,6 +65,14 @@ has 'timestamp' => (
 	isa     => 'Num',
 	default => sub { time() },
 );
+
+after 'body' => sub {
+	my ($self, $newbody) = @_;
+	if (@_ > 1) 
+	{
+		$self->size(defined $newbody ? length($newbody) : 0)
+	}
+};
 
 make_immutable;
 

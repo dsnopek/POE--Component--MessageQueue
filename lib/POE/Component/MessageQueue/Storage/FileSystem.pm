@@ -122,7 +122,7 @@ sub store
 	# Grab the body and delete it from the message
 	my $clone = $message->meta->clone_instance($message);
 	my $body = $clone->body;
-	$clone->delete_body();
+	$clone->body(undef);
 
 	# DRS: To avaid a race condition where:
 	#

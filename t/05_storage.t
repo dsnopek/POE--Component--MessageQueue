@@ -82,12 +82,11 @@ my %messages = map {
 
 sub message_is {
 	my ($one, $two, $name) = @_;
-	if(ref $one ne 'POE::Component::MessageQueue::Message')
-	{
-		use Data::Dumper;
-		die "message_is called with argument: ".Dumper($one);
+	if(ref $one ne 'POE::Component::MessageQueue::Message') {
+		return diag "message_is called with non-message argument: ".Dumper($one);
 	}
-	return ok($one->equals($two), $name);
+	return ok($one->equals($two), $name) or
+	       diag("got: ", Dump($two), "\nexpected:", Dump($one), "\n");
 }
 
 sub _run_in_order
