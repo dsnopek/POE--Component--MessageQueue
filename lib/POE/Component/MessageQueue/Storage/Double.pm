@@ -39,117 +39,158 @@ after 'set_logger' => sub {
 	$self->back->set_logger($logger);
 };
 
-sub peek_oldest
-{
-	my ($self, $callback) = @_;
-	$self->front->peek_oldest(sub {
-		my $front = $_[0];
-		$self->back->peek_oldest(sub {
-			my $back = $_[0];
-			return ($front->timestamp < $back->timestamp) ? $front : $back;
-		});
-	});
-}
-
-sub peek
+sub get
 {
 	my ($self, $ids, $callback) = @_;
-	$self->front->peek($ids, sub {
-		my $messages = $_[0];
-		$self->back->peek($ids, sub {
-			push(@$messages, @{$_[0]});
-			$callback->($messages);
+	my %to_get = map {$_ => 1} @$ids;
+	$self->front->get($ids, sub {
+		my $got = $_[0];
+		delete $to_get{$_->id} foreach (@$got);
+		my @back_ids = keys %to_get;
+		if(@back_ids > 0)
+		{
+			$self->back->get(\@back_ids, sub {
+				push(@$got, @{$_[0]});
+				@_ = ($got);
+				goto $callback;
+			});
+		}
+		else # Avoided a backstore call.  Efficiency!
+		{
+			@_ = ($got);
+			goto $callback; 
+		}
+	});
+}
+
+sub _get_many
+{
+	my ($front, $back, $callback) = @_;
+	my %messages; # store in a hash to ensure uniqueness
+	$front->(sub {
+		$messages->{$_->id} = $_ foreach @{$_[0]};
+		$back->(sub {
+			$messages->{$_->id} = $_ foreach @{$_[0]};
+			@_ = ([values %messages]);
+			goto $callback;	
+		}
+	});
+}
+
+sub get_all
+{
+	my ($self, $callback) = @_;
+	_get_many(
+		sub {$self->front->get_all($_[0])},
+		sub {$self->back ->get_all($_[0])},
+		$callback,
+	);
+}
+
+sub get_by_client
+{
+	my ($self, $client_id, $callback);
+	_get_many(
+		sub {$self->front->get_by_client($client_id, $_[0])},
+		sub {$self->back ->get_by_client($client_id, $_[0])},
+		$callback,
+	);
+}
+
+sub get_oldest
+{
+	my ($self, $callback);
+	$self->front->get_oldest(sub {
+		my $f = $_[0];
+		$self->back->get_oldest(sub {
+			my $b = $_[0];
+			@_ = (
+				($f && $b) ? 
+				($f->timestamp < $b->timestamp ? $f : $b) :
+				($f || $b)
+			);
+			goto $callback;
 		});
 	});
 }
 
-sub _remove_underneath
+sub claim_next
 {
-	my ($front, $back, $cb) = @_;
-	if ($cb)
+	my ($self, $destination, $client_id, $callback);
+	$self->front->claim_next(sub {
+		if (my $got = $_[0])
+		{
+			$self->back->claim($got->id, $client_id, sub { 
+				@_ = ($got);
+				goto $callback;
+			});
+		}
+		else
+		{
+			$self->back->claim_next($destination, $client_id, sub {
+				@_ = ($_[0]);
+				goto $callback;
+			});
+		}
+	});
+}
+
+sub _do_both
+{
+	my ($front, $back, $callback) = @_;
+	if ($callback)
 	{
 		$front->(sub {
-			my $fronts = $_[0];
 			$back->(sub {
-				my $backs = $_[0];
-
-				# We can have messages that exist in both front and back stores, which
-				# is allowed.  They're not allowed to be different though, so we can
-				# throw duplicates away.
-				my %uniques;
-				$uniques{$_->id} = $_ foreach (@$backs);
-				$uniques{$_->id} = $_ foreach (@$fronts);
-				my @messages = values %uniques;
-
-				$cb->(\@messages);
+				goto $callback;
 			});
-		});
+		});	
 	}
 	else
 	{
 		$front->();
 		$back->();
 	}
-	return;
 }
 
-# We'll call remove on the full range of ids - well-behaved stores
-# will just ignore IDs they don't have.
 sub remove
 {
 	my ($self, $ids, $cb) = @_;
-	_remove_underneath(
-		sub { $self->front->remove($ids, shift) },
-		sub { $self->back ->remove($ids, shift) },
+	_do_both(
+		sub {$self->front->remove($ids, $_[0]),
+		sub {$self->back ->remove($ids, $_[0]),
 		$cb
 	);
-	return;
 }
 
 sub empty
 {
 	my ($self, $cb) = @_;
-	_remove_underneath(
-		sub { $self->front->empty(shift) },
-		sub { $self->back ->empty(shift) },
+	_do_both(
+		sub {$self->front->empty($_[0]),
+		sub {$self->back ->empty($_[0]),
 		$cb
 	);
-	return;
 }
 
-sub claim_and_retrieve
+sub claim
 {
-	my ($self, $destination, $client_id, $dispatch) = @_;
-
-	$self->front->claim_and_retrieve($destination, $client_id, sub {
-		if (my $message = $_[0])
-		{
-			$dispatch->($message, $destination, $client_id);
-		}
-		else
-		{
-			$self->back->claim_and_retrieve(
-				$destination, $client_id, $dispatch);
-		}
-	});
+	my ($self, $ids, $client_id, $cb) = @_;
+	_do_both(
+		sub {$self->front->claim($ids, $_[0])},
+		sub {$self->back ->claim($ids, $_[0])},
+		$cb,
+	);
 }
 
-# unmark all messages owned by this client
 sub disown
 {
-	my ($self, $destination, $client_id, $callback) = @_;
-
-	if ($callback) 
-	{
-		$self->front->disown($destination, $client_id, sub {
-			$self->back->disown($destination, $client_id, $callback);
-		});
-	}
-	else
-	{
-		$self->front->disown($destination, $client_id);
-		$self->back->disown($destination, $client_id);
-	}
+	my ($self, $ids, $cb) = @_;
+	_do_both(
+		sub {$self->front->disown($ids, $_[0])},
+		sub {$self->back ->disown($ids, $_[0])},
+		$cb,
+	);
 }
 
 1;
@@ -166,7 +207,7 @@ stores.
 =head1 DESCRIPTION
 
 Refactor mercilessly, as they say.  They also say don't repeat yourself.  This
-module contains the functionality of any store that is a composition of two 
+module contains functionality for any store that is a composition of two 
 stores.  At least Throttled and Complex share this trait, and it doesn't make 
 any sense to duplicate code between them.
 

@@ -56,7 +56,7 @@ has 'front_max' => (
 
 # All messages that currently reside in the front-store have their ids as keys
 # in this hash.  If the value is zero, the message has already been stored in
-# the backstore.  If it's nonzero, it is the time() that this message was
+# the backstore.  Otherwise, it is the time() that this message was
 # stored in the front-store.  You can tell if a message is in the front store
 # by checking for the existence of its ID in this hash.
 has 'timestamps' => (

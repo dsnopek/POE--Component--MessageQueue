@@ -20,9 +20,45 @@ use Moose::Role;
 use POE::Component::MessageQueue::Logger;
 
 requires qw(
-	storage_shutdown    remove  empty  peek 
-	claim_and_retrieve  disown  store  peek_oldest
+	get            get_all 
+	get_by_client  get_oldest 
+  claim_next     claim            disown 
+  empty          remove     
+  store          storage_shutdown
 );
+
+# Given a method name, makes its first argument OPTIONALLY be an aref.  If it
+# is not an aref, it normalizes it into one.  If mangle_callback is true, it
+# also unpacks it in the callback.
+sub _areffify
+{
+	my ($method, $mangle_callback) = @_;
+	around $method => sub {
+		my @args = @_;
+		my $original = shift(@args);
+		my $arg = $args[1];
+		if (ref $arg eq 'ARRAY')
+		{
+			$args[1] = [$arg] 
+			if ($mangle_callback)
+			{
+				$cb = $args[-1];
+				$args[-1] = sub {
+					my @response = @_;
+					my $arr = $response[0];
+					$response[0] = (@$arr > 0) ? $arr->[0] : undef;
+					@_ = @response;
+					goto $cb;
+				}
+			};
+		}	
+		@_ = @args;
+		goto $original;
+	};
+}
+
+_areffify($_, 1) foreach qw(get);
+_areffify($_, 0) foreach qw(claim disown remove store);
 
 has 'names' => (
 	is      => 'rw',
@@ -48,6 +84,13 @@ has 'logger' => (
 	writer  => 'set_logger',
 	default => sub { POE::Component::MessageQueue::Logger->new() },
 );
+
+sub remove
+{
+	my ($self, $arg, $callback);
+	$arg = [$arg] unless (ref $arg eq 'ARRAY');
+	$self->_remove($arg, $callback);
+}
 
 sub add_names
 {
@@ -85,7 +128,33 @@ POE::Component::MessageQueue::Storage -- Parent of provided storage engines
 
 =head1 DESCRIPTION
 
-The parent class of the provided storage engines.  This is an "abstract" class that can't be used as is, but defines the interface for other objects of this type.
+The role implemented by all storage engines.  It provides a few bits of global
+functionality, but mostly exists to define the interface for storage engines.
+
+=head1 CONCEPTS
+
+=over 2
+
+=item optional arefs
+
+Some functions take an "optional aref" as an argument.  What this means is
+that you can pass either a plain-old-scalar argument (such as a message id) or
+an arrayref of such objects.  If you pass the former, your callback (if any)
+will receive a single value.  If the latter, it will receive an arrayref.
+Note that the normalization is done by this role - storage engines need only
+implement the version that takes an aref, and send arefs to the callbacks.
+
+=item callbacks
+
+Every storage method has a callback as its last argument.  Callbacks are Plain
+Old Subs. If the method doesn't have some kind of return value, the callback is 
+optional and has no arguments.  It's simply called so you you know the method
+is done.   If the method does have some kind of return value, the 
+callback is not optional and the argument will be said value.  Return values
+of storage functions are not significant and should never be used.  Unless
+otherwise specified, assume the functions below have plain success callbacks.
+
+=back
 
 =head1 INTERFACE
 
@@ -93,46 +162,60 @@ The parent class of the provided storage engines.  This is an "abstract" class t
 
 =item set_logger I<SCALAR>
 
-Takes an object of type L<POE::Component::MessageQueue::Logger> that should be used for logging.
+Takes an object of type L<POE::Component::MessageQueue::Logger> that should be 
+used for logging.  This isn't a storage method and does not have any callback
+associated with it.
 
-=item store I<SCALAR,CODEREF>
+=item store I<optional-aref>
 
-Takes an object of type L<POE::Component::MessageQueue::Message> that should
-be stored.  The optional coderef will be called with the stored message as an
-argument when storage has completed.  If a message could not be claimed, the
-message argument will be undefined.
+Takes one or more objects of type L<POE::Component::MessageQueue::Message> 
+that should be stored.
 
-=item remove I<ARRAYREF,CODEREF>
+=item get I<optional-aref>
 
-Takes an arrayref of message_ids to be removed from the storage engine. If a
-coderef is supplied, it will be called with an arrayref of the removed
-messages after removal.
+Passes the message(s) specified by the passed id(s) to the callback.
 
-=item empty I<CODEREF>
+=item get_all
 
-Takes an optional coderef argument that will be called with an arrayref of all
-the message that were in the store after they have been removed.
+=item get_oldest
 
-=item claim_and_retrieve I<SCALAR, SCALAR, CODEREF>
+Self-explanatory.
 
-Takes the destination string and client id.  Claims a message for the given 
-client id on the given destination.  When this has been done, the supplied
-coderef will be called with the message, destination, and client_id as
-arguments.
+=item get_by_client I<client-id>
 
-=item disown I<SCALAR>, I<SCALAR>, I<CODEREF>
+Gets all messages currently claimed by the specified client.
 
-Takes a destination and client id.  All messages which are owned by this
-client id on this destination should be marked as owned by nobody.  If a
-coderef is supplied, it will be called with no arguments when disown has
-finished.
+=item remove I<optional-aref>
 
-=item storage_shutdown I<CODEREF>
+Removes the message(s) specified by the passed id(s).
 
-Starts shutting down the storage engine.  The supplied coderef will be called
-with no arguments when the shutdown has completed.  The storage engine will
+=item empty
+
+Deletes all messages from the storage engine.
+
+=item claim I<optional-aref>, I<client-id>
+
+Naively claims the specified messages for the specified client, even if they
+are already claimed.  This is intended to be called by stores that wrap other
+stores to maintain synchronicity between multiple message copies - non-store
+clients usually want claim_next.
+
+=item claim_next I<destination>, I<client-id>
+
+Claims the "next" message intended for I<destination> for I<client-id> and
+passes it to the supplied callback.  Storage engines are free to define what 
+"next" means, but the intended meaning is "oldest unclaimed message for this 
+destination".
+
+=item disown I<optional-aref>
+
+Disclaims all of the specified messages.
+
+=item storage_shutdown
+
+Starts shutting down the storage engine.  The storage engine will
 attempt to do any cleanup (persisting of messages, etc) before calling the
-coderef.
+callback.
 
 =back
 

@@ -75,6 +75,30 @@ sub BUILD
 	$self->dbh->do( "UPDATE messages SET in_use_by = NULL" );
 }
 
+sub _wrap
+{
+	my ($self, $name, $action) = @_;
+	try eval {
+		$action->();
+	};
+	if (my $err = catch)
+	{
+		$self->log(error => "Error in $name(): $err");
+	}
+}
+
+sub _make_where
+{
+	my $ids = shift;
+	return join(' OR ', map "message_id = '$_'", @$ids);
+}
+
+sub _wrap_ids
+{
+	my ($self, $ids, $name, $action) = @_;
+	$self->_wrap(name => sub {$action->(_make_where($ids))}) if (@$ids > 0);
+}
+
 sub _make_message { 
 	my $h = $_[0];
 	my %map = (
@@ -92,226 +116,149 @@ sub _make_message {
 		my $val = $h->{$map{$field}};
 		$args{$field} = $val if (defined $val);
 	}
-	POE::Component::MessageQueue::Message->new(%args);
+	return POE::Component::MessageQueue::Message->new(%args);
 };
 
 sub store
 {
-	my ($self, $message, $callback) = @_;
+	my ($self, $aref, $callback) = @_;
 
-	my $SQL = "INSERT INTO messages (message_id, destination, body, persistent, in_use_by, timestamp, size) VALUES ( ?, ?, ?, ?, ?, ?, ? )";
+	my $sth = $self->dbh->prepare(q{
+		INSERT INTO messages (
+			message_id, destination, body, 
+			persistent, in_use_by,  
+			timestamp,  size
+		) VALUES (
+			?, ?, ?, 
+			?, ?, 
+			?, ?
+		)
+	});
 
-	try eval
+	foreach (@$aref)
 	{
-		my $m = $message;
-		my $stmt;
-		$stmt = $self->{dbh}->prepare($SQL);
-		$stmt->execute(
-			$m->id,         $m->destination, $m->body, 
-			$m->persistent, $m->claimant, 
-			$m->timestamp,  $m->size,
-		);
-	};
-	my $err = catch;
-
-	if ( $err )
-	{
-		$self->log('error', sprintf("Error storing %s in %s: $err", 
-			$message->id, $message->destination));
-	}
-	else
-	{
-		$self->log('info', sprintf('Message %s stored in %s', 
-			$message->id, $message->destination));
-	}
-
-	# Call the callback, even if we just send it undef (that's the interface).
-	$callback->($message) if $callback;
-
-	return;
-}
-
-sub _remove_underneath
-{
-	my ($self, $get, $where, $errdesc) = @_;
-	my @messages;
-	try eval {
-		if ($get)
-		{
-			my $sth = $self->dbh->prepare('SELECT * FROM messages'.$where); 
-			$sth->execute();
-			my $results = $sth->fetchall_arrayref({});
-			@messages = map { _make_message($_) } (@$results);
-		}
-		$self->dbh->do('DELETE FROM messages'.$where);
-	};
-	my $err = catch;
-	$self->log('error', "Error $errdesc: $err") if ($err);
-
-	return \@messages;
-}
-
-sub peek_oldest
-{
-	my ($self, $callback) = @_;
-	my $result;
-	try eval {
-		my $sth = $self->dbh->prepare(q{
-			SELECT * FROM messages ORDER BY timestamp ASC LIMIT 1
+		$self->_wrap(sub {
+			$sth->execute(
+				$_->id,         $_->destination, $_->body, 
+				$_->persistent, $_->claimant, 
+				$_->timestamp,  $_->size,
+			);
 		});
-
-		$sth->execute();
-		$result = $sth->fetchrow_hashref;
-	};
-	my $err = catch;
-	$self->log("error", "peek_oldest error: $err") if $err;
-
-	$callback->($result && _make_message($result));
-	return;
+	}
+	goto $callback if $callback;
 }
 
-sub peek
+sub _get
+{
+	my ($self, $name, $clause, $callback) = @_;
+	my @messages;
+	$self->_wrap($name => sub {
+		my $sth = $self->dbh->prepare("SELECT * FROM messages	$clause");
+		$sth->execute;
+		my $results = $sth->fetchall_arrayref({});
+		@messages = map _make_message($_), @$results;
+	});
+	@_ = (\@messages);
+	goto $callback;
+}
+
+sub _get_one
+{
+	my ($self, $name, $clause, $callback) = @_;
+	$self->_get($name, $clause, sub {
+		my @messages = $_[0];
+		@_ = (@messages > 0 ? $messages[0] : undef);
+		goto $callback;
+	});
+}
+
+sub get
 {
 	my ($self, $message_ids, $callback) = @_;
-	my $where = join(' OR ', map { "message_id = '$_'" } (@$message_ids));
-	my @messages;
-	try eval {
-		my $sth = $self->dbh->prepare("SELECT * FROM messages	WHERE $where");
-		$sth->execute();
-		my $results = $sth->fetchall_arrayref({});	
-		@messages = map { _make_message($_) } (@$results);
-	};
-	my $err = catch;
-	$self->log('error', "Error peeking: $err") if ($err);
-	$callback->(\@messages);
-	return;
+	$self->_get(get => 'WHERE '._make_where($message_ids), $callback);
+}
+
+sub get_all
+{
+	my ($self, $callback) = @_;
+	$self->_get(get_all => '', $callback);
+}
+
+sub get_by_client
+{
+	my ($self, $client_id, $callback) = @_;
+	$self->_get(get_by_client => "WHERE in_use_by = '$client_id'", $callback);
+}
+
+sub get_oldest
+{
+	my ($self, $callback) = @_;
+	$self->_get_one(get_oldest => 'ORDER BY timestamp ASC LIMIT 1', $callback);
+}
+
+sub claim_next
+{
+	my ($self, $destination, $client_id, $callback) = @_;
+	$self->_get_one(get_next => qq{
+		WHERE destination = '$destination' AND in_use_by IS NULL
+		ORDER BY timestamp ASC LIMIT 1
+	}, sub {
+		my $message = $_[0];
+		$self->claim($message->id, $client_id, $callback);
+	});
 }
 
 sub remove
 {
 	my ($self, $message_ids, $callback) = @_;
-	my $ret = $self->_remove_underneath(
-		$callback,
-		' WHERE '. join(' OR ', map { "message_id = '$_'" } (@$message_ids)),
-		'removing multiple messages',
-	);
-	$callback->($ret) if $callback;
-	return;	
+	$self->_wrap_ids($message_ids, remove => sub {
+		my $where = shift;
+		$self->dbh->do("DELETE FROM messages WHERE $where");
+	});
+	goto $callback if $callback;
 }
 
 sub empty
 {
 	my ($self, $callback) = @_;
-	my $ret = $self->_remove_underneath($callback, '', 'removing all messages');
-	$callback->($ret) if $callback;
-	return;
+	$self->_wrap(empty => sub {$self->dbh->do("DELETE FROM messages")});
+	goto $callback if $callback;
 }
 
-sub _retrieve
+sub _set_claimant
 {
-	my ($self, $destination) = @_;
-
-	my $SQL = "SELECT * FROM messages WHERE destination = ? AND in_use_by IS NULL ORDER BY timestamp ASC LIMIT 1";
-
-	my $result = undef;
-
-	try eval
-	{
-		my $stmt;
-		$stmt = $self->dbh->prepare($SQL);
-		$stmt->execute($destination);
-		$result = $stmt->fetchrow_hashref;
-	};
-	my $err = catch;
-	$self->log("error", "$err") if $err;
-
-	return $result && _make_message($result);
+	my ($self, $name, $message_ids, $claimant, $callback) = @_;
+	$self->_wrap_ids($message_ids, $name => sub {
+		my $where = shift;
+		$self->dbh->do(qq{
+			UPDATE messages SET in_use_by = $claimant WHERE $where
+		});
+	});
+	goto $callback if $callback;
 }
 
-sub _claim
+sub claim
 {
-	my ($self, $message) = @_;
-
-	my $SQL = "UPDATE messages SET in_use_by = ? WHERE message_id = ?";
-
-	try eval
-	{
-		my $stmt;
-		$stmt = $self->dbh->prepare($SQL);
-		$stmt->execute($message->claimant, $message->id);
-	};
-	my $err = catch;
-
-	if ( $err )
-	{
-		$self->log('error', sprintf("Error claiming message %s for client %s: $err",
-			$message->id, $message->claimant));
-	}
-	else
-	{
-		$self->log('info', sprintf('Message %s claimed by %s', 
-			$message->id, $message->claimant));
-	}
-
-	return;
+	my ($self, $message_ids, $client_id, $callback) = @_;
+	$self->_set_claimant(claim => $message_ids, "'$client_id'", $callback);
+	goto $callback if $callback;
 }
 
-sub claim_and_retrieve
+sub disown 
 {
-	my ($self, $destination, $client_id, $dispatch) = @_;
-
-	my $message = $self->_retrieve( $destination );
-	if ($message)
-	{
-		$message->claim($client_id);
-		# Write the claim info to database
-		$self->_claim($message);
-	}
-
-	$dispatch->($message, $destination, $client_id);
-	return;
-}
-
-sub disown
-{
-	my ($self, $destination, $client_id, $callback) = @_;
-
-	my $SQL = "UPDATE messages SET in_use_by = NULL WHERE destination = ? AND in_use_by = ?";
-
-	try eval
-	{
-		my $stmt = $self->dbh->prepare($SQL);
-		$stmt->execute($destination, $client_id);
-	};
-	my $err = catch;
-
-	if ( $err )
-	{
-		$self->log('error', 
-			"Error disowning all messages on $destination for $client_id: $err");
-	}
-	else
-	{
-		$self->log('info', 
-			"All messages on $destination disowned for client $client_id");
-	}
-
-	$callback->() if $callback;
-	return;
+	my ($self, $message_ids, $callback) = @_;
+	$self->_set_claimant(claim => $message_ids, 'NULL', $callback);
+	goto $callback if $callback;
 }
 
 sub storage_shutdown
 {
-	my ($self, $complete) = @_;
+	my ($self, $callback) = @_;
 
-	$self->log('alert', 'Shutting down DBI storage engine...');
+	$self->log(alert => 'Shutting down DBI storage engine...');
 
-	# close the database handle.
 	$self->dbh->disconnect();
-
-	# call the shutdown handler.
-	$complete->();
-	return;
+	goto $callback if $callback;
 }
 
 1;

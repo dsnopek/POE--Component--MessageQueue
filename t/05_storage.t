@@ -39,7 +39,8 @@ BEGIN {
 				granularity => 2,
 				front_max   => 1024,
 				front       => make_engine('BigMemory'),
-				back        => make_engine('Throttled'),
+				back        => make_engine('Memory'),
+#				back        => make_engine('Throttled'),
 			)}
 		},
 		BigMemory => {},
@@ -105,6 +106,37 @@ sub _run_in_order
 	}
 }
 
+sub _disown_loop {
+	my ($kernel, $heap, $session) = @_[KERNEL, HEAP, SESSION];
+	$d = $heap->{disown_data};
+	if($d->{id} < 50) {
+		$d->{storage}->disown($d->{destination}, $d->{id}++, sub {
+			$kernel->post($session, '_disown_loop');
+		});
+	}
+	else {
+		$d->{done}->();
+	}
+}
+
+sub _claim_test {
+	my ($kernel, $heap, $session) = @_[KERNEL, HEAP, SESSION];
+	my $d = $heap->{claim_data};
+	my $storage = $d->{storage};
+
+	$storage->claim_and_retrieve($d->{destination}, $d->{claim_count}, sub {
+		my ($message, $destination, $client_id) = @_;
+		if ($message) {
+			$d->{claim_count}++;
+			$kernel->post($session, '_claim_test');
+		}
+		else {
+			is($d->{claim_count}, 50, "$d->{name}: $destination");
+			$d->{done}->();
+		}
+	});	
+}
+
 sub _destination_tests {
 	my ($kernel, $session, $heap) = @_[KERNEL, SESSION, HEAP];
 	my $data = $heap->{destination_data};
@@ -112,24 +144,36 @@ sub _destination_tests {
 	my $storage = $data->{storage};
 	my $name = $data->{name};
 	if ($destination) {
+		# To sum up:  Claim for this dest (should get 50), disown all, claim again
+		# (should again get 50), and disown yet again.
 		$heap->{claim_data} = {
-			name        => $name,
+			name        => "$name: claim_and_retrieve",
 			storage     => $storage,
 			destination => $destination,	
 			claim_count => 0,
 			done        => sub {
-				delete $heap->{claim_data};
-				$storage->disown($destination, 1, sub {
-					$storage->claim_and_retrieve($destination, 1, sub {
-						my ($message, $destination, $client_id) = @_;
-						ok($message, "$name: disown $destination");
-						$storage->disown($destination, 1, sub {
-							$kernel->post($session, '_destination_tests');
-						});
-					});
-				});
+				$heap->{disown_data} = {
+					storage     => $storage,
+					destination => $destination,
+					id          => 0,
+					done        => sub {
+						my $cd = $heap->{claim_data};
+						$cd->{claim_count} = 0;
+						$cd->{name}        = "$name: disown",
+						$cd->{done}        = sub {
+							my $dd = $heap->{disown_data};	
+							$dd->{id}   = 0;
+							$dd->{done} = sub {
+								$kernel->post($session, '_destination_tests');
+							};
+							$kernel->post($session, '_disown_loop');
+						};
+						$kernel->post($session, '_claim_test');
+					},
+				};
+				$kernel->post($session, '_disown_loop');
 			},
-		};
+		};	
 		$kernel->post($session, '_claim_test');
 	}
 	else {
@@ -207,24 +251,6 @@ sub _store_loop {
 	}
 }
 
-sub _claim_test {
-	my ($kernel, $heap, $session) = @_[KERNEL, HEAP, SESSION];
-	my $d = $heap->{claim_data};
-	my $storage = $d->{storage};
-
-	$storage->claim_and_retrieve($d->{destination}, 1, sub {
-		my ($message, $destination, $client_id) = @_;
-		if ($message) {
-			$d->{claim_count}++;
-			$kernel->post($session, '_claim_test');
-		}
-		else {
-			is($d->{claim_count}, 50, "$d->{name}: claim_and_retrieve $destination");
-			$d->{done}->();
-		}
-	});	
-}
-
 sub _engine_loop {
 	my ($kernel, $heap, $session) = @_[KERNEL, HEAP, SESSION];
 	my $names = $heap->{engine_data}->{names};
@@ -267,6 +293,7 @@ POE::Session->create(
 		_api_test          => \&_api_test,
 		_store_loop        => \&_store_loop,
 		_claim_test        => \&_claim_test,
+		_disown_loop       => \&_disown_loop,
 		_engine_loop       => \&_engine_loop,
 		_run_in_order      => \&_run_in_order,
 		_destination_tests => \&_destination_tests,

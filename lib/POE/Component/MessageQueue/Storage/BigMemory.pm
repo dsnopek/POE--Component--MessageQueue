@@ -48,7 +48,7 @@ use constant empty_hashref => (is => 'ro', default => sub { {} });
 has 'claimed'   => empty_hashref;
 # queue_name => heap of messages
 has 'unclaimed' => empty_hashref;
-# message_id => heap element
+# message_id => info hash
 has 'messages'  => empty_hashref;
 
 has 'message_heap' => (
@@ -72,58 +72,78 @@ sub _make_heap_elem
 
 sub store
 {
-	my ($self, $message, $callback) = @_;
+	my ($self, $aref, $callback) = @_;
 
-	my $elem = _make_heap_elem($message);
-	my $main = _make_heap_elem($message);
-	$self->message_heap->add($main);
-
-	my $info = $self->messages->{$message->id} = {
-		message => $message,
-		main    => $main,
-	};
-
-	if ($message->claimed) 
+	foreach my $msg (@$aref)
 	{
-		$self->claimed->{$message->claimant}->{$message->destination} = $elem;
-	}
-	else
-	{
-		my $heap = 
-			($self->unclaimed->{$message->destination} ||= Heap::Fibonacci->new);
-		$heap->add($elem);
-		$info->{unclaimed} = $elem;
+		my $elem = _make_heap_elem($msg);
+		my $main = _make_heap_elem($msg);
+		$self->message_heap->add($main);
+
+		my $info = $self->messages->{$msg->id} = {
+			message => $msg,
+			main    => $main,
+		};
+
+		if ($msg->claimed) 
+		{
+			$self->claimed->{$msg->claimant}->{$msg->destination} = $elem;
+		}
+		else
+		{
+			my $heap = 
+				($self->unclaimed->{$msg->destination} ||= Heap::Fibonacci->new);
+			$heap->add($elem);
+			$info->{unclaimed} = $elem;
+		}
 	}
 
-	$self->log('info', sprintf('Added %s.', $message->id));
-	$callback->($message) if $callback;
-	return;
+	$self->log('info', sprintf('Added %s.', join(', ', map $_->id, (@$aref))));
+	goto $callback if $callback;
 }
 
-sub peek
+sub get
 {
 	my ($self, $ids, $callback) = @_;
-	my @messages; # can't just map cause they may not all be there...
-	foreach my $id (@$ids)
-	{
-		my $info = $self->messages->{$id};
-		push(@messages, $info->{message}) if $info;
-	}
-	$callback->(\@messages);
-	return;
+	@_ = ([map $_->{message}, grep $_,
+	       map $self->messages->{$_}, @$ids]);
+	goto $callback;
 }
 
-sub peek_oldest
+sub get_oldest
 {
 	my ($self, $callback) = @_;
 	my $top = $self->message_heap->top;
-	$callback->($top && $top->val);
+	@_ = ($top && $top->val);
+	goto $callback;
+}
+
+sub claim_next
+{
+	my ($self, $destination, $client_id, $callback) = @_;
+	my $message;
+	my $heap = $self->unclaimed->{$destination};
+	if ($heap)
+	{
+		my $top = $heap->top;
+		$message = $top->val if $top;
+		$self->claim($message->id, $client_id) if $message;
+	}
+	@_ = ($message);
+	goto $callback;
+}
+
+sub get_by_client
+{
+	my ($self, $client_id, $callback) = @_;
+	my $hash = $self->unclaimed->{$client_id};
+	@_ = ([$hash ? values %$hash : ()]);
+	goto $callback;
 }
 
 sub remove
 {
 	my ($self, $ids, $callback) = @_;
-	my @removed;
 
 	foreach my $id (@$ids)
 	{
@@ -140,68 +160,67 @@ sub remove
 		{
 			$self->unclaimed->{$msg->destination}->delete($info->{unclaimed});
 		}
-		push(@removed, $msg);
 	}
 
-	$callback->(\@removed) if $callback;
-	return;
+	goto $callback if $callback;
 }
 
 sub empty 
 {
 	my ($self, $callback) = @_;
-	if ($callback)
-	{
-		my @messages = map {$_->{message}} (values %{$self->messages});
-		$callback->(\@messages);	
-	}
-	%{$self->{$_}} = () foreach qw(messages claimed unclaimed);
+
+	%{$self->$_} = () foreach qw(messages claimed unclaimed);
 	$self->message_heap(Heap::Fibonacci->new);
-	return;
+	goto $callback if $callback;
 }
 
-sub claim_and_retrieve
+sub claim
 {
-	my ($self, $destination, $client_id, $dispatch) = @_;
-	my $heap = $self->unclaimed->{$destination};
-	my $message;
+	my ($self, $ids, $client_id, $callback) = @_;
 
-	if ($heap && (my $elem = $heap->extract_top()))
+	foreach my $id (@$ids)
 	{
-		$message = $elem->val;
-
+		my $info = $self->messages->{$id};
+		my $message = $info->{message};
+		my $destination = $message->destination;
+	
+		if ($message->claimed)
+		{
+			# According to the docs, we just Do What We're Told.
+			$self->claimed->{$client_id}->{destination} = 
+				delete $self->claimed->{$message->claimant}->{$destination}
+		}
+		else
+		{
+			my $elem = $self->claimed->{$client_id}->{$destination} = 
+				delete $self->messages->{$message->id}->{unclaimed};
+			$self->unclaimed->{$destination}->remove($elem);
+		}
 		$message->claim($client_id);
-		$self->claimed->{$client_id}->{$destination} = $elem;
-		delete $self->messages->{$message->id}->{unclaimed};
-
-		$self->log('info', sprintf('Message %s claimed by client %s',
-			$message->id, $client_id));
+		$self->log(info => "Message %id claimed by client $client_id");
 	}
-
-	# Dispatch it (even if undef)
-	$dispatch->($message, $destination, $client_id);
+	goto $callback if $callback;
 }
 
 sub disown
 {
 	my ($self, $destination, $client_id, $callback) = @_;
 	my $elem = delete $self->claimed->{$client_id}->{$destination};
-	return unless $elem;
-
-	my $message = $elem->val;
-	$message->disown();
-	$self->unclaimed->{$destination}->add($elem);
-	$self->messages->{$message->id}->{unclaimed} = $elem;
-	$callback->() if $callback;
-	return;
+	if ($elem) 
+	{
+		my $message = $elem->val;
+		$message->disown();
+		$self->unclaimed->{$destination}->add($elem);
+		$self->messages->{$message->id}->{unclaimed} = $elem;
+	}
+	goto $callback if $callback;
 }
 
 # We don't persist anything, so just call our complete handler.
 sub storage_shutdown
 {
-	my ($self, $complete) = @_;
-	$complete->();	
-	return;
+	my ($self, $callback) = @_;
+	goto $callback if $callback;
 }
 
 1;
