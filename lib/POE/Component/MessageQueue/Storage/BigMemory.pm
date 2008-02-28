@@ -72,33 +72,31 @@ sub _make_heap_elem
 
 sub store
 {
-	my ($self, $aref, $callback) = @_;
+	my ($self, $msg, $callback) = @_;
 
-	foreach my $msg (@$aref)
+	my $elem = _make_heap_elem($msg);
+	my $main = _make_heap_elem($msg);
+	$self->message_heap->add($main);
+
+	my $info = $self->messages->{$msg->id} = {
+		message => $msg,
+		main    => $main,
+	};
+
+	if ($msg->claimed) 
 	{
-		my $elem = _make_heap_elem($msg);
-		my $main = _make_heap_elem($msg);
-		$self->message_heap->add($main);
-
-		my $info = $self->messages->{$msg->id} = {
-			message => $msg,
-			main    => $main,
-		};
-
-		if ($msg->claimed) 
-		{
-			$self->claimed->{$msg->claimant}->{$msg->destination} = $elem;
-		}
-		else
-		{
-			my $heap = 
-				($self->unclaimed->{$msg->destination} ||= Heap::Fibonacci->new);
-			$heap->add($elem);
-			$info->{unclaimed} = $elem;
-		}
+		$self->claimed->{$msg->claimant}->{$msg->destination} = $elem;
+	}
+	else
+	{
+		my $heap = 
+			($self->unclaimed->{$msg->destination} ||= Heap::Fibonacci->new);
+		$heap->add($elem);
+		$info->{unclaimed} = $elem;
 	}
 
-	$self->log('info', sprintf('Added %s.', join(', ', map $_->id, (@$aref))));
+	my $id = $msg->id;
+	$self->log(info => "Added $id.");
 	goto $callback if $callback;
 }
 
@@ -118,7 +116,7 @@ sub get_oldest
 	goto $callback;
 }
 
-sub claim_next
+sub claim_and_retrieve
 {
 	my ($self, $destination, $client_id, $callback) = @_;
 	my $message;
@@ -130,14 +128,6 @@ sub claim_next
 		$self->claim($message->id, $client_id) if $message;
 	}
 	@_ = ($message);
-	goto $callback;
-}
-
-sub get_by_client
-{
-	my ($self, $client_id, $callback) = @_;
-	my $hash = $self->unclaimed->{$client_id};
-	@_ = ([$hash ? values %$hash : ()]);
 	goto $callback;
 }
 
@@ -187,7 +177,7 @@ sub claim
 		if ($message->claimed)
 		{
 			# According to the docs, we just Do What We're Told.
-			$self->claimed->{$client_id}->{destination} = 
+			$self->claimed->{$client_id}->{$destination} = 
 				delete $self->claimed->{$message->claimant}->{$destination}
 		}
 		else
@@ -202,14 +192,24 @@ sub claim
 	goto $callback if $callback;
 }
 
-sub disown
+sub disown_all
+{
+	my ($self, $client_id, $callback) = @_;
+	# We just happen to know that disown_destination is synchronous, so we can
+	# ignore the usual callback dance
+	foreach my $dest (keys %{$self->claimed->{$client_id}}) {
+		$self->disown_destination($dest, $client_id)
+	}
+	goto $callback if $callback;
+}
+
+sub disown_destination
 {
 	my ($self, $destination, $client_id, $callback) = @_;
 	my $elem = delete $self->claimed->{$client_id}->{$destination};
 	if ($elem) 
 	{
-		my $message = $elem->val;
-		$message->disown();
+		$elem->val->disown();
 		$self->unclaimed->{$destination}->add($elem);
 		$self->messages->{$message->id}->{unclaimed} = $elem;
 	}

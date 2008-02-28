@@ -63,38 +63,18 @@ sub get
 	});
 }
 
-sub _get_many
+sub get_all
 {
-	my ($front, $back, $callback) = @_;
+	my ($self, $callback) = @_;
 	my %messages; # store in a hash to ensure uniqueness
-	$front->(sub {
+	$self->front->get_all->(sub {
 		$messages->{$_->id} = $_ foreach @{$_[0]};
-		$back->(sub {
+		$self->back->get_all->(sub {
 			$messages->{$_->id} = $_ foreach @{$_[0]};
 			@_ = ([values %messages]);
 			goto $callback;	
 		}
 	});
-}
-
-sub get_all
-{
-	my ($self, $callback) = @_;
-	_get_many(
-		sub {$self->front->get_all($_[0])},
-		sub {$self->back ->get_all($_[0])},
-		$callback,
-	);
-}
-
-sub get_by_client
-{
-	my ($self, $client_id, $callback);
-	_get_many(
-		sub {$self->front->get_by_client($client_id, $_[0])},
-		sub {$self->back ->get_by_client($client_id, $_[0])},
-		$callback,
-	);
 }
 
 sub get_oldest
@@ -114,10 +94,10 @@ sub get_oldest
 	});
 }
 
-sub claim_next
+sub claim_and_retrieve
 {
 	my ($self, $destination, $client_id, $callback);
-	$self->front->claim_next(sub {
+	$self->front->claim_and_retrieve(sub {
 		if (my $got = $_[0])
 		{
 			$self->back->claim($got->id, $client_id, sub { 
@@ -127,70 +107,28 @@ sub claim_next
 		}
 		else
 		{
-			$self->back->claim_next($destination, $client_id, sub {
-				@_ = ($_[0]);
-				goto $callback;
-			});
+			$self->back->claim_and_retrieve($destination, $client_id, $callback);
 		}
 	});
 }
 
-sub _do_both
+foreach my $method qw(remove empty claim disown_destination disown_all)
 {
-	my ($front, $back, $callback) = @_;
-	if ($callback)
-	{
-		$front->(sub {
-			$back->(sub {
-				goto $callback;
+	__PACKAGE__->meta->add_method($name, sub {
+		my $self = shift;
+		my $last = pop;
+		if(ref $last eq 'CODE')
+		{
+			$self->front->$method(@args, sub {
+				$self->back->$method(@args, $last);
 			});
-		});	
-	}
-	else
-	{
-		$front->();
-		$back->();
-	}
-}
-
-sub remove
-{
-	my ($self, $ids, $cb) = @_;
-	_do_both(
-		sub {$self->front->remove($ids, $_[0]),
-		sub {$self->back ->remove($ids, $_[0]),
-		$cb
-	);
-}
-
-sub empty
-{
-	my ($self, $cb) = @_;
-	_do_both(
-		sub {$self->front->empty($_[0]),
-		sub {$self->back ->empty($_[0]),
-		$cb
-	);
-}
-
-sub claim
-{
-	my ($self, $ids, $client_id, $cb) = @_;
-	_do_both(
-		sub {$self->front->claim($ids, $_[0])},
-		sub {$self->back ->claim($ids, $_[0])},
-		$cb,
-	);
-}
-
-sub disown
-{
-	my ($self, $ids, $cb) = @_;
-	_do_both(
-		sub {$self->front->disown($ids, $_[0])},
-		sub {$self->back ->disown($ids, $_[0])},
-		$cb,
-	);
+		}
+		else
+		{
+			$self->front->$method(@_, $last);
+			$self->back->$method(@_, $last);
+		}
+	});
 }
 
 1;

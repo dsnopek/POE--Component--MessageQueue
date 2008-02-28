@@ -21,10 +21,11 @@ use POE::Component::MessageQueue::Logger;
 
 requires qw(
 	get            get_all 
-	get_by_client  get_oldest 
-  claim_next     claim            disown 
+	get_oldest     claim_and_retrieve
+ 	claim          store
+	disown_all     disown_destination
   empty          remove     
-  store          storage_shutdown
+  storage_shutdown
 );
 
 # Given a method name, makes its first argument OPTIONALLY be an aref.  If it
@@ -58,7 +59,7 @@ sub _areffify
 }
 
 _areffify($_, 1) foreach qw(get);
-_areffify($_, 0) foreach qw(claim disown remove store);
+_areffify($_, 0) foreach qw(claim remove);
 
 has 'names' => (
 	is      => 'rw',
@@ -84,13 +85,6 @@ has 'logger' => (
 	writer  => 'set_logger',
 	default => sub { POE::Component::MessageQueue::Logger->new() },
 );
-
-sub remove
-{
-	my ($self, $arg, $callback);
-	$arg = [$arg] unless (ref $arg eq 'ARRAY');
-	$self->_remove($arg, $callback);
-}
 
 sub add_names
 {
@@ -166,7 +160,7 @@ Takes an object of type L<POE::Component::MessageQueue::Logger> that should be
 used for logging.  This isn't a storage method and does not have any callback
 associated with it.
 
-=item store I<optional-aref>
+=item store I<Message>
 
 Takes one or more objects of type L<POE::Component::MessageQueue::Message> 
 that should be stored.
@@ -181,10 +175,6 @@ Passes the message(s) specified by the passed id(s) to the callback.
 
 Self-explanatory.
 
-=item get_by_client I<client-id>
-
-Gets all messages currently claimed by the specified client.
-
 =item remove I<optional-aref>
 
 Removes the message(s) specified by the passed id(s).
@@ -198,18 +188,23 @@ Deletes all messages from the storage engine.
 Naively claims the specified messages for the specified client, even if they
 are already claimed.  This is intended to be called by stores that wrap other
 stores to maintain synchronicity between multiple message copies - non-store
-clients usually want claim_next.
+clients usually want claim_and_retrieve.
 
-=item claim_next I<destination>, I<client-id>
+=item claim_and_retrieve I<destination>, I<client-id>
 
 Claims the "next" message intended for I<destination> for I<client-id> and
 passes it to the supplied callback.  Storage engines are free to define what 
 "next" means, but the intended meaning is "oldest unclaimed message for this 
 destination".
 
-=item disown I<optional-aref>
+=item disown_all I<client-id>
 
-Disclaims all of the specified messages.
+Disowns all messages owned by the client.
+
+=item disown_destination I<destination>, I<client-id>
+
+Disowns the message owned by the specified client on the specified
+destination.  (This should only be one message).
 
 =item storage_shutdown
 

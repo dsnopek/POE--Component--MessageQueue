@@ -27,16 +27,15 @@ make_immutable;
 
 sub store
 {
-	my ($self, $messages, $callback) = @_;
+	my ($self, $msg, $callback) = @_;
+
+	my $id = $msg->id;
+	my $destination = $msg->destination;
 
 	# push onto our array
-	foreach my $msg (@$messages)
-	{
-		my $destination = $msg->destination;
-		my $aref = ($self->messages->{$destination} ||= []);
-		push(@$aref, $msg);
-		$self->log('info', sprintf('Added %s', $msg->id));
-	}
+	my $aref = ($self->messages->{$destination} ||= []);
+	push(@$aref, $msg);
+	$self->log(info => "Added $id");
 
 	goto $callback if $callback;
 }
@@ -81,7 +80,7 @@ sub get_all
 	goto $callback;
 }
 
-sub claim_next
+sub claim_and_retrieve
 {
 	my ($self, $destination, $client_id, $callback) = @_;
 	my $oldest;
@@ -107,18 +106,6 @@ sub get_oldest
 		$oldest = $msg unless ($oldest && ($oldest->timestamp < $msg->timestamp));
 	});
 	@_ = ($oldest);
-	goto $callback;
-}
-
-sub get_by_client
-{
-	my ($self, $client_id, $callback) = @_;
-	my @messages;
-	$self->_msg_foreach(sub {
-		my $msg = shift;
-		push(@messages, $msg) if ($msg->claimant eq $client_id);
-	});
-	@_ = (\@messages);
 	goto $callback;
 }
 
@@ -172,13 +159,20 @@ sub claim
 	goto $callback if $callback;
 }
 
-sub disown
+sub disown_destination
 {
-	my ($self, $ids, $callback) = @_;
-	$self->_msg_foreach_ids($ids, sub {
-		my $msg = shift;
-		$msg->disown();
-	});
+	my ($self, $destination, $client_id, $callback);
+	foreach my $msg (values %{$self->messages->{$destination}})
+	{
+		$msg->disown() if $msg->claimant eq $client_id;
+	}
+	goto $callback if $callback;
+}
+
+sub disown_all
+{
+	my ($self, $client_id, $callback);
+	$self->_msg_foreach(sub {$_[0]->disown() if $_[0]->claimant eq $client_id});
 	goto $callback if $callback;
 }
 

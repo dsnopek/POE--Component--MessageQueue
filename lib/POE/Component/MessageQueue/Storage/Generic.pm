@@ -24,10 +24,10 @@ use POE::Component::MessageQueue::Logger;
 # We're going to proxy some methods to the generic object.  Yay MOP!
 my @proxy_methods = qw(
   get            get_all 
-  get_by_client  get_oldest 
-  claim_next     claim   
-  empty          remove     
-  store          disown 
+  get_oldest     claim_and_retrieve 
+  claim          empty          
+  remove         store          
+  disown_all     disown_destination 
 );
 foreach my $method (@proxy_methods)
 {

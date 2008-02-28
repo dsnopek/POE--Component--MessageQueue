@@ -28,17 +28,17 @@ has 'info_store' => (
 	is       => 'ro',
 	required => 1,	
 	does     => qw(POE::Component::MessageQueue::Storage),
-	handles  => [qw(claim disown)],
+	handles  => [qw(claim disown_all disown_destionation)],
 );
 
 # For all these, we get an aref of stuff that needs bodies from our info
 # store.  So, let's just make them all at once.  
-foreach my $method qw(get get_all get_by_client)
+foreach my $method qw(get get_all)
 {
 	__PACKAGE__->meta->add_method($method, sub {
 		my $self = shift;
 		my $callback = pop;
-		$self->info_store->$method->(@_, sub {
+		$self->info_store->$method(@_, sub {
 			my $messages = $_[0];
 			$self->_read_loop($messages, [], $callback);
 		});
@@ -46,7 +46,7 @@ foreach my $method qw(get get_all get_by_client)
 }
 
 # These are similar to the above, but for single messages
-foreach my $method qw(get_oldest claim_next) 
+foreach my $method qw(get_oldest claim_and_retrieve) 
 {
 	__PACKAGE__->meta->add_method($method, sub {
 		my $self = shift;

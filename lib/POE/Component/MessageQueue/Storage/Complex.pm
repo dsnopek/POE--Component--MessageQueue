@@ -70,20 +70,22 @@ has 'shutting_down' => (
 );
 
 around 'remove' => sub {
-	my ($original, $self, $aref, $callback) = @_;
-	$original->($self, $aref, sub {
+	my $original = shift;
+	my ($self, $aref, $callback) = @_;
+	my $front_ids = [grep { exists $self->timestamps->{$_} } @$aref];
+	$self->front->get($front_ids, sub {
 		my $messages = $_[0];
 		my $total = $self->front_size;
 		foreach my $msg (@$messages)
 		{
-			my $timestamp = delete $self->timestamps->{$msg->id};
-			$total -= $msg->size if (defined $timestamp);
+			delete $self->timestamps->{$msg->id};
+			$total -= $msg->size;
 		}
-		$self->front_size($total);
-		$callback->($messages) if $callback;
+		$self->front_size($total);		
+		@_ = ($self, $aref, $callback);
+		goto $original;
 	});
-}; 
-
+};
 
 before 'empty' => sub {
 	my ($self) = @_;
@@ -109,7 +111,7 @@ sub _bump_messages
 {
 	my $self = $_[0];
 	return unless ($self->front_size > $self->front_max);
-	$self->front->peek_oldest(sub {
+	$self->front->get_oldest(sub {
 		my $message = $_[0];
 		my $callback;
 
@@ -119,9 +121,10 @@ sub _bump_messages
 		$callback = sub {$self->back->store($message)} if ($timestamp);
 
 		$self->log('info', 'Message '.$message->id.' bumped from frontstore.');
-		$self->front->remove([$message->id], $callback);
+		$self->front->remove($message->id, $callback);
 
-		$self->_bump_messages();
+		@_ = ($self);
+		goto &_bump_messages;
 	});
 }
 
@@ -130,11 +133,10 @@ sub store
 	my ($self, $message, $callback) = @_;
 
 	$self->front->store($message, sub {
-		my $message = shift;
-		$self->timestamps->{$message->id} = $message->persistent ? time() : 0; 
 		$self->front_size($self->front_size + $message->size);
+		$self->timestamps->{$message->id} = $message->persistent ? time() : 0; 
 		$self->_bump_messages();
-		$callback->($message) if $callback;
+		goto $callback if $callback;
 	});
 }
 
@@ -148,17 +150,17 @@ sub _start
 sub expire_messages
 {
 	my ($self, $message_ids) = @_;
-	$self->front->peek($message_ids, sub {
+	$self->front->get($message_ids, sub {
 		my $aref = shift;
+		my @ids;
 		foreach my $msg (@$aref)
 		{
-			$self->timestamps->{$msg->id} = 0;
-
-			$self->log('info', 
-				sprintf('Pushing expired message %s to backstore', $msg->id));
-			
+			push(@ids, $msg->id);
+			$self->timestmaps->{$msg->id} = 0;
 			$self->back->store($msg);
 		}
+		my $idstr = join(', ', @ids);
+		$self->log(info => "Pushed expired messages ($idstr) to backstore.");
 	});
 }
 
@@ -196,21 +198,18 @@ sub storage_shutdown
 
 	$self->log('alert', 'Forcing messages from frontstore to backstore');
 
-	$self->front->empty(sub {
+	$self->front->get_all(sub {
 		my $message_aref = shift;
 		my @messages = grep { 
 			$_->persistent && $self->timestamps->{$_->id} 
 		} (@$message_aref);
 		
-		foreach my $msg (@messages)
-		{
-			$self->log('info', 
-				sprintf("Moving message %s into backstore.", $msg->id));
-			$self->back->store($msg);
-		}	
-
-		$self->front->storage_shutdown(sub {
-			$self->back->storage_shutdown($complete)
+		my $idstr = join(', ', map $_->id, @$message_aref);
+		$self->log(info => "Moving messages $idstr into backstore.");
+		$self->back->store($message_aref, sub {
+			$self->front->storage_shutdown(sub {
+				$self->back->storage_shutdown($complete)
+			});
 		});
 	});
 }

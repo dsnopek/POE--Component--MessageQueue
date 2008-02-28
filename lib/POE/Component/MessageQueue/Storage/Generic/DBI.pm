@@ -121,30 +121,27 @@ sub _make_message {
 
 sub store
 {
-	my ($self, $aref, $callback) = @_;
+	my ($self, $m, $callback) = @_;
 
-	my $sth = $self->dbh->prepare(q{
-		INSERT INTO messages (
-			message_id, destination, body, 
-			persistent, in_use_by,  
-			timestamp,  size
-		) VALUES (
-			?, ?, ?, 
-			?, ?, 
-			?, ?
-		)
+	$self->_wrap(sub {
+		my $sth = $self->dbh->prepare(q{
+			INSERT INTO messages (
+				message_id, destination, body, 
+				persistent, in_use_by,  
+				timestamp,  size
+			) VALUES (
+				?, ?, ?, 
+				?, ?, 
+				?, ?
+			)
+		});
+		$sth->execute(
+			$m->id,         $m->destination, $m->body, 
+			$m->persistent, $m->claimant, 
+			$m->timestamp,  $m->size,
+		);
 	});
 
-	foreach (@$aref)
-	{
-		$self->_wrap(sub {
-			$sth->execute(
-				$_->id,         $_->destination, $_->body, 
-				$_->persistent, $_->claimant, 
-				$_->timestamp,  $_->size,
-			);
-		});
-	}
 	goto $callback if $callback;
 }
 
@@ -184,19 +181,13 @@ sub get_all
 	$self->_get(get_all => '', $callback);
 }
 
-sub get_by_client
-{
-	my ($self, $client_id, $callback) = @_;
-	$self->_get(get_by_client => "WHERE in_use_by = '$client_id'", $callback);
-}
-
 sub get_oldest
 {
 	my ($self, $callback) = @_;
 	$self->_get_one(get_oldest => 'ORDER BY timestamp ASC LIMIT 1', $callback);
 }
 
-sub claim_next
+sub claim_and_retrieve
 {
 	my ($self, $destination, $client_id, $callback) = @_;
 	$self->_get_one(get_next => qq{
@@ -240,14 +231,34 @@ sub _set_claimant
 sub claim
 {
 	my ($self, $message_ids, $client_id, $callback) = @_;
-	$self->_set_claimant(claim => $message_ids, "'$client_id'", $callback);
+	$self->_wrap_ids($message_ids, claim => sub {
+		my $where = shift;
+		$self->dbh->do(qq{
+			UPDATE messages SET in_use_by = '$client_id' WHERE $where
+		});
+	});
 	goto $callback if $callback;
 }
 
-sub disown 
+sub disown_destination
 {
-	my ($self, $message_ids, $callback) = @_;
-	$self->_set_claimant(claim => $message_ids, 'NULL', $callback);
+	my ($self, $destination, $client_id, $callback) = @_;
+	$self->_wrap(disown_destination => sub {
+		$self->dbh->do(qq{
+			UPDATE messages SET in_use_by = NULL WHERE client_id = '$client_id'
+			AND destination = '$destination'
+		});
+	});
+	goto $callback if $callback;
+}
+
+sub disown_all
+{
+	my ($self, $client_id, $callback) = @_;
+	$self->_wrap(disown_all => sub {
+		$self->dbh->do(qq{
+			UPDATE messages SET in_use_by = NULL WHERE client_id = '$client_id'
+	});
 	goto $callback if $callback;
 }
 
