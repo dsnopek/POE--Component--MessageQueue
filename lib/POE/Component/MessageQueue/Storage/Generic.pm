@@ -22,13 +22,20 @@ use POE::Component::Generic 0.1001;
 use POE::Component::MessageQueue::Logger;
 
 # We're going to proxy some methods to the generic object.  Yay MOP!
-foreach my $method qw(store remove empty disown)
+my @proxy_methods = qw(
+	get            get_all 
+	get_oldest     claim_and_retrieve 
+	claim          empty          
+	remove         store          
+	disown_all     disown_destination 
+);
+foreach my $method (@proxy_methods)
 {
 	__PACKAGE__->meta->add_method($method, sub {
 		my ($self, @args) = @_;
-		$self->generic->call(
+		$self->generic->yield(
 			$method, 
-			{session => $self->session->ID(), event => '_general_handler'},
+			{session => $self->session->ID, event => '_general_handler'},
 			@args,
 		);		
 		return;
@@ -76,10 +83,7 @@ sub BUILD
 		object_options => [%$args],
 		packages => {
 			$package => {
-				callbacks => [qw(
-					remove              empty             store     
-					claim_and_retrieve  storage_shutdown
-				)],
+				callbacks => [@proxy_methods, qw(storage_shutdown)],
 				postbacks => [qw(set_log_function)],
 			},
 		},
@@ -118,18 +122,7 @@ sub _shutdown
 	$self->generic->shutdown();
 	$kernel->alias_remove($self->alias);
 	$self->log('alert', 'Generic storage engine is shutdown!');
-	$callback->();
-}
-
-sub claim_and_retrieve
-{
-	my ($self, $destination, $client_id, $dispatch) = @_;
-
-	$self->generic->claim_and_retrieve(
-		{session => $self->session->ID(), event => '_general_handler'},
-		$destination, $client_id, $dispatch
-	);
-	return;
+	goto $callback;
 }
 
 sub storage_shutdown
@@ -153,7 +146,7 @@ sub _general_handler
 
 	if ( $ref->{error} )
 	{
-		$self->log("error", "Generic error: $ref->{error}");
+		$self->log('error', "Generic error: $ref->{error}");
 	}
 	return;
 }
@@ -168,8 +161,10 @@ sub _error
 	}
 	else
 	{
-		$self->log('error', sprintf('Generic error:  %s %s %s', 
-			$err->{operation}, $err->{errnum}, $err->{errstr}));
+		my $op = $err->{operation} || q{};
+		my $num = $err->{errnum}   || q{};
+		my $str = $err->{errstr}   || q{};
+		$self->log('error', "Generic error: $op $num $str");
 	}
 	return;
 }

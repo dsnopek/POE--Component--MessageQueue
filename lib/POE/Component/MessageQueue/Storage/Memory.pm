@@ -26,25 +26,96 @@ make_immutable;
 
 sub store
 {
-	my ($self, $message, $callback) = @_;
-	my $destination = $message->destination;
+	my ($self, $msg, $callback) = @_;
+
+	my $id = $msg->id;
+	my $destination = $msg->destination;
 
 	# push onto our array
 	my $aref = ($self->messages->{$destination} ||= []);
-	push(@$aref, $message);
-	$self->log('info', sprintf('Added %s', $message->id));
+	push(@$aref, $msg);
+	$self->log(info => "Added $id");
 
-	$callback->($message) if $callback;
+	goto $callback if $callback;
+}
+
+sub _msg_foreach
+{
+	my ($self, $action) = @_;
+	foreach my $messages_in_dest (values %{$self->messages})
+	{
+		foreach my $message (@$messages_in_dest)
+		{
+			$action->($message);
+		}
+	}
+}
+
+sub _msg_foreach_ids
+{
+	my ($self, $ids, $action) = @_;
+	my %id_hash = map { ($_, 1) } (@$ids);
+	$self->_msg_foreach(sub {
+		my $msg = $_[0];
+		$action->($msg) if (exists $id_hash{$msg->id});
+	});
+}
+
+sub get
+{
+	my ($self, $ids, $callback) = @_;
+	my @messages;
+	$self->_msg_foreach_ids($ids, sub {push(@messages, $_[0])});
+	@_ = (\@messages);
+	goto $callback;
+}
+
+sub get_all
+{
+	my ($self, $callback) = @_;
+	my @messages;
+	$self->_msg_foreach(sub {push(@messages, $_[0])});
+	@_ = (\@messages);
+	goto $callback;
+}
+
+sub claim_and_retrieve
+{
+	my ($self, $destination, $client_id, $callback) = @_;
+	my $oldest;
+	my $aref = $self->messages->{$destination} || [];
+	foreach my $msg (@$aref)
+	{
+		unless ($msg->claimed || 
+		        ($oldest && $oldest->timestamp < $msg->timestamp))
+		{
+			$oldest = $msg;
+		}
+	}
+	$self->_claim_it_yo($oldest, $client_id) if $oldest;
+	@_ = ($oldest);
+	goto $callback;
+}
+
+sub get_oldest
+{
+	my ($self, $callback) = @_;
+	my $oldest;
+	$self->_msg_foreach(sub {
+		my $msg = shift;
+		$oldest = $msg unless ($oldest && ($oldest->timestamp < $msg->timestamp));
+	});
+	@_ = ($oldest);
+	goto $callback;
 }
 
 sub remove
 {
 	my ($self, $message_ids, $callback) = @_;
-	my @removed = ();
 	# Stuff IDs into a hash so we can quickly check if a message is on the list
 	my %id_hash = map { ($_, 1) } (@$message_ids);
 
-	while ( my ($dest, $messages) = each %{$self->messages} ) 
+	foreach my $messages (values %{$self->messages})
 	{
 		my $max = scalar @{$messages};
 
@@ -55,73 +126,61 @@ sub remove
 			next unless exists $id_hash{$message->id};
 			splice @$messages, $i, 1;
 			$i--; $max--;
-			push(@removed, $message) if $callback;
 		}
 	}
 
-	$callback->(\@removed) if $callback;
-
-	return;
+	goto $callback if $callback;
 }
 
 sub empty 
 {
 	my ($self, $callback) = @_;
-	my $destinations = $self->messages;
-	if ($callback) 
-	{
-		my @result = ();
-		push(@result, @$_) foreach (values %$destinations);	
-		$callback->(\@result);
-	}
-	%$destinations = ();
-	return;
+	%{$self->messages} = ();
+	goto $callback if $callback;
 }
 
-sub claim_and_retrieve
+sub _claim_it_yo
 {
-	my ($self, $destination, $client_id, $dispatch) = @_;
-	my $messages = $self->messages->{$destination} || [];
-
-	# look for an unclaimed message and take it
-	foreach my $message (@$messages)
-	{
-		unless ($message->claimed)
-		{
-			# claim it, yo!
-			$message->claim($client_id);
-			$self->log('info', sprintf('Message %s claimed by client %s',
-				$message->id, $client_id));
-
-			$dispatch->($message, $destination, $client_id);
-			return;
-		}
-	}
-
-	# Spec says to do this on failure.
-	$dispatch->(undef, $destination, $client_id);
-	return;
+	my ($self, $msg, $client_id) = @_;;
+	$msg->claim($client_id);
+	$self->log('info', sprintf('Message %s claimed by client %s',
+		$msg->id, $client_id));
 }
 
-# unmark all messages owned by this client
-sub disown
+sub claim
 {
-	my ($self, $destination, $client_id) = @_;
-	my $messages = $self->messages->{$destination} || return;
+	my ($self, $ids, $client_id, $callback) = @_;
 
-	foreach my $msg (grep { 
-		$_->claimed && ($_->claimant == $client_id) 
-	} (@$messages))
-	{
-		$msg->disown();
-	}
+	$self->_msg_foreach_ids($ids, sub {
+		$self->_claim_it_yo($_[0], $client_id);
+	});
+
+	goto $callback if $callback;
+}
+
+sub disown_destination
+{
+	my ($self, $destination, $client_id, $callback) = @_;
+	my $aref = $self->messages->{$destination} || [];
+	$_->disown foreach grep {$_->claimed && $_->claimant eq $client_id} @$aref;
+
+	goto $callback if $callback;
+}
+
+sub disown_all
+{
+	my ($self, $client_id, $callback) = @_;
+	$self->_msg_foreach(sub {
+		my $m = $_[0];
+		$m->disown() if $m->claimed && $m->claimant eq $client_id;
+	});
+	goto $callback if $callback;
 }
 
 sub storage_shutdown
 {
-	my ($self, $complete) = @_;
-	$complete->();
-	return;
+	my ($self, $callback) = @_;
+	goto $callback if $callback;
 }
 
 1;

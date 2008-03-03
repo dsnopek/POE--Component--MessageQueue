@@ -19,6 +19,10 @@ package POE::Component::MessageQueue::Message;
 use Moose;
 use Net::Stomp::Frame;
 
+# Use Time::HiRes's time() if available.  Without it, messages that are sent
+# rapidly may come out in an odd order.
+BEGIN { eval { require Time::HiRes; Time::HiRes->import qw(time); } };
+
 has 'id' => (
 	is       => 'ro',
 	isa      => 'Str',
@@ -37,7 +41,7 @@ has 'body' => (
 
 has 'persistent' => (
 	is       => 'ro',
-	isa      => 'Int',
+	isa      => 'Bool',
 	required => 1,
 );
 
@@ -50,7 +54,7 @@ has 'claimant' => (
 );
 
 has 'size' => (
-	is      => 'ro',
+	is      => 'rw',
 	isa     => 'Int',
 	lazy    => 1,
 	default => sub {length $_[0]->body},
@@ -58,11 +62,33 @@ has 'size' => (
 
 has 'timestamp' => (
 	is      => 'ro',
-	isa     => 'Int',
+	isa     => 'Num',
 	default => sub { time() },
 );
 
+after 'body' => sub {
+	my ($self, $newbody) = @_;
+	if (@_ > 1) 
+	{
+		$self->size(defined $newbody ? length($newbody) : 0)
+	}
+};
+
 make_immutable;
+
+sub equals
+{
+	my ($self, $other) = @_;
+	foreach my $ameta (values %{__PACKAGE__->meta->get_attribute_map})
+	{
+		my $reader = $ameta->get_read_method;
+		my ($one, $two) = ($self->$reader, $other->$reader);
+		next if (!defined $one) && (!defined $two);
+		return 0 unless (defined $one) && (defined $two);
+		return 0 unless ($one eq $two);
+	}
+	return 1;
+}
 
 sub create_stomp_frame
 {

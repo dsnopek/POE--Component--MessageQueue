@@ -197,18 +197,22 @@ sub remove_client
 	$self->log( 'notice', "MASTER: Removing client $client_id" );
 	
 	my $client = $self->get_client($client_id);
+	$self->storage->disown_all($client_id);
 
-	$client->unsubscribe_all();
+	foreach my $place (map { $_->place } (values %{$client->subscriptions}))
+	{
+		$client->unsubscribe($place);
+	}
+
 	delete $self->clients->{$client_id};
 
-	# remove all references from needs_ack.
-	while ( my ($id, $message) = each %{$self->needs_ack} )
+	# remove all references from needs_ack (not during iteration though...)
+	my @remove_these;
+	while (my ($id, $unacked) = each %{$self->needs_ack})
 	{
-		if ( $message->claimant == $client )
-		{
-			delete $self->needs_ack->{$id};
-		}
+		push(@remove_these, $id) if ($unacked->{client_id} == $client_id);
 	}
+	delete $self->needs_ack->{$_} foreach (@remove_these);
 
 	# shutdown TCP connection
 	$client->shutdown();
@@ -354,7 +358,6 @@ sub route_frame
 			$self->log('notice', "RECV ($cid): UNSUBSCRIBE $destination");
 			my $place = $self->get_place($destination);
 			$client->unsubscribe($place);
-			$self->storage->disown($destination, $client) if $place->is_persistent;
 			$self->notify(unsubscribe => {place => $place, client => $client});
 		},
 
@@ -388,12 +391,15 @@ sub route_frame
 
 sub push_unacked_message
 {
-	my ($self, $message) = @_;
+	my ($self, $message, $client) = @_;
 
-	$self->needs_ack->{$message->id} = $message;
+	$self->needs_ack->{$message->id} = {
+		message   => $message,
+		client_id => $client->id,
+	};
 
 	$self->log('notice', sprintf('MASTER: message %s needs ACK from client %s',
-		$message->id, $message->claimant));
+		$message->id, $client->id));
 }
 
 sub pop_unacked_message
@@ -402,7 +408,7 @@ sub pop_unacked_message
 
 	my $unacked = $self->needs_ack->{$message_id};
 	my $client_id = $client->id;
-	my $claimant_id = $unacked->claimant;
+	my $claimant_id = $unacked->{client_id};
 
 	if ( $client_id != $claimant_id )
 	{
@@ -416,10 +422,8 @@ sub pop_unacked_message
 	else
 	{
 		# remove from our needs ack list
-		delete $self->needs_ack->{$message_id};
+		return delete $self->needs_ack->{$message_id}->{message};
 	}
-
-	return $unacked;
 }
 
 sub ack_message
@@ -454,7 +458,7 @@ sub ack_message
 	});
 
 	# remove from the backing store
-	$self->storage->remove([$message_id]);
+	$self->storage->remove($message_id);
 }
 
 sub _shutdown 
@@ -510,19 +514,18 @@ sub dispatch_message
 	my ($self, $message, $subscriber) = @_;
 	my $client = $subscriber->client;
 	my $place = $self->get_place($message->destination);
-	my $is_queue = $place->isa('POE::Component::MessageQueue::Queue');
 
 	if($client && $client->send_frame($message->create_stomp_frame()))
 	{
 		$self->log('info', sprintf('Sending message %s to client %s', 
 			$message->id, $client->id));
 
-		if ($is_queue)
+		if ($place->is_persistent)
 		{
 			if ( $subscriber->ack_type eq 'client' )
 			{
 				$subscriber->ready(0);
-				$self->push_unacked_message($message);
+				$self->push_unacked_message($message, $client);
 			}
 			else
 			{
@@ -539,17 +542,21 @@ sub dispatch_message
 	}
 	else
 	{
-		$self->log('warning', sprintf(
-			"QUEUE: Message %s intended for %s on %s could not be delivered", 
-			$message->id, $message->claimant, $message->destination,
-		));
-
-		# The message *NEEDS* to be disowned in the storage layer, otherwise
-		# it will live forever as being claimed by a client that doesn't exist.
-		if ($is_queue)
+		# if the client disconnected, his stuff might already be disclaimed
+		if($message->claimed)
 		{
-			$self->storage->disown($message->destination, $message->claimant);
-			$place->pump();
+			# But if not, we need to clean up.
+			$self->log('warning', sprintf(
+				"QUEUE: Message %s intended for %s on %s could not be delivered", 
+				$message->id, $message->claimant, $message->destination,
+			));
+
+			if ($place->is_persistent)
+			{
+				$self->storage->disown_destination(
+					$message->destination, $message->claimant);
+				$place->pump();
+			}
 		}
 	}
 }

@@ -15,136 +15,220 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+package POE::Component::MessageQueue::Storage::BigMemory::MessageElement;
+use Heap::Elem;
+use base qw(Heap::Elem);
+
+sub new
+{
+	my ($class, $message) = @_;
+	my $self = $class->SUPER::new;
+
+	$self->val($message);	
+	bless($self, $class);
+}
+
+sub cmp
+{
+	my ($self, $other) = @_;
+	return $self->val->timestamp - $other->val->timestamp;
+}
+
+1;
+
 package POE::Component::MessageQueue::Storage::BigMemory;
 use Moose;
 with qw(POE::Component::MessageQueue::Storage);
 
-use POE::Component::MessageQueue::Storage::Structure::DLList;
+use Heap::Fibonacci;
 
 use constant empty_hashref => (is => 'ro', default => sub { {} });
-# claimer_id => DLList[Message]
+
+# claimer_id => heap element
 has 'claimed'   => empty_hashref;
-# queue_name => DLList[Message]
+# queue_name => heap of messages
 has 'unclaimed' => empty_hashref;
-# message_id => DLList[Message] ... messages = claimed UNION unclaimed
+# message_id => info hash
 has 'messages'  => empty_hashref;
+
+has 'message_heap' => (
+	is      => 'rw',
+	default => sub { Heap::Fibonacci->new },
+);
 
 make_immutable;
 
-sub _force_store {
-	my ($self, $hashname, $key, $message) = @_;
+# Where messages are stored:
+#   -- A heap of all unclaimed messages sorted by timestamp
+#   -- Per destination heaps for unclaimed messages
+#   -- A hash of claimant => messages.
+#
+# There is also a hash of ids to info about heap elements and such.
 
-	unless ( exists $self->{$hashname}->{$key} )
-	{
-		$self->{$hashname}->{$key} = 
-			POE::Component::MessageQueue::Storage::Structure::DLList->new();
-	}
-
-	$self->{messages}->{$message->id} = 
-		$self->{$hashname}->{$key}->enqueue($message); 
-	return;
+sub _make_heap_elem
+{
+	POE::Component::MessageQueue::Storage::BigMemory::MessageElement->new(@_);
 }
 
 sub store
 {
-	my ($self, $message, $callback) = @_;
+	my ($self, $msg, $callback) = @_;
 
-	if ( $message->claimed )
+	my $elem = _make_heap_elem($msg);
+	my $main = _make_heap_elem($msg);
+	$self->message_heap->add($main);
+
+	my $info = $self->messages->{$msg->id} = {
+		message => $msg,
+		main    => $main,
+	};
+
+	if ($msg->claimed) 
 	{
-		$self->_force_store('claimed', $message->claimant, $message);
+		$self->claimed->{$msg->claimant}->{$msg->destination} = $elem;
 	}
 	else
 	{
-		$self->_force_store('unclaimed', $message->destination, $message);
+		my $heap = 
+			($self->unclaimed->{$msg->destination} ||= Heap::Fibonacci->new);
+		$heap->add($elem);
+		$info->{unclaimed} = $elem;
 	}
 
-	$self->log('info', sprintf('Added %s.', $message->id));
-	$callback->($message) if $callback;
-	return;
+	my $id = $msg->id;
+	$self->log(info => "Added $id.");
+	goto $callback if $callback;
+}
+
+sub get
+{
+	my ($self, $ids, $callback) = @_;
+	@_ = ([map $_->{message}, grep $_,
+	       map $self->messages->{$_}, @$ids]);
+	goto $callback;
+}
+
+sub get_all
+{
+	my ($self, $callback) = @_;
+	@_ = ([map $_->{message}, values %{$self->messages}]);
+	goto $callback;
+}
+
+sub get_oldest
+{
+	my ($self, $callback) = @_;
+	my $top = $self->message_heap->top;
+	@_ = ($top && $top->val);
+	goto $callback;
+}
+
+sub claim_and_retrieve
+{
+	my ($self, $destination, $client_id, $callback) = @_;
+	my $message;
+	my $heap = $self->unclaimed->{$destination};
+	if ($heap)
+	{
+		my $top = $heap->top;
+		$message = $top->val if $top;
+		$self->claim($message->id, $client_id) if $message;
+	}
+	@_ = ($message);
+	goto $callback;
 }
 
 sub remove
 {
 	my ($self, $ids, $callback) = @_;
-	my @removed;
 
 	foreach my $id (@$ids)
 	{
-		my $cell = delete $self->messages->{$id};
-		next unless $cell;
-		my $message = $cell->delete();
-		push(@removed, $message);
-		
-		if ( $message->claimed )
+		my $info = delete $self->messages->{$id};
+		next unless $info && $info->{message};
+		my $msg = $info->{message};
+
+		$self->message_heap->delete($info->{main});
+		if ($msg->claimed)
 		{
-			delete $self->claimed->{$message->claimant};
+			delete $self->claimed->{$msg->claimant}->{$msg->destination};
 		}
 		else
 		{
-			delete $self->unclaimed->{$message->destination};
+			$self->unclaimed->{$msg->destination}->delete($info->{unclaimed});
 		}
 	}
-	$callback->(\@removed) if $callback;
-	return;
+
+	goto $callback if $callback;
 }
 
 sub empty 
 {
 	my ($self, $callback) = @_;
-	if ($callback)
-	{
-		my @messages = map { $_->data() } (values %{$self->{messages}});
-		$callback->(\@messages);	
-	}
-	%{$self->{$_}} = () foreach qw(messages claimed unclaimed);
-	return;
+
+	%{$self->$_} = () foreach qw(messages claimed unclaimed);
+	$self->message_heap(Heap::Fibonacci->new);
+	goto $callback if $callback;
 }
 
-sub claim_and_retrieve
+sub claim
 {
-	my ($self, $destination, $client_id, $dispatch) = @_;
-	my ($q, $message);
+	my ($self, $ids, $client_id, $callback) = @_;
 
-	# Find an unclaimed message
-	if (($q = $self->unclaimed->{$destination}) &&
-	    ($message = $q->dequeue()))
+	foreach my $id (@$ids)
 	{
-		# Claim it
-		$message->claim($client_id);
-		$self->_force_store('claimed', $client_id, $message);
-		$self->log('info', sprintf('Message %s claimed by client %s',
-			$message->id, $client_id));
-	}
-
-	# Dispatch it (even if undef)
-	$dispatch->($message, $destination, $client_id);
-}
-
-# unmark all messages owned by this client
-sub disown
-{
-	my ($self, $destination, $client_id) = @_;
-	my $q = $self->claimed->{$client_id} || return;
-
-	for(my $i = $q->first(); $i; $i = $i->next())
-	{
-		my $message = $i->data();
-		if ($message->destination eq $destination)
+		my $info = $self->messages->{$id} || next;
+		my $message = $info->{message};
+		my $destination = $message->destination;
+	
+		if ($message->claimed)
 		{
-			$i->delete(); # ->next() still valid though.
-			$self->_force_store('unclaimed', $destination, $message);
-			$message->disown();
+			# According to the docs, we just Do What We're Told.
+			$self->claimed->{$client_id}->{$destination} = 
+				delete $self->claimed->{$message->claimant}->{$destination}
 		}
+		else
+		{
+			my $elem = $self->claimed->{$client_id}->{$destination} = 
+				delete $self->messages->{$message->id}->{unclaimed};
+			$self->unclaimed->{$destination}->delete($elem);
+		}
+		$message->claim($client_id);
+		$self->log(info => "Message $id claimed by client $client_id");
 	}
-	return;
+	goto $callback if $callback;
+}
+
+sub disown_all
+{
+	my ($self, $client_id, $callback) = @_;
+	# We just happen to know that disown_destination is synchronous, so we can
+	# ignore the usual callback dance
+	foreach my $dest (keys %{$self->claimed->{$client_id}}) {
+		$self->disown_destination($dest, $client_id)
+	}
+	goto $callback if $callback;
+}
+
+sub disown_destination
+{
+	my ($self, $destination, $client_id, $callback) = @_;
+	my $elem = delete $self->claimed->{$client_id}->{$destination};
+	if ($elem) 
+	{
+		my $message = $elem->val;
+		$message->disown();
+		$self->unclaimed->{$destination}->add($elem);
+		$self->messages->{$message->id}->{unclaimed} = $elem;
+	}
+	goto $callback if $callback;
 }
 
 # We don't persist anything, so just call our complete handler.
 sub storage_shutdown
 {
-	my ($self, $complete) = @_;
-	$complete->();	
-	return;
+	my ($self, $callback) = @_;
+	goto $callback if $callback;
 }
 
 1;

@@ -32,38 +32,12 @@ has 'sent' => (
 	default => 0,
 );
 
-has 'queue' => (
-	is      => 'rw',
-  isa     => 'POE::Component::MessageQueue::Storage::Structure::DLList',
-	default => sub {
-		POE::Component::MessageQueue::Storage::Structure::DLList->new();
-	},
-);
-
-has 'messages' => (
-	is  => 'ro',
-	isa => 'HashRef',
-	default => sub { {} },
-);
-
 has 'shutdown_callback' => (
 	is        => 'rw',
 	isa       => 'CodeRef',
 	clearer   => 'stop_shutdown',
 	predicate => 'shutting_down',
 );
-
-before 'remove' => sub {
-	my ($self, $aref) = @_;
-	$self->throttle_remove($_) foreach (@$aref);
-};
-
-before 'empty' => sub {
-	my ($self) = @_;
-	$self->queue->_break();
-	$self->queue(POE::Component::MessageQueue::Storage::Structure::DLList->new());
-	%{$self->messages} = ();
-};
 
 make_immutable;
 
@@ -76,72 +50,69 @@ sub BUILD
 
 sub _backstore_ready
 {
-	my $self = shift;
+	my $self = $_[0];
 
 	# Send the next throttled message off to the backing store.
-	if (my $msg = $self->queue->shift())
-	{
-		delete $self->messages->{$msg->id};	
-
-		my $count = keys %{$self->messages};
-		$self->log('info', "Sending throttled message ($count left)");
-
-		$self->front->remove([$msg->id], sub {
-			my $message = $_[0]->[0];
-			$self->back->store($message, sub { $self->_backstore_ready() });
-		});
-	}
-	else
-	{
-		$self->{sent}--;
-		$self->_shutdown_throttle_check();
-	}
-}
-
-sub throttle_remove
-{
-	my ($self, $id) = @_;
-	my $cell = delete $self->messages->{$id};
-	$cell->delete() if $cell;
+	$self->front->get_oldest(sub {
+		if (my $msg = $_[0])
+		{
+			my $id = $msg->id;
+			$self->log(info => "Sending throttled message $id");
+			$self->front->remove($id, sub {
+				$self->back->store($msg, sub {
+					@_ = ($self);
+					goto &_backstore_ready;
+				});
+			});
+		}
+		else
+		{
+			$self->{sent}--;
+			$self->_shutdown_throttle_check();
+		}
+	});
 }
 
 sub store
 {
 	my ($self, $message, $callback) = @_;
-
 	if ($self->{sent} < $self->throttle_max)
 	{
-		$self->back->store($message, sub { $self->_backstore_ready() });
 		$self->{sent}++;
+		$self->back->store($message, sub {
+			# Do not tail call: the message is stored, but we want to do things
+			# after we satisfy the callback.
+			$callback->() if $callback;
+			$self->_backstore_ready();
+		});
 	}
 	else
 	{
-		my $id = $message->id;
-		$self->messages->{$id} = $self->queue->push($message);
-		$self->front->store($message);
+		$self->front->store($message, $callback);
 	}
-	$callback->($message) if $callback;
 }
 
 sub _shutdown_throttle_check
 {
 	my $self = shift;
-	if ($self->shutting_down && (scalar keys %{$self->messages}) == 0)
+	if ($self->shutting_down && $self->{sent} == 0)
 	{
 		# We have now finished sending things out of throttled, so -WE- are done.
 		# However, we'll still get message_storeds as our backstore finishes, and
 		# we don't want to continue calling shutdown_callback.
-		$self->shutdown_callback->();
+		my $callback = $self->shutdown_callback;
 		$self->stop_shutdown();
+		goto $callback;
 	}
-	return;
 }
 
 sub storage_shutdown
 {
 	my ($self, $complete) = @_;
 	$self->shutdown_callback(sub {
-		$self->back->storage_shutdown($complete);
+		$self->front->storage_shutdown(sub {
+			$self->back->storage_shutdown($complete);
+		});
 	});
 
 	$self->_shutdown_throttle_check();
