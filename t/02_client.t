@@ -58,8 +58,7 @@ my $client_id = 1; # right now at least, client_ids must be ints
 
 	{ # Test connect
 		$wheel->mock(put => sub {
-			my ($self, $serialized) = @_;
-			my $frame = Net::Stomp::Frame->parse(IO::String->new($serialized));
+			my ($self, $frame) = @_;
 			is($frame->command, 'CONNECTED');
 			is($frame->headers->{session}, "client-$client_id");
 		});
@@ -82,8 +81,7 @@ my $client_id = 1; # right now at least, client_ids must be ints
 	# Test send frame
 	{
 		$wheel->mock(put => sub {
-			my ($self, $serialized) = @_;
-			my $frame = Net::Stomp::Frame->parse(IO::String->new($serialized));
+			my ($self, $frame) = @_;
 			is($frame->command, 'MESSAGE');
 			is($frame->headers->{session}, "client-$client_id");
 			is($frame->body, "DUMMY");

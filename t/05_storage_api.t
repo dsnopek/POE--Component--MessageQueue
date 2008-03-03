@@ -1,3 +1,4 @@
+use strict;
 use warnings;
 no warnings 'recursion'; # some of our loops look like recursion, but aren't
 use Test::More qw(no_plan);
@@ -49,6 +50,7 @@ BEGIN {
 }
 BEGIN {
 	require_ok(MQ_PREFIX.'::Message');
+	require_ok(MQ_PREFIX.'::Logger');
 	require_ok($_) foreach map { engine_package($_) } (keys %engines);
 	require_ok(MQ_PREFIX.'::Storage::Default');
 }
@@ -60,7 +62,14 @@ sub make_engine {
 	my $name = shift;
 	my $e = $engines{$name};
 	my $args = $e->{args} || sub {};
-	engine_package($name)->new($args->());
+	my $made = engine_package($name)->new($args->());
+	# Suppress all log messages, cause otherwise the output gets cluttered by
+	# shutdowns and such.  But this is a great place to put some debugging stuff
+	# if things are failing! 
+	my $logger = POE::Component::MessageQueue::Logger->new;
+	$logger->set_log_function(sub{});
+	$made->set_logger($logger);
+	return $made;
 }
 
 my $next_id = 0;
