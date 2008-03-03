@@ -34,16 +34,17 @@ requires qw(
 sub _areffify
 {
 	my ($method, $mangle_callback) = @_;
-	around $method => sub {
+
+	around($method => sub {
 		my @args = @_;
 		my $original = shift(@args);
 		my $arg = $args[1];
-		if (ref $arg eq 'ARRAY')
+		unless (ref $arg eq 'ARRAY')
 		{
-			$args[1] = [$arg] 
+			$args[1] = [$arg];
 			if ($mangle_callback)
 			{
-				$cb = $args[-1];
+				my $cb = $args[-1];
 				$args[-1] = sub {
 					my @response = @_;
 					my $arr = $response[0];
@@ -55,7 +56,7 @@ sub _areffify
 		}	
 		@_ = @args;
 		goto $original;
-	};
+	});
 }
 
 _areffify($_, 1) foreach qw(get);

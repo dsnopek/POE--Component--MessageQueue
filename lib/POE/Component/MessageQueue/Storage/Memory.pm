@@ -84,7 +84,8 @@ sub claim_and_retrieve
 {
 	my ($self, $destination, $client_id, $callback) = @_;
 	my $oldest;
-	foreach my $msg (@{$self->messages->{$destination}} || ())
+	my $aref = $self->messages->{$destination} || [];
+	foreach my $msg (@$aref)
 	{
 		unless ($msg->claimed || 
 		        ($oldest && $oldest->timestamp < $msg->timestamp))
@@ -161,18 +162,20 @@ sub claim
 
 sub disown_destination
 {
-	my ($self, $destination, $client_id, $callback);
-	foreach my $msg (values %{$self->messages->{$destination}})
-	{
-		$msg->disown() if $msg->claimant eq $client_id;
-	}
+	my ($self, $destination, $client_id, $callback) = @_;
+	my $aref = $self->messages->{$destination} || [];
+	$_->disown foreach grep {$_->claimed && $_->claimant eq $client_id} @$aref;
+
 	goto $callback if $callback;
 }
 
 sub disown_all
 {
-	my ($self, $client_id, $callback);
-	$self->_msg_foreach(sub {$_[0]->disown() if $_[0]->claimant eq $client_id});
+	my ($self, $client_id, $callback) = @_;
+	$self->_msg_foreach(sub {
+		my $m = $_[0];
+		$m->disown() if $m->claimed && $m->claimant eq $client_id;
+	});
 	goto $callback if $callback;
 }
 

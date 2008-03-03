@@ -122,7 +122,7 @@ sub _shutdown
 	$self->generic->shutdown();
 	$kernel->alias_remove($self->alias);
 	$self->log('alert', 'Generic storage engine is shutdown!');
-	$callback->();
+	goto $callback;
 }
 
 sub storage_shutdown

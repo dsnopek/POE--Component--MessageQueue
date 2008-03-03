@@ -58,9 +58,9 @@ sub _backstore_ready
 		{
 			my $id = $msg->id;
 			$self->log(info => "Sending throttled message $id");
-			$self->back->store($msg, sub {
-				$self->front->remove($msg, sub {
-					@_ = ($self, 1);
+			$self->front->remove($id, sub {
+				$self->back->store($msg, sub {
+					@_ = ($self);
 					goto &_backstore_ready;
 				});
 			});
@@ -72,7 +72,6 @@ sub _backstore_ready
 		}
 	});
 }
-
 
 sub store
 {

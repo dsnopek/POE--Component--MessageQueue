@@ -85,6 +85,7 @@ sub _wrap
 	{
 		$self->log(error => "Error in $name(): $err");
 	}
+	return;
 }
 
 sub _make_where
@@ -119,11 +120,15 @@ sub _make_message {
 	return POE::Component::MessageQueue::Message->new(%args);
 };
 
+# Note:  We explicitly set @_ in all the storage methods in this module,
+# because when we do our tail-calls (goto $method), we don't want to pass them
+# anything unneccessary, particulary $callbacks.
+
 sub store
 {
 	my ($self, $m, $callback) = @_;
 
-	$self->_wrap(sub {
+	$self->_wrap(store => sub {
 		my $sth = $self->dbh->prepare(q{
 			INSERT INTO messages (
 				message_id, destination, body, 
@@ -142,6 +147,7 @@ sub store
 		);
 	});
 
+	@_ = ();
 	goto $callback if $callback;
 }
 
@@ -163,8 +169,8 @@ sub _get_one
 {
 	my ($self, $name, $clause, $callback) = @_;
 	$self->_get($name, $clause, sub {
-		my @messages = $_[0];
-		@_ = (@messages > 0 ? $messages[0] : undef);
+		my $messages = $_[0];
+		@_ = (@$messages > 0 ? $messages->[0] : undef);
 		goto $callback;
 	});
 }
@@ -195,7 +201,8 @@ sub claim_and_retrieve
 		ORDER BY timestamp ASC LIMIT 1
 	}, sub {
 		my $message = $_[0];
-		$self->claim($message->id, $client_id, $callback);
+		$self->claim($message->id, $client_id) if $message;
+		goto $callback;
 	});
 }
 
@@ -206,6 +213,7 @@ sub remove
 		my $where = shift;
 		$self->dbh->do("DELETE FROM messages WHERE $where");
 	});
+	@_ = ();
 	goto $callback if $callback;
 }
 
@@ -213,18 +221,7 @@ sub empty
 {
 	my ($self, $callback) = @_;
 	$self->_wrap(empty => sub {$self->dbh->do("DELETE FROM messages")});
-	goto $callback if $callback;
-}
-
-sub _set_claimant
-{
-	my ($self, $name, $message_ids, $claimant, $callback) = @_;
-	$self->_wrap_ids($message_ids, $name => sub {
-		my $where = shift;
-		$self->dbh->do(qq{
-			UPDATE messages SET in_use_by = $claimant WHERE $where
-		});
-	});
+	@_ = ();
 	goto $callback if $callback;
 }
 
@@ -237,6 +234,7 @@ sub claim
 			UPDATE messages SET in_use_by = '$client_id' WHERE $where
 		});
 	});
+	@_ = ();
 	goto $callback if $callback;
 }
 
@@ -245,10 +243,11 @@ sub disown_destination
 	my ($self, $destination, $client_id, $callback) = @_;
 	$self->_wrap(disown_destination => sub {
 		$self->dbh->do(qq{
-			UPDATE messages SET in_use_by = NULL WHERE client_id = '$client_id'
+			UPDATE messages SET in_use_by = NULL WHERE in_use_by = '$client_id'
 			AND destination = '$destination'
 		});
 	});
+	@_ = ();
 	goto $callback if $callback;
 }
 
@@ -257,8 +256,10 @@ sub disown_all
 	my ($self, $client_id, $callback) = @_;
 	$self->_wrap(disown_all => sub {
 		$self->dbh->do(qq{
-			UPDATE messages SET in_use_by = NULL WHERE client_id = '$client_id'
+			UPDATE messages SET in_use_by = NULL WHERE in_use_by = '$client_id'
+		});
 	});
+	@_ = ();
 	goto $callback if $callback;
 }
 
@@ -269,6 +270,7 @@ sub storage_shutdown
 	$self->log(alert => 'Shutting down DBI storage engine...');
 
 	$self->dbh->disconnect();
+	@_ = ();
 	goto $callback if $callback;
 }
 

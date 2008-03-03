@@ -108,6 +108,13 @@ sub get
 	goto $callback;
 }
 
+sub get_all
+{
+	my ($self, $callback) = @_;
+	@_ = ([map $_->{message}, values %{$self->messages}]);
+	goto $callback;
+}
+
 sub get_oldest
 {
 	my ($self, $callback) = @_;
@@ -170,7 +177,7 @@ sub claim
 
 	foreach my $id (@$ids)
 	{
-		my $info = $self->messages->{$id};
+		my $info = $self->messages->{$id} || next;
 		my $message = $info->{message};
 		my $destination = $message->destination;
 	
@@ -184,10 +191,10 @@ sub claim
 		{
 			my $elem = $self->claimed->{$client_id}->{$destination} = 
 				delete $self->messages->{$message->id}->{unclaimed};
-			$self->unclaimed->{$destination}->remove($elem);
+			$self->unclaimed->{$destination}->delete($elem);
 		}
 		$message->claim($client_id);
-		$self->log(info => "Message %id claimed by client $client_id");
+		$self->log(info => "Message $id claimed by client $client_id");
 	}
 	goto $callback if $callback;
 }
@@ -209,7 +216,8 @@ sub disown_destination
 	my $elem = delete $self->claimed->{$client_id}->{$destination};
 	if ($elem) 
 	{
-		$elem->val->disown();
+		my $message = $elem->val;
+		$message->disown();
 		$self->unclaimed->{$destination}->add($elem);
 		$self->messages->{$message->id}->{unclaimed} = $elem;
 	}

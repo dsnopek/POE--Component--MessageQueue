@@ -28,7 +28,7 @@ has 'info_store' => (
 	is       => 'ro',
 	required => 1,	
 	does     => qw(POE::Component::MessageQueue::Storage),
-	handles  => [qw(claim disown_all disown_destionation)],
+	handles  => [qw(claim disown_all disown_destination)],
 );
 
 # For all these, we get an aref of stuff that needs bodies from our info
@@ -51,7 +51,7 @@ foreach my $method qw(get_oldest claim_and_retrieve)
 	__PACKAGE__->meta->add_method($method, sub {
 		my $self = shift;
 		my $callback = pop;
-		$self->info_store->$method->(@_, sub {
+		$self->info_store->$method(@_, sub {
 			my $message = $_[0];
 			$self->_read_loop([$message], [], sub {
 				@_ = ($_[0]->[0]);
@@ -241,6 +241,12 @@ sub _read_loop
 	}
 
 	my $message = pop(@$to_read);
+	unless ($message)
+	{
+		@_ = ($message);
+		goto $callback;
+	}
+
 	my $body = $self->pending_writes->{$message->id};
 	if ($body) 
 	{
@@ -294,7 +300,7 @@ sub empty
 	# Do the special dance for deleting those that are pending
 	$self->_hard_delete($_) foreach (keys %{$self->pending_writes});
 
-	goto $callback if $callback;
+	$self->info_store->empty($callback);
 }
 
 sub storage_shutdown

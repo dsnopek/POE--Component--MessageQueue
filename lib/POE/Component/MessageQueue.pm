@@ -199,10 +199,10 @@ sub remove_client
 	$self->log( 'notice', "MASTER: Removing client $client_id" );
 	
 	my $client = $self->get_client($client_id);
+	$self->storage->disown_all($client_id);
 
 	foreach my $place (map { $_->place } (values %{$client->subscriptions}))
 	{
-		$self->storage->disown($place->destination, $client_id);
 		$client->unsubscribe($place);
 	}
 
@@ -354,7 +354,6 @@ sub route_frame
 			$self->log('notice', "RECV ($cid): UNSUBSCRIBE $destination");
 			my $place = $self->get_place($destination);
 			$client->unsubscribe($place);
-			$self->storage->disown($destination, $client) if $place->is_persistent;
 			$self->notify(unsubscribe => {place => $place, client => $client});
 		},
 
@@ -455,7 +454,7 @@ sub ack_message
 	});
 
 	# remove from the backing store
-	$self->storage->remove([$message_id]);
+	$self->storage->remove($message_id);
 }
 
 sub _shutdown 
@@ -511,14 +510,13 @@ sub dispatch_message
 	my ($self, $message, $subscriber) = @_;
 	my $client = $subscriber->client;
 	my $place = $self->get_place($message->destination);
-	my $is_queue = $place->isa('POE::Component::MessageQueue::Queue');
 
 	if($client && $client->send_frame($message->create_stomp_frame()))
 	{
 		$self->log('info', sprintf('Sending message %s to client %s', 
 			$message->id, $client->id));
 
-		if ($is_queue)
+		if ($place->is_persistent)
 		{
 			if ( $subscriber->ack_type eq 'client' )
 			{
@@ -540,17 +538,21 @@ sub dispatch_message
 	}
 	else
 	{
-		$self->log('warning', sprintf(
-			"QUEUE: Message %s intended for %s on %s could not be delivered", 
-			$message->id, $message->claimant, $message->destination,
-		));
-
-		# The message *NEEDS* to be disowned in the storage layer, otherwise
-		# it will live forever as being claimed by a client that doesn't exist.
-		if ($is_queue)
+		# if the client disconnected, his stuff might already be disclaimed
+		if($message->claimed)
 		{
-			$self->storage->disown($message->destination, $message->claimant);
-			$place->pump();
+			# But if not, we need to clean up.
+			$self->log('warning', sprintf(
+				"QUEUE: Message %s intended for %s on %s could not be delivered", 
+				$message->id, $message->claimant, $message->destination,
+			));
+
+			if ($place->is_persistent)
+			{
+				$self->storage->disown_destination(
+					$message->destination, $message->claimant);
+				$place->pump();
+			}
 		}
 	}
 }

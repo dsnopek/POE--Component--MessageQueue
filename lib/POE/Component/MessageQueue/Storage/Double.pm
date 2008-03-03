@@ -17,6 +17,29 @@
 
 package POE::Component::MessageQueue::Storage::Double;
 use Moose::Role;
+
+# These guys just call a method on both front and back stores and have a
+# simple no-arg completion callback.  No reason to write them all!
+foreach my $method qw(remove empty claim disown_destination disown_all)
+{
+	__PACKAGE__->meta->alias_method($method, sub {
+		my $self = shift;
+		my $last = pop;
+		if(ref $last eq 'CODE')
+		{
+			my @args = @_;
+			$self->front->$method(@args, sub {
+				$self->back->$method(@args, $last);
+			});
+		}
+		else
+		{
+			$self->front->$method(@_, $last);
+			$self->back->$method(@_, $last);
+		}
+	});
+}
+
 with qw(POE::Component::MessageQueue::Storage);
 use POE::Component::MessageQueue::Storage::BigMemory;
 
@@ -67,19 +90,19 @@ sub get_all
 {
 	my ($self, $callback) = @_;
 	my %messages; # store in a hash to ensure uniqueness
-	$self->front->get_all->(sub {
-		$messages->{$_->id} = $_ foreach @{$_[0]};
-		$self->back->get_all->(sub {
-			$messages->{$_->id} = $_ foreach @{$_[0]};
+	$self->front->get_all(sub {
+		$messages{$_->id} = $_ foreach @{$_[0]};
+		$self->back->get_all(sub {
+			$messages{$_->id} = $_ foreach @{$_[0]};
 			@_ = ([values %messages]);
 			goto $callback;	
-		}
+		});
 	});
 }
 
 sub get_oldest
 {
-	my ($self, $callback);
+	my ($self, $callback) = @_;
 	$self->front->get_oldest(sub {
 		my $f = $_[0];
 		$self->back->get_oldest(sub {
@@ -96,8 +119,8 @@ sub get_oldest
 
 sub claim_and_retrieve
 {
-	my ($self, $destination, $client_id, $callback);
-	$self->front->claim_and_retrieve(sub {
+	my ($self, $destination, $client_id, $callback) = @_;
+	$self->front->claim_and_retrieve($destination, $client_id, sub {
 		if (my $got = $_[0])
 		{
 			$self->back->claim($got->id, $client_id, sub { 
@@ -108,25 +131,6 @@ sub claim_and_retrieve
 		else
 		{
 			$self->back->claim_and_retrieve($destination, $client_id, $callback);
-		}
-	});
-}
-
-foreach my $method qw(remove empty claim disown_destination disown_all)
-{
-	__PACKAGE__->meta->add_method($name, sub {
-		my $self = shift;
-		my $last = pop;
-		if(ref $last eq 'CODE')
-		{
-			$self->front->$method(@args, sub {
-				$self->back->$method(@args, $last);
-			});
-		}
-		else
-		{
-			$self->front->$method(@_, $last);
-			$self->back->$method(@_, $last);
 		}
 	});
 }
