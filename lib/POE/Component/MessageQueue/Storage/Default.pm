@@ -196,10 +196,12 @@ sub new
 
 	# We don't bless anything because we're just returning a Complex...
 	return POE::Component::MessageQueue::Storage::Complex->new(
-		timeout => $args{timeout} || 4,	
-		front   => $args{front} ||
+		timeout     => $args{timeout}     || 4,	
+		granularity => $args{granularity} || 2,
+		front_max   => $args{front_max}   || 64 * 1024 * 1024,
+		front       => $args{front}       ||
 			POE::Component::MessageQueue::Storage::BigMemory->new(),
-		back    => $throttled,
+		back        => $throttled,
 	);
 }
 

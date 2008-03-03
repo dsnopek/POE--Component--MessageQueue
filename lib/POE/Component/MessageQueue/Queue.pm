@@ -108,10 +108,6 @@ sub _pump
 			},
 		);
 	}
-
-	# This overwrites old delays, so we only ever pump from this timer if we've
-	# been idle longer than the delay.
-	$kernel->delay('_pump', 1);
 }
 
 sub send

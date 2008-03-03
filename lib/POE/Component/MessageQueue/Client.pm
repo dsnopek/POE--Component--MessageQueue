@@ -66,7 +66,7 @@ sub unsubscribe
 
 	if ($place->is_persistent)
 	{
-		$place->storage->disown($place->destination, $self->id);
+		$place->storage->disown_destination($place->destination, $self->id);
 	}
 }
 

@@ -28,11 +28,41 @@ has 'info_store' => (
 	is       => 'ro',
 	required => 1,	
 	does     => qw(POE::Component::MessageQueue::Storage),
-	handles  => [qw(disown)],
+	handles  => [qw(claim disown_all disown_destination)],
 );
 
-# The role application must come after the has, or it won't pick up the
-# delegation.
+# For all these, we get an aref of stuff that needs bodies from our info
+# store.  So, let's just make them all at once.  
+foreach my $method qw(get get_all)
+{
+	__PACKAGE__->meta->add_method($method, sub {
+		my $self = shift;
+		my $callback = pop;
+		$self->info_store->$method(@_, sub {
+			my $messages = $_[0];
+			$self->_read_loop($messages, [], $callback);
+		});
+	});
+}
+
+# These are similar to the above, but for single messages
+foreach my $method qw(get_oldest claim_and_retrieve) 
+{
+	__PACKAGE__->meta->add_method($method, sub {
+		my $self = shift;
+		my $callback = pop;
+		$self->info_store->$method(@_, sub {
+			my $message = $_[0];
+			$self->_read_loop([$message], [], sub {
+				@_ = ($_[0]->[0]);
+				goto $callback;
+			});	
+		});
+	});
+}
+
+# Apply the role here, after we've monkeyed with the metaclass with handles,
+# etc.
 with qw(POE::Component::MessageQueue::Storage);
 
 has 'data_dir' => (
@@ -43,7 +73,6 @@ has 'data_dir' => (
 
 use constant empty_hashref => (
 	is       => 'ro',
-	isa      => 'HashRef',
 	default  => sub{ {} },
 );
 
@@ -120,7 +149,9 @@ sub store
 	my ($self, $message, $callback) = @_;
 
 	# Grab the body and delete it from the message
-	my $body = delete $message->{body};
+	my $clone = $message->meta->clone_instance($message);
+	my $body = $clone->body;
+	$clone->body(undef);
 
 	# DRS: To avaid a race condition where:
 	#
@@ -132,12 +163,11 @@ sub store
 	$self->pending_writes->{$message->id} = $body;
 
 	# initiate file writing process (only the body will be written)
-
 	$poe_kernel->post( $self->session, '_write_message_to_disk', 
 		$message, $body );
 
 	# hand-off the rest of the message to the info storage
-	$self->info_store->store($message, $callback);
+	$self->info_store->store($clone, $callback);
 }
 
 sub _get_filename
@@ -183,21 +213,46 @@ sub _unlink_file
 	return;
 }
 
+sub get_oldest
+{
+	my ($self, $callback) = @_;
+	$self->info_store->get_oldest(sub {
+		my $message = $_[0];
+		$self->_read_loop([$message], [], sub {
+			@_ = ($_[0]->[0]);
+			goto $callback;
+		});
+	});
+}
+
 # We can't use an iterative loop, because we may have to read messages from
 # disk.  So, here's our recursive function that may pause in the middle to
 # wait for disk reads.
-sub _remove_loop
+sub _read_loop
 {
-	my ($self, $to_remove, $removed, $callback) = @_;
-	$callback->($removed) unless (scalar @$to_remove);	
-	my $message = pop(@$to_remove);
+	my ($self, $to_read, $done_reading, $callback) = @_;
+	my @loop_args = @_;
+	my $again = sub { @_ = @loop_args; goto &_read_loop };
+
+	if (@$to_read < 1)
+	{
+		@_ = ($done_reading);
+		goto $callback;
+	}
+
+	my $message = pop(@$to_read);
+	unless ($message)
+	{
+		@_ = ($message);
+		goto $callback;
+	}
+
 	my $body = $self->pending_writes->{$message->id};
 	if ($body) 
 	{
-		$self->_hard_delete($message->id);
-		$message->{body} = $body;
-		push(@$removed, $message);
-		$self->_remove_loop($to_remove, $removed, $callback);
+		$message->body($body);
+		push(@$done_reading, $message);
+		goto $again;	
 	}
 	else
 	{
@@ -207,11 +262,9 @@ sub _remove_loop
 			if (my $body = shift())
 			{
 				$message->body($body);
-				push(@$removed, $message);
-				$self->_unlink_file($message->id);
+				push(@$done_reading, $message);
 			}
-			$self->_remove_loop($to_remove, $removed, $callback);
-			return;
+			goto $again;
 		};
 
 		# Go ahead and read.
@@ -220,93 +273,34 @@ sub _remove_loop
 	}
 }
 
-sub _remove_underneath
-{
-	my ($self, $remover, $callback) = @_;
-
-	$remover->($callback && sub {
-		my $info_messages = shift;
-		$self->_remove_loop($info_messages, [], $callback);
-	});
-	return;
-}
-
 sub remove
 {
 	my ($self, $message_ids, $callback) = @_;
 
-	unless ($callback)
-	{
-		$self->_hard_delete($_) foreach (@$message_ids);
-	}
-
-	$self->_remove_underneath(
-		sub {$self->info_store->remove($message_ids, shift)}, $callback);
+	$self->_hard_delete($_) foreach (@$message_ids);
+	goto $callback if $callback;
 }
 
 sub empty
 {
 	my ($self, $callback) = @_;
 
-	unless ($callback)
+	# Delete all the message files that don't have writes pending
+	use DirHandle;
+	my $dh = DirHandle->new($self->data_dir);
+	foreach my $fn ($dh->read())
 	{
-		# Delete all the message files that don't have writes pending
-		use DirHandle;
-		my $dh = DirHandle->new($self->data_dir);
-		foreach my $fn ($dh->read())
+		if ($fn =~ /msg-\(.*\)\.txt/)
 		{
-			if ($fn =~ /msg-\(.*\)\.txt/)
-			{
-				my $id = $1;
-				$self->_unlink_file($id) unless exists $self->pending_writes->{$id};	
-			}
+			my $id = $1;
+			$self->_unlink_file($id) unless exists $self->pending_writes->{$id};	
 		}
-		# Do the special dance for deleting those that are pending
-		$self->_hard_delete($_) foreach (keys %{$self->pending_writes});
 	}
 
-	$self->_remove_underneath(
-		sub {$self->info_store->empty(shift)}, $callback);	
-}
+	# Do the special dance for deleting those that are pending
+	$self->_hard_delete($_) foreach (keys %{$self->pending_writes});
 
-sub claim_and_retrieve
-{
-	my ($self, $destination, $client_id, $dispatch) = @_;
-	my $fail = sub { $dispatch->(undef, $destination, $client_id) };
-
-	$self->info_store->claim_and_retrieve($destination, $client_id, sub {
-		my ($message, $destination, $client_id) = @_;
-
-		return $fail->() unless $message;
-
-		my $body = $self->pending_writes->{$message->id};
-
-		# check to see if we even finished writing to disk
-		if ( $body )
-		{
-			$self->log('debug', 
-				sprintf('Dispatching message %s before disk write', $message->id));
-			$message->body($body);
-
-			$dispatch->($message, $destination, $client_id);
-			return;
-		}
-		# pull the message body from disk
-		$poe_kernel->post($self->session, '_read_message_from_disk', $message->id,
-			sub {
-				if (my $body = $_[0])
-				{
-					$message->body($body);
-					$dispatch->($message, $destination, $client_id);
-					return;
-				}
-				$self->log('warning', 
-					sprintf("Can't find message %s!  Discarding", $message->id));
-				$self->remove([$message->id]);
-				$fail->();
-			},
-		);
-	});
+	$self->info_store->empty($callback);
 }
 
 sub storage_shutdown
@@ -318,18 +312,11 @@ sub storage_shutdown
 	$self->info_store->storage_shutdown(sub {
 		return if ($self->live_session);
 		$self->stop_shutdown();
-		$complete->();
+		goto $complete if $complete;
 	});
 
 	# Session will die when it runs out of wheels now.
 	$poe_kernel->post($self->alias, '_shutdown');
-}
-
-#
-# For handling responses from database:
-#
-sub _dispatch_message
-{
 }
 
 #
@@ -399,7 +386,11 @@ sub _read_message_from_disk
 
 	# if we can't find the message body.  This usually happens as a result
 	# of crash recovery.
-	return $callback->(undef) unless ($fh);
+	unless ($fh)
+	{
+		@_ = (undef);
+		goto $callback;
+	}
 	
 	my $wheel = POE::Wheel::ReadWrite->new(
 		Handle       => $fh,
@@ -454,7 +445,8 @@ sub _read_error
 		$self->_unlink_file($id) if ($info->{delete_me});
 
 		# send the message out!
-		$callback->($body);
+		@_ = ($body);
+		goto $callback;
 	}
 	else
 	{

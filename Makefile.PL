@@ -28,6 +28,8 @@ requires 'IO::File';
 requires 'Carp';
 requires 'Best';
 requires 'YAML';
+requires 'Heap';
+requires 'Heap::Fibonacci';
 
 recommends 'YAML::Syck';
 

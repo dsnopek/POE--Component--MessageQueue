@@ -17,6 +17,29 @@
 
 package POE::Component::MessageQueue::Storage::Double;
 use Moose::Role;
+
+# These guys just call a method on both front and back stores and have a
+# simple no-arg completion callback.  No reason to write them all!
+foreach my $method qw(remove empty claim disown_destination disown_all)
+{
+	__PACKAGE__->meta->alias_method($method, sub {
+		my $self = shift;
+		my $last = pop;
+		if(ref $last eq 'CODE')
+		{
+			my @args = @_;
+			$self->front->$method(@args, sub {
+				$self->back->$method(@args, $last);
+			});
+		}
+		else
+		{
+			$self->front->$method(@_, $last);
+			$self->back->$method(@_, $last);
+		}
+	});
+}
+
 with qw(POE::Component::MessageQueue::Storage);
 use POE::Component::MessageQueue::Storage::BigMemory;
 
@@ -39,76 +62,77 @@ after 'set_logger' => sub {
 	$self->back->set_logger($logger);
 };
 
-sub _remove_underneath
+sub get
 {
-	my ($front, $back, $cb) = @_;
-	if ($cb)
-	{
-		$front->(sub {
-			my $fronts = $_[0];
-			$back->(sub {
-				my $backs = $_[0];
-				push(@$fronts, @$backs);
-				$cb->($fronts);
+	my ($self, $ids, $callback) = @_;
+	my %to_get = map {$_ => 1} @$ids;
+	$self->front->get($ids, sub {
+		my $got = $_[0];
+		delete $to_get{$_->id} foreach (@$got);
+		my @back_ids = keys %to_get;
+		if(@back_ids > 0)
+		{
+			$self->back->get(\@back_ids, sub {
+				push(@$got, @{$_[0]});
+				@_ = ($got);
+				goto $callback;
 			});
-		});
-	}
-	else
-	{
-		$front->();
-		$back->();
-	}
-	return;
-}
-
-# We'll call remove_multiple on the full range of ids - well-behaved stores
-# will just ignore IDs they don't have.
-sub remove
-{
-	my ($self, $ids, $cb) = @_;
-	_remove_underneath(
-		sub { $self->front->remove($ids, shift) },
-		sub { $self->back ->remove($ids, shift) },
-		$cb
-	);
-	return;
-}
-
-sub empty
-{
-	my ($self, $cb) = @_;
-	_remove_underneath(
-		sub { $self->front->empty(shift) },
-		sub { $self->back ->empty(shift) },
-		$cb
-	);
-	return;
-}
-
-sub claim_and_retrieve
-{
-	my ($self, $destination, $client_id, $dispatch) = @_;
-
-	$self->front->claim_and_retrieve($destination, $client_id, sub {
-		if (my $message = $_[0])
-		{
-			$dispatch->($message, $destination, $client_id);
 		}
-		else
+		else # Avoided a backstore call.  Efficiency!
 		{
-			$self->back->claim_and_retrieve(
-				$destination, $client_id, $dispatch);
+			@_ = ($got);
+			goto $callback; 
 		}
 	});
 }
 
-# unmark all messages owned by this client
-sub disown
+sub get_all
 {
-	my ($self, @args) = @_;
+	my ($self, $callback) = @_;
+	my %messages; # store in a hash to ensure uniqueness
+	$self->front->get_all(sub {
+		$messages{$_->id} = $_ foreach @{$_[0]};
+		$self->back->get_all(sub {
+			$messages{$_->id} = $_ foreach @{$_[0]};
+			@_ = ([values %messages]);
+			goto $callback;	
+		});
+	});
+}
 
-	$self->front->disown(@args);
-	$self->back->disown(@args);
+sub get_oldest
+{
+	my ($self, $callback) = @_;
+	$self->front->get_oldest(sub {
+		my $f = $_[0];
+		$self->back->get_oldest(sub {
+			my $b = $_[0];
+			@_ = (
+				($f && $b) ? 
+				($f->timestamp < $b->timestamp ? $f : $b) :
+				($f || $b)
+			);
+			goto $callback;
+		});
+	});
+}
+
+sub claim_and_retrieve
+{
+	my ($self, $destination, $client_id, $callback) = @_;
+	$self->front->claim_and_retrieve($destination, $client_id, sub {
+		if (my $got = $_[0])
+		{
+			$self->back->claim($got->id, $client_id, sub { 
+				@_ = ($got);
+				goto $callback;
+			});
+		}
+		else
+		{
+			$self->back->claim_and_retrieve($destination, $client_id, $callback);
+		}
+	});
 }
 
 1;
@@ -125,7 +149,7 @@ stores.
 =head1 DESCRIPTION
 
 Refactor mercilessly, as they say.  They also say don't repeat yourself.  This
-module contains the functionality of any store that is a composition of two 
+module contains functionality for any store that is a composition of two 
 stores.  At least Throttled and Complex share this trait, and it doesn't make 
 any sense to duplicate code between them.
 
