@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Note: This is not currently part of the test suite.
+
 PERL_PATH=lib
 TESTS="Storage/DBI.pm"
 

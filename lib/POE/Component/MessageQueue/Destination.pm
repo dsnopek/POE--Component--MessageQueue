@@ -15,7 +15,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-package POE::Component::MessageQueue::Place;
+package POE::Component::MessageQueue::Destination;
 use Moose::Role;
 
 has 'parent' => (
@@ -35,7 +35,7 @@ has 'name' => (
 	required => 1,
 );
 
-requires qw(destination send is_persistent);
+requires qw(send is_persistent pump);
 
 1;
 

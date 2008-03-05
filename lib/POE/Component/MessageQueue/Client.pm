@@ -1,4 +1,4 @@
-#
+
 # Copyright 2007, 2008 David Snopek <dsnopek@gmail.com>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -44,37 +44,30 @@ make_immutable;
 
 sub subscribe
 {
-	my ($self, $place, $ack_type) = @_;
+	my ($self, $destination, $ack_type) = @_;
 
 	my $subscription = POE::Component::MessageQueue::Subscription->new(
-		place    => $place,
-		client   => $self,
-		ack_type => $ack_type,	
+		destination => $destination,
+		client      => $self,
+		ack_type    => $ack_type,	
 	);
 
-	$self->subscriptions->{$place->destination} = $subscription;
-	$place->subscriptions->{$self->id} = $subscription;
+	$self->subscriptions->{$destination->name} = $subscription;
+	$destination->subscriptions->{$self->id} = $subscription;
 	return $subscription;
 }
 
 sub unsubscribe
 {
-	my ($self, $place) = @_;
+	my ($self, $destination) = @_;
 
-	delete $self->subscriptions->{$place->destination};
-	delete $place->subscriptions->{$self->id};
+	delete $self->subscriptions->{$destination->name};
+	delete $destination->subscriptions->{$self->id};
 
-	if ($place->is_persistent)
+	if ($destination->is_persistent)
 	{
-		$place->storage->disown_destination($place->destination, $self->id);
+		$destination->storage->disown_destination($destination->name, $self->id);
 	}
-}
-
-sub unsubscribe_all
-{
-	my $self = $_[0];
-	$self->unsubscribe($_) foreach 
-		(map {$_->place} (values %{$self->subscriptions}));
 }
 
 sub send_frame

@@ -25,9 +25,9 @@ has 'client' => (
 	required => 1,
 );
 
-has 'place' => (
+has destination => (
 	is       => 'ro',
-	does     => 'POE::Component::MessageQueue::Place',
+	does     => 'POE::Component::MessageQueue::Destination',
 	weak_ref => 1,
 	required => 1,
 );
