@@ -139,10 +139,14 @@ sub reaverage {
 sub get_destination
 {
 	my ($self, $data) = @_;
-	my $place = $data->{place};
-	return $place->isa('POE::Component::MessageQueue::Queue') ?
-		$self->get_queue($place->name) :
-		$self->get_topic($place->name);
+	my $d = $data->{destination};
+	if ($d->name =~ m{/.*/(.*)})
+	{
+		return $d->isa('POE::Component::MessageQueue::Queue') ?
+		                                 $self->get_queue($1) :
+		                                 $self->get_topic($1) ;
+	}
+	return;
 }
 
 sub notify_recv
@@ -178,13 +182,13 @@ sub message_handled
 
 	# Topics don't count. :)
 	$stats->{stored}-- 
-		unless $data->{place}->isa('POE::Component::MessageQueue::Topic');
+		unless $data->{destination}->isa('POE::Component::MessageQueue::Topic');
 
 	# We check if timestamp is set, because it might not be, in the specific
 	# case where the database was upgraded from pre-0.1.6.
 	# Topics don't get stored, so this doesn't make sense for them.
 	if ( $info->{timestamp} && 
-			 $data->{place}->isa('POE::Component::MessageQueue::Queue'))
+			 $data->{destination}->isa('POE::Component::MessageQueue::Queue'))
 	{
 		# recalc the average
 		$stats->{avg_secs_stored} = reaverage(
@@ -198,16 +202,15 @@ sub message_handled
 sub notify_dispatch
 {
 	my ($self, $data) = @_;
-	my $place = $data->{place};
+	my $d = $data->{destination};
 
-	if ($place->isa('POE::Component::MessageQueue::Topic'))
+	if ($d->isa('POE::Component::MessageQueue::Topic'))
 	{
 		$self->message_handled($data);
 		return;
 	}
 
-	my $destination = $place->destination;
-	my $subscriber = $data->{client}->subscriptions->{$destination};
+	my $subscriber = $data->{client}->subscriptions->{$d->name};
 
 	if ($subscriber->ack_type eq 'auto') 
 	{
@@ -218,9 +221,9 @@ sub notify_dispatch
 sub notify_ack {
 	my ($self, $data) = @_;
 
-	my $place = $data->{place};
+	my $d = $data->{destination};
 	my $client = $data->{client};
-	my $subscriber = $client->subscriptions->{$place->destination};
+	my $subscriber = $client->subscriptions->{$d->name};
 
 	if ($subscriber->ack_type eq 'client') 
 	{

@@ -18,11 +18,7 @@
 package POE::Component::MessageQueue::Topic;
 use Moose;
 
-sub destination { return '/topic/'.$_[0]->name };
-sub is_persistent { return 0 }
-
-with qw(POE::Component::MessageQueue::Place);
-
+with qw(POE::Component::MessageQueue::Destination);
 make_immutable;
 
 sub send
@@ -36,6 +32,11 @@ sub send
 
 	return;
 }
+
+sub is_persistent { return 0 }
+
+# These do nothing now, but they may someday
+sub pump {}
 
 1;
 
