@@ -18,24 +18,31 @@
 package POE::Component::MessageQueue::Destination;
 use Moose::Role;
 
-has 'parent' => (
+has parent => (
 	is       => 'ro',
 	required => 1,
 	handles  => [qw(log notify storage dispatch_message)],
 );
 
-has 'subscriptions' => (
-	is      => 'ro',
-	isa     => 'HashRef',
+has subscriptions => (
+	metaclass => 'Collection::Hash',
+	is => 'ro',
+	isa => 'HashRef[POE::Component::MessageQueue::Subscription]',
 	default => sub { {} },
+	provides => {
+		'set'    => 'set_subscription',
+		'get'    => 'get_subscription',
+		'delete' => 'delete_subscription',
+		'values' => 'all_subscriptions',
+	},
 );
 
-has 'name' => (
+has name => (
 	is       => 'ro',
 	required => 1,
 );
 
-requires qw(send is_persistent pump);
+requires qw(send is_persistent pump shutdown);
 
 1;
 

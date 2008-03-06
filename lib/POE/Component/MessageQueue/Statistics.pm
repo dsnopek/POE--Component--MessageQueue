@@ -210,7 +210,7 @@ sub notify_dispatch
 		return;
 	}
 
-	my $subscriber = $data->{client}->subscriptions->{$d->name};
+	my $subscriber = $data->{client}->get_subscription($d->name);
 
 	if ($subscriber->ack_type eq 'auto') 
 	{

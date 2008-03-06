@@ -17,40 +17,98 @@
 
 package POE::Component::MessageQueue::Queue;
 
-use POE::Component::MessageQueue::Subscription;
+use List::Util qw(first);
 use POE;
 use POE::Session;
 use Moose;
 
 with qw(POE::Component::MessageQueue::Destination);
+
+use constant flag => (is => 'rw', default => 0);
+has pumping => flag;
+has pump_pending => flag;
+has shutting_down => flag;
+
 make_immutable;
 
+sub BUILD
+{
+	my ($self, $args) = @_;
+	POE::Session->create(
+		object_states => [ $self => [qw(_start _shutdown _subloop)]],
+	);
+}
+
+sub _start
+{
+	my ($self, $kernel) = @_[OBJECT, KERNEL];
+	$kernel->alias_set($self->name);
+}
+
+sub shutdown { $poe_kernel->post($_[0]->name, '_shutdown') }
+sub _shutdown
+{
+	my ($self, $kernel) = @_[OBJECT, KERNEL];
+	$self->shutting_down(1);
+	$kernel->alias_remove($self->name);
+}
+
+# This is the pumping philosophy:  When we receive a pump request, we will
+# give everyone a chance to claim a message.  If any pumps are asked for while
+# this is happening, we will remember and do another pump when this one is
+# finished (just one).
+
 sub is_persistent { return 1 }
+
+sub _subloop
+{
+	my ($self, $subs) = @_[OBJECT, ARG0];
+	return if $self->shutting_down;
+	my $s; while ($s = shift(@$subs)) { last if $s->ready };
+	if($s && $s->client)
+	{
+		$s->ready(0);
+		$self->storage->claim_and_retrieve($self->name, $s->client->id, sub {
+			if (my $msg = $_[0])
+			{
+				$self->dispatch_message($msg, $s);
+				$poe_kernel->post($self->name, _subloop => $subs);
+			}
+			else
+			{
+				$s->ready(1);
+				$self->_done_pumping();
+			}
+		});
+	}
+	else
+	{
+		$self->_done_pumping();
+	}
+}
+
+sub _done_pumping
+{
+	my $self = $_[0];
+	$self->pumping(0);
+	$self->pump() if $self->pump_pending;
+}
 
 sub pump
 {
 	my $self = $_[0];
-
-	$self->log('debug', sprintf(" -- PUMP QUEUE: %s -- ", $self->name));
-	$self->notify('pump');
-
-	foreach my $subscriber (grep {$_->ready} (values %{$self->subscriptions}))
+	if($self->pumping)
 	{
-		$subscriber->ready(0);
-		$self->storage->claim_and_retrieve(
-			$self->name, 
-			$subscriber->client->id, 
-			sub {
-				if(my $message = $_[0])
-				{
-					$self->dispatch_message($message, $subscriber);	
-				}
-				else
-				{
-					$subscriber->ready(1);
-				}
-			},
-		);
+		$self->pump_pending(1);
+	}
+	else
+	{
+		$self->log(debug => ' -- PUMP QUEUE: '.$self->name.' -- ');
+		$self->notify('pump');
+		my @subs = $self->all_subscriptions;
+		$self->pump_pending(0);
+		$self->pumping(1);
+		$poe_kernel->post($self->name, '_subloop', \@subs);
 	}
 }
 
@@ -60,23 +118,19 @@ sub send
 
 	# If we already have a ready subscriber, we'll claim and dispatch before we
 	# store to give the subscriber a headstart on processing.
-	foreach my $subscriber (values %{$self->subscriptions})
+	if (my $subscriber = first {$_->ready} $self->all_subscriptions)
 	{
-		if ($subscriber->ready)
-		{
-			my $cid = $subscriber->client->id;
-			my $mid = $message->id;
-			$message->claim($cid);
-			$self->log('info', 
-				"QUEUE: Message $mid claimed by client $cid during enqueue");
-
-			$self->dispatch_message($message, $subscriber);
-			last;
-		}
+		my $cid = $subscriber->client->id;
+		$message->claim($cid);
+		$self->log(info => 
+			'QUEUE: Message '.$message->id." claimed by $cid during send");
+		$self->dispatch_message($message, $subscriber);
 	}
 
-	$self->storage->store($message, sub {$self->pump()});
-	$self->notify('store', { destination => $self, message => $message });
+	$self->storage->store($message, sub {
+		$self->notify(store => { destination => $self, message => $message });
+		$self->pump();
+	});
 }
 
 1;

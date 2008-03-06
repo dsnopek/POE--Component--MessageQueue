@@ -24,27 +24,25 @@ use POE;
 # Use Time::HiRes's time() if available (more accurate timeouts)
 BEGIN { eval { require Time::HiRes; Time::HiRes->import qw(time); } };
 
-has 'timeout' => (
+has timeout => (
 	is       => 'ro',
 	isa      => 'Int',
 	required => 1,
 );
 
-has 'granularity' => (
+has granularity => (
 	is       => 'ro',
 	isa      => 'Int',
 	required => 1,
 );
 
-has 'alias' => (
+has alias => (
 	is       => 'ro',
 	default  => 'MQ-Expire-Timer',
 	required => 1,
 );
 
-has 'session' => (is => 'rw');
-
-has 'front_size' => (
+has front_size => (
 	metaclass => 'Number',
 	is        => 'rw',
 	isa       => 'Int',
@@ -55,7 +53,7 @@ has 'front_size' => (
 	},
 );
 
-has 'front_max' => (
+has front_max => (
 	is       => 'ro',
 	isa      => 'Int', 
 	required => 1,
@@ -63,7 +61,7 @@ has 'front_max' => (
 
 # All messages that currently reside in the front-store have timestamps.  If
 # they've been persisted, their timestamps are zero.
-has 'timestamps' => (
+has timestamps => (
 	metaclass => 'Collection::Hash',
 	is        => 'ro', 
 	isa       => 'HashRef[Num]',
@@ -72,17 +70,18 @@ has 'timestamps' => (
 		'set'    => 'set_timestamp',
 		'get'    => 'get_timestamp',
 		'delete' => 'delete_timestamp',
+		'clear'  => 'clear_timestamps',
 		'exists' => 'has_timestamp',
 		'kv'     => 'timestamp_pairs',
-	};	
+	},	
 );
 
-has 'shutting_down' => (
+has shutting_down => (
 	is       => 'rw',
 	default  => 0, 
 );
 
-around 'remove' => sub {
+around remove => sub {
 	my $original = shift;
 	my ($self, $arg, $callback) = @_;
 	# We're wrapping Storage's wrapped method, so $arg can still be either
@@ -97,7 +96,7 @@ around 'remove' => sub {
 		my $messages = $_[0];
 		foreach my $msg (@$messages)
 		{
-			$self->delete_timestamp->($msg->id);
+			$self->delete_timestamp($msg->id);
 			$self->less_front($msg->size);
 		}
 		@_ = ($self, $aref, $callback);
@@ -105,9 +104,9 @@ around 'remove' => sub {
 	});
 };
 
-before 'empty' => sub {
+before empty => sub {
 	my ($self) = @_;
-	%{$self->timestamps} = ();
+	$self->clear_timestamps();
 	$self->front_size(0);
 };
 
@@ -116,9 +115,9 @@ make_immutable;
 sub BUILD 
 {
 	my $self = shift;
-	$self->session(POE::Session->create(
-		object_states => [ $self => [qw(_start _expiration_check)] ],
-	));
+	POE::Session->create(
+		object_states => [ $self => [qw(_start _expiration_check _push_messages)] ],
+	);
 	$self->children({FRONT => $self->front, BACK => $self->back});
 	$self->add_names qw(COMPLEX);
 }
@@ -143,7 +142,7 @@ sub _bump_messages
 
 			$self->less_front($message->size);
 
-			my $timestamp = $self->delete_timestamp->($message->id);
+			my $timestamp = $self->delete_timestamp($message->id);
 
 			$self->log('info', 'Message '.$message->id.' bumped from frontstore.');
 			$self->front->remove($message->id, 
@@ -161,10 +160,9 @@ sub store
 
 	$self->front->store($message, sub {
 		$self->more_front($message->size);
-		$self->set_timestamp->(
-			$message->id => ($message->persistent ? time() : 0)
-		); 
-		$poe_kernel->post($self->session, '_expiration_check');
+		my $stamp = ($message->persistent ? time() : 0);
+		$self->set_timestamp($message->id, $stamp);
+		$poe_kernel->post($self->alias, '_expiration_check');
 		$self->_bump_messages($callback);
 	});
 }
@@ -181,9 +179,9 @@ sub expire_messages
 
 	my $idstr = join(', ', @$message_ids);
 	$self->log(info => "Pushing expired messages ($idstr) to backstore.");
-	$self->set_timestamp(map {$_ => 0} @$message_ids);
+	$self->set_timestamp(map {($_ => 0)} @$message_ids);
 	$self->front->get($message_ids, sub {
-		$self->_push_message_array($_[0], $callback);
+		$poe_kernel->post($self->alias, _push_messages => $_[0], $callback);
 	});
 }
 
@@ -194,6 +192,7 @@ sub _expiration_check
 	return if $self->shutting_down;
 
 	my $thresh = time() - $self->timeout;
+
 	my @expired = map  {$_->[0]} 
 	              grep {my $s = $_->[1]; $s > 0 && $s < $thresh} 
 	              $self->timestamp_pairs;
@@ -201,19 +200,21 @@ sub _expiration_check
 	# We want to avoid checking again until the expires from the last check have
 	# finished, so we wait to set the alarm.
 	my $at = time() + $self->granularity;
-	$self->expire_messages(\@expired, sub {
-		$kernel->alarm('_expiration_check', $at);
-	});
+	my $next_check = sub { $kernel->alarm(_expiration_check => $at) };
+
+	# Just set the alarm unless we have some expired messages
+	goto $next_check unless (@expired > 0);
+
+	$self->expire_messages(\@expired, $next_check);
 }
 
-sub _push_message_array
+sub _push_messages
 {
-	my ($self, $messages, $callback) = @_;	
+	my ($self, $messages, $callback) = @_[OBJECT, ARG0..ARG1];
 	if(my $msg = pop(@$messages))
 	{
 		$self->back->store($msg, sub {
-			@_ = ($self, $messages, $callback);
-			goto &_push_message_array;
+			$poe_kernel->post($self->alias, _push_messages => $messages, $callback);
 		});
 	}
 	else
@@ -237,12 +238,12 @@ sub storage_shutdown
 		my $message_aref = $_[0];
 
 		# Persistent messages that have a non-zero timestamp.
-		my @messages = grep {$_->persistent && $self->get_timestamp->($_->id)} 
+		my @messages = grep {$_->persistent && $self->get_timestamp($_->id)} 
 		               @$message_aref;
 		
 		my $idstr = join(', ', map $_->id, @messages);
 		$self->log(info => "Moving messages $idstr into backstore.");
-		$self->_push_message_array(\@messages, sub {
+		$poe_kernel->post($self->alias, _push_messages => \@messages, sub {
 			$self->front->empty(sub {
 				$self->front->storage_shutdown(sub {
 					$self->back->storage_shutdown($complete)

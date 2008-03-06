@@ -17,28 +17,35 @@
 
 package POE::Component::MessageQueue::Client;
 use Moose;
-
+use MooseX::AttributeHelpers;
 use POE::Component::MessageQueue::Subscription;
 use POE::Kernel;
 
-has 'subscriptions' => (
+has subscriptions => (
+	metaclass => 'Collection::Hash',
 	is => 'ro',
-	isa => 'HashRef',
+	isa => 'HashRef[POE::Component::MessageQueue::Subscription]',
 	default => sub { {} },
+	provides => {
+		'set'    => 'set_subscription',
+		'get'    => 'get_subscription',
+		'values' => 'all_subscriptions',
+		'delete' => 'delete_subscription',
+	},
 );
 
-has 'id' => (
+has id => (
 	is       => 'ro',
 	required => 1,
 );
 
-has 'connected' => (
+has connected => (
 	is => 'rw',
 	default => 0,
 );
 
-has 'login' => (is => 'rw');
-has 'passcode' => (is => 'rw');
+has login => (is => 'rw');
+has passcode => (is => 'rw');
 
 make_immutable;
 
@@ -52,8 +59,8 @@ sub subscribe
 		ack_type    => $ack_type,	
 	);
 
-	$self->subscriptions->{$destination->name} = $subscription;
-	$destination->subscriptions->{$self->id} = $subscription;
+	$self->set_subscription($destination->name => $subscription);
+	$destination->set_subscription($self->id   => $subscription);
 	return $subscription;
 }
 
@@ -61,8 +68,8 @@ sub unsubscribe
 {
 	my ($self, $destination) = @_;
 
-	delete $self->subscriptions->{$destination->name};
-	delete $destination->subscriptions->{$self->id};
+	$self->delete_subscription($destination->name);
+	$destination->delete_subscription($self->id);
 
 	if ($destination->is_persistent)
 	{

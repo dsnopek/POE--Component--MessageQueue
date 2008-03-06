@@ -31,17 +31,9 @@ $mq->set_always(storage => $storage);
 {
 	my $ack_type = 'client';
 	my $notify   = Event::Notify->new;
-	my @clients;
-	foreach my $client_id (1..2) {
-		my $client   = Test::MockObject->new;
-		$client->set_isa qw(POE::Component::MessageQueue::Client);
-		$client->mock(id => sub { $client_id });
-		$client->mock(subscriptions => sub { $_[0]->{subscriptions} ||= {} });
-		$client->mock(subscribe => 
-			sub {POE::Component::MessageQueue::Client::subscribe(@_)}
-		);
-		push @clients, $client;
-	}
+	my @clients  = map {Test::MockObject::Extends->new(
+		POE::Component::MessageQueue::Client->new(id => $_)
+	)} (1..2);
 
 	local $mq->{notify} = $notify;
 	$storage->mock(claim_and_retrieve => sub {
@@ -79,7 +71,8 @@ $mq->set_always(storage => $storage);
 		} );
 		$storage->mock(store => sub {
 			my ($self, $msg) = @_;
-			is($msg->id, $message_id, "got the right message ($msg->{message_id} <-> $message_id)");
+			my $id = $msg->id;
+			is($id, $message_id, "got the right message ($id <-> $message_id)");
 		} );
 		$queue->send($message);
 
