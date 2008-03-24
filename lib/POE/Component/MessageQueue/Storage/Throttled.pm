@@ -57,6 +57,7 @@ sub _backstore_ready
 		{
 			my $id = $msg->id;
 			$self->log(info => "Sending throttled message $id");
+			$self->delete_front($id);
 			$self->front->remove($id, sub {
 				$self->back->store($msg, sub {
 					@_ = ($self);
@@ -75,6 +76,7 @@ sub _backstore_ready
 sub store
 {
 	my ($self, $message, $callback) = @_;
+	my $id = $message->id;
 	if ($self->sent < $self->throttle_max)
 	{
 		$self->inc_sent();
@@ -87,6 +89,7 @@ sub store
 	}
 	else
 	{
+		$self->set_front($id => {persisted => 0});
 		$self->front->store($message, $callback);
 	}
 }

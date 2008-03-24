@@ -17,10 +17,11 @@
 
 package POE::Component::MessageQueue::Storage::Double;
 use Moose::Role;
+use MooseX::AttributeHelpers;
 
 # These guys just call a method on both front and back stores and have a
 # simple no-arg completion callback.  No reason to write them all!
-foreach my $method qw(remove empty claim disown_destination disown_all)
+foreach my $method qw(empty disown_destination disown_all)
 {
 	__PACKAGE__->meta->alias_method($method, sub {
 		my $self = shift;
@@ -43,17 +44,33 @@ foreach my $method qw(remove empty claim disown_destination disown_all)
 with qw(POE::Component::MessageQueue::Storage);
 use POE::Component::MessageQueue::Storage::BigMemory;
 
-has 'front' => (
+has front => (
 	is       => 'ro',
 	does     => qw(POE::Component::MessageQueue::Storage),
 	default  => sub {POE::Component::MessageQueue::Storage::BigMemory->new()},
 	required => 1,
 );
 
-has 'back' => (
+has back => (
 	is       => 'ro',
 	does     => qw(POE::Component::MessageQueue::Storage),
 	required => 1,
+);
+
+# Any true value for a given ID means the message is in the front store.
+# (value may be useful data, like message size)
+has front_info => (
+	metaclass => 'Collection::Hash',
+	is => 'ro',
+	isa => 'HashRef',
+	default => sub { {} },
+	provides => {
+		'exists' => 'in_front',
+		'get'    => 'get_front',
+		'set'    => 'set_front',
+ 		'clear'  => 'clear_front',
+		'delete' => 'delete_front',
+	},
 );
 
 after 'set_logger' => sub {
@@ -62,27 +79,89 @@ after 'set_logger' => sub {
 	$self->back->set_logger($logger);
 };
 
+sub in_back 
+{
+	my ($self, $id) = @_;
+	return 1 unless $self->in_front($id);
+	return $self->get_front($id)->{persisted};
+}
+
+sub _split_ids
+{
+	my ($self, $ids) = @_;
+	my (@fids, @bids);
+	foreach my $id (@$ids)
+	{
+		push (@fids, $id) if $self->in_front($id);
+		push (@bids, $id) if $self->in_back($id);
+	}
+	return (\@fids, \@bids);
+}
+
+sub _doboth
+{
+	my ($self, $ids, $do_front, $do_back, $callback) = @_;
+	my ($fids, $bids) = $self->_split_ids($ids);
+
+	if (@$fids && @$bids)
+	{
+		$do_front->($fids, sub {$do_back->($bids, $callback)});
+	}
+	elsif(@$fids)
+	{
+		$do_front->($fids, $callback);
+	}
+	elsif(@$bids)
+	{
+		$do_back->($bids, $callback);
+	}
+	else
+	{
+		goto $callback;
+	}
+}
+
+sub remove
+{
+	my ($self, $aref, $callback) = @_;
+	$self->_doboth(
+		$aref, 
+		sub {
+			my ($ids, $callback) = @_;
+			$self->delete_front($ids);
+			$self->front->remove($ids, $callback);
+		},
+		sub {
+			my ($ids, $callback) = @_;
+			$self->back->remove($ids, $callback);
+		},
+		$callback,
+	);
+}
+
+sub claim
+{
+	my ($self, $aref, $client, $callback) = @_;
+	$self->_doboth(
+		$aref,
+		sub {$self->front->claim($_[0], $client, $_[1])},
+		sub {$self->back ->claim($_[0], $client, $_[1])},
+	  $callback,
+	);
+}
+
 sub get
 {
 	my ($self, $ids, $callback) = @_;
-	my %to_get = map {$_ => 1} @$ids;
-	$self->front->get($ids, sub {
-		my $got = $_[0];
-		delete $to_get{$_->id} foreach (@$got);
-		my @back_ids = keys %to_get;
-		if(@back_ids > 0)
-		{
-			$self->back->get(\@back_ids, sub {
-				push(@$got, @{$_[0]});
-				@_ = ($got);
-				goto $callback;
-			});
-		}
-		else # Avoided a backstore call.  Efficiency!
-		{
-			@_ = ($got);
-			goto $callback; 
-		}
+	my ($fids, $bids) = $self->_split_ids($ids);
+	$self->front->get($fids, sub {
+		goto $callback unless @$bids; # Avoid backstore call
+		my $got_front = $_[0];
+		$self->back->get($bids, sub {
+			my $got_back = $_[0];
+			push(@$got_back, @$got_front);
+			goto $callback;
+		});
 	});
 }
 
@@ -120,11 +199,14 @@ sub get_oldest
 sub claim_and_retrieve
 {
 	my ($self, $destination, $client_id, $callback) = @_;
+
 	$self->front->claim_and_retrieve($destination, $client_id, sub {
-		if (my $got = $_[0])
+		if (my $msg = $_[0])
 		{
-			$self->back->claim($got->id, $client_id, sub { 
-				@_ = ($got);
+			# We don't need to claim unless it's in the backstore already
+			goto $callback unless ($self->in_back($msg->id));
+			$self->back->claim($msg->id, $client_id, sub {
+				@_ = ($msg);
 				goto $callback;
 			});
 		}
@@ -173,7 +255,8 @@ Takes a reference to a storage engine to use as the front store / back store.
 
 This isn't implemented because Complex and Throttled differ here.  Perhaps
 your storage differs here as well.  This is essentially where you specify
-policy about what goes in which store.
+policy about what goes in which store.  Be sure you update the front_info hash
+when you store something!
 
 =item storage_shutdown
 

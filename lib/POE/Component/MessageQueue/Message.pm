@@ -19,9 +19,8 @@ package POE::Component::MessageQueue::Message;
 use Moose;
 use Net::Stomp::Frame;
 
-# Use Time::HiRes's time() if available.  Without it, messages that are sent
-# rapidly may come out in an odd order.
-BEGIN { eval { require Time::HiRes; Time::HiRes->import qw(time); } };
+# Use Time::HiRes's time() if available for more accurate ordering. 
+eval q(require Time::HiRes qw(time));
 
 has 'id' => (
 	is       => 'ro',
@@ -37,6 +36,7 @@ has 'destination' => (
 
 has 'body' => (
 	is => 'rw',
+	clearer => 'delete_body',
 );
 
 has 'persistent' => (
@@ -53,26 +53,17 @@ has 'claimant' => (
 	clearer   => 'disown',
 );
 
-has 'size' => (
-	is      => 'rw',
-	isa     => 'Int',
-	lazy    => 1,
-	default => sub {length $_[0]->body},
-);
+# We can cache this if it's a bottleneck, but computing is simplest:
+sub size 
+{
+	return bytes::length($_[0]->body);
+}
 
 has 'timestamp' => (
 	is      => 'ro',
 	isa     => 'Num',
 	default => sub { time() },
 );
-
-after 'body' => sub {
-	my ($self, $newbody) = @_;
-	if (@_ > 1) 
-	{
-		$self->size(defined $newbody ? length($newbody) : 0)
-	}
-};
 
 make_immutable;
 
@@ -88,6 +79,12 @@ sub equals
 		return 0 unless ($one eq $two);
 	}
 	return 1;
+}
+
+sub clone
+{
+	my $self = $_[0];
+	return $self->meta->clone_object($self);
 }
 
 sub create_stomp_frame

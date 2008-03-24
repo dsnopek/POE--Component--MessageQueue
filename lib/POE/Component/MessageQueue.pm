@@ -223,9 +223,6 @@ sub _shutdown_complete
 	$self->log(alert => 'Shutting down the logger');
 	$self->logger->shutdown();
 
-	$self->log(alert => 'Shutting down all destinations');
-	$_->shutdown() foreach $self->all_destinations;
-
 	$self->log(alert => 'Shutting down all observers');
 	if (my $oref = $self->observers)
 	{
@@ -367,7 +364,6 @@ sub ack_message
 
 		if(my $d = $self->get_destination($msg->destination))
 		{
-			$d->pump();
 
 			$self->notify(ack => {
 				destination  => $d,
@@ -378,9 +374,8 @@ sub ack_message
 					size       => $msg->size,
 				}
 			});
+			$self->storage->remove($message_id, sub {$d->pump()});
 		}
-
-		$self->storage->remove($message_id);
 	});
 }
 
@@ -415,6 +410,9 @@ sub shutdown
 	$self->{shutdown} = 1;
 
 	$self->log('alert', 'Initiating message queue shutdown...');
+
+	$self->log(alert => 'Shutting down all destinations');
+	$_->shutdown() foreach $self->all_destinations;
 
 	# stop listening for connections
 	$poe_kernel->post( $self->alias => 'shutdown' );
