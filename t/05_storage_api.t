@@ -1,6 +1,5 @@
 use strict;
 use warnings;
-no warnings 'recursion'; # some of our loops look like recursion, but aren't
 use Test::More qw(no_plan);
 use File::Path;
 use POE;
@@ -11,6 +10,14 @@ use constant MQ_PREFIX => 'POE::Component::MessageQueue';
 use constant DATA_DIR  => '/tmp/mq_test';
 use constant DB_FILE   => DATA_DIR.'/mq.db';
 use constant DSN       => 'DBI:SQLite:dbname='.DB_FILE;
+
+# We -will- get recursion warnings the way these tests are written - if you
+# think there may be a bug involving runaway recursion, comment this out.
+$SIG{__WARN__} = sub {
+	my $m = shift;
+	return if($m =~ m/recursion/i);
+	warn $m;
+};
 
 my %engines;
 BEGIN {
@@ -68,6 +75,11 @@ sub make_engine {
 	# if things are failing! 
 	my $logger = POE::Component::MessageQueue::Logger->new;
 	$logger->set_log_function(sub{});
+	#sub{ # You can uncomment this stuff for debugging
+	#	my ($level, $message) = @_;
+	#	print STDERR "$level: $message\n" if $level eq 'error' || $level eq
+#'debug';
+	#});
 	$made->set_logger($logger);
 	return $made;
 }
@@ -191,7 +203,16 @@ sub api_test {
 				my $all_equal = 1;
 				foreach my $msg (@$aref)
 				{
-					$all_equal = 0 unless $msg->equals($messages{$msg->id});
+					my $compare = $messages{$msg->id};
+					unless ($msg->equals($compare))
+					{
+						use YAML;
+						print STDERR "Unexpected mismatch: got";
+						print STDERR Dump($msg);
+						print STDERR "expected";
+						print STDERR Dump($compare);
+						$all_equal = 0;
+					}
 				}
 				ok($all_equal && @$aref == scalar keys %messages, "$name: get_all");
 				goto $cb;
@@ -249,7 +270,7 @@ sub store_loop {
 	my $message = pop(@$messages);
 	
 	if ($message) {
-		$storage->store($message, sub {
+		$storage->store($message->clone, sub {
 			@_ = ($storage, $messages, $done);
 			goto &store_loop;
 		});	

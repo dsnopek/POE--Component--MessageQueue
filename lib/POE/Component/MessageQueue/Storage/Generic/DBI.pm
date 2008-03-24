@@ -196,12 +196,14 @@ sub get_oldest
 sub claim_and_retrieve
 {
 	my ($self, $destination, $client_id, $callback) = @_;
-	$self->_get_one(get_next => qq{
+	$self->_get_one(claim_and_retrieve => qq{
 		WHERE destination = '$destination' AND in_use_by IS NULL
 		ORDER BY timestamp ASC LIMIT 1
 	}, sub {
-		my $message = $_[0];
-		$self->claim($message->id, $client_id) if $message;
+		if(my $message = $_[0])
+		{
+			$self->claim($message->id, $client_id)
+		}
 		goto $callback;
 	});
 }

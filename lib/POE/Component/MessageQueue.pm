@@ -32,14 +32,14 @@ use Moose;
 
 use constant SHUTDOWN_SIGNALS => ('TERM', 'HUP', 'INT');
 
-has 'alias' => (
+has alias => (
 	is      => 'ro',
 	default => 'MQ',
 );
 
 sub master_alias { $_[0]->alias.'-master' }
 
-has 'logger'       => (
+has logger => (
 	is      => 'ro',
 	lazy    => 1,
 	default => sub {
@@ -51,30 +51,63 @@ has 'logger'       => (
 	handles => [qw(log)],
 );
 
-has 'notifier' => (
+has notifier => (
 	is => 'ro',
 	default => sub { Event::Notify->new() },
 	handles => [qw(notify register_event unregister_event)],
 );
 
-has 'idgen' => (
+has idgen => (
 	is => 'ro',
 	default => sub { POE::Component::MessageQueue::IDGenerator::UUID->new() },
 	handles => { generate_id => 'generate' },
 );
 
-use constant optional => (is => 'ro');
-has 'observers'    => optional;
-has 'logger_alias' => optional;
+has observers    => (is => 'ro');
+has logger_alias => (is => 'ro');
 
-has 'storage'  => (
+has storage  => (
 	is => 'ro', 
 	required => 1,
 );
 
-use constant empty_hashref => (is => 'ro', default => sub { {} });
-has clients      => empty_hashref;
-has destinations => empty_hashref;
+has clients => (
+	metaclass => 'Collection::Hash',
+	isa       => 'HashRef[POE::Component::MessageQueue::Client]',
+	default   => sub { {} },
+	provides  => {
+		'get'    => 'get_client',
+		'delete' => 'remove_client',
+		'set'    => 'set_client',
+		'keys'   => 'all_client_ids',
+	}
+);
+
+after remove_client => sub {
+	my ($self, $id, $done) = @_; # done is optional 
+	my $client = $self->get_client($id) || return;
+
+	$self->log(notice => "MASTER: Removing client $id");
+	
+	$client->unsubscribe($_->destination) foreach $client->all_subscriptions;
+
+	# shutdown TCP connection
+	$client->shutdown();
+	$self->storage->disown_all($id, $done);
+};
+	
+has destinations => (
+	metaclass => 'Collection::Hash',
+	isa       => 'HashRef[POE::Component::MessageQueue::Destination]',
+	default   => sub { {} },
+	provides  => {
+		'get'    => 'get_destination',
+		'set'    => 'set_destination',
+		'values' => 'all_destinations',
+	}
+);
+
+make_immutable;
 
 sub BUILD
 {
@@ -102,7 +135,7 @@ sub BUILD
 
 	# a custom session for non-STOMP responsive tasks
 	POE::Session->create(
-		object_states => [ $self => [qw(_start _shutdown _pump)] ],
+		object_states => [ $self => [qw(_start _shutdown)] ],
 	);
 }
 
@@ -120,51 +153,23 @@ sub _start
 	}
 }
 
-sub _pump
-{
-	my $destination = $_[ARG0];
-	$destination->pump();
-}
-
-sub get_or_make_destination
+sub make_destination
 {
 	my ($self, $name) = @_;
-	if (my $got = $self->destinations->{$name})
-	{
-		return $got;
-	}
-
 	my @args = (name => $name, parent => $self);
+	my $dest;
+
 	if ($name =~ m{/queue/})
 	{
-		return $self->destinations->{$name} = 
-			POE::Component::MessageQueue::Queue->new(@args);
+		$dest = POE::Component::MessageQueue::Queue->new(@args);
 	}
-
-	if ($name =~ m{/topic/})
+	elsif ($name =~ m{/topic/})
 	{
-		return $self->destinations->{$name} = 
-			POE::Component::MessageQueue::Topic->new(@args);
+		$dest = POE::Component::MessageQueue::Topic->new(@args);
 	}
 
-	return;
-}
-
-sub remove_client
-{
-	my ($self, $client, $done) = @_; # done is optional 
-	my $id = $client->id;
-
-	$self->log( 'notice', "MASTER: Removing client $id" );
-	
-	delete $self->clients->{$id};
-
-	$client->unsubscribe($_->destination) 
-		foreach values %{$client->subscriptions};
-
-	# shutdown TCP connection
-	$client->shutdown();
-	$self->storage->disown_all($id, $done);
+	$self->set_destination($name => $dest) if $dest;
+	return $dest;
 }
 
 sub _handle_frame
@@ -174,8 +179,12 @@ sub _handle_frame
 
 	my $id = $kernel->get_active_session()->ID();
 
-	my $client = ($self->clients->{$id} ||=
-		POE::Component::MessageQueue::Client->new(id => $id));
+	my $client = $self->get_client($id);
+	unless ($client)
+	{
+		$client = POE::Component::MessageQueue::Client->new(id => $id);
+		$self->set_client($id => $client);
+	}
 
 	$self->route_frame($client, $frame);
 }
@@ -186,8 +195,7 @@ sub _client_disconnected
 	my ($kernel, $heap) = @_[ KERNEL, HEAP ];
 
 	my $id = $kernel->get_active_session()->ID();
-	my $client = $self->clients->{$id};
-	$self->remove_client($client) if $client;
+	$self->remove_client($id);;
 }
 
 sub _client_error
@@ -212,11 +220,10 @@ sub _shutdown_complete
 	$poe_kernel->signal( $self->alias, 'TERM' );
 	$poe_kernel->signal( $self->master_alias, 'TERM' );
 
-	# shutdown the logger
-	$self->log('alert', 'Shutting down the logger');
+	$self->log(alert => 'Shutting down the logger');
 	$self->logger->shutdown();
 
-	# Shutdown anyone watching us
+	$self->log(alert => 'Shutting down all observers');
 	if (my $oref = $self->observers)
 	{
 		$_->shutdown() foreach (@$oref);
@@ -240,7 +247,7 @@ sub route_frame
 
 		DISCONNECT => sub {
 			$self->log( 'notice', "RECV ($cid): DISCONNECT");
-			$self->remove_client($client);
+			$self->remove_client($cid);
 		},
 
 		SEND => sub {
@@ -257,7 +264,8 @@ sub route_frame
 				body        => $frame->body,
 			);
 
-			if(my $d = $self->get_or_make_destination($destination_name))
+			if(my $d = $self->get_destination ($destination_name) ||
+			           $self->make_destination($destination_name))
 			{
 				$self->notify( 'recv', {
 					destination => $d,
@@ -278,7 +286,8 @@ sub route_frame
 			$self->log('notice',
 				"RECV ($cid): SUBSCRIBE $destination_name (ack: $ack_type)");
 
-			if(my $d = $self->get_or_make_destination($destination_name))
+			if(my $d = $self->get_destination ($destination_name) ||
+			           $self->make_destination($destination_name))
 			{
 				$client->subscribe($d, $ack_type);
 				$self->notify(subscribe => {destination => $d, client => $client});
@@ -292,7 +301,7 @@ sub route_frame
 
 		UNSUBSCRIBE => sub {
 			$self->log('notice', "RECV ($cid): UNSUBSCRIBE $destination_name");
-			if(my $d = $self->destinations->{$destination_name})
+			if(my $d = $self->get_destination($destination_name))
 			{
 				$client->unsubscribe($d);
 				$self->notify(unsubscribe => {destination => $d, client => $client});
@@ -332,7 +341,16 @@ sub ack_message
 	my ($self, $client, $message_id) = @_;
 	$self->storage->get($message_id, sub {
 		my $msg = $_[0];
-		my ($client_id, $claimant) = ($client->id, $msg->claimant);
+		my $client_id = $client->id;
+		unless ($msg)
+		{
+			$self->log(error => 
+				"Message $message_id didn't exist ".
+				"when client $client_id tried to ACK it."
+			);
+			return;
+		};
+		my $claimant = $msg->claimant;
 
 		if ($client_id ne $claimant)
 		{
@@ -341,12 +359,11 @@ sub ack_message
 			return;
 		}
 
-		my $s = $client->subscriptions->{$msg->destination};
+		my $s = $client->get_subscription($msg->destination);
 		$s->ready(1) if $s;
 
-		if(my $d = $self->destinations->{$msg->destination})
+		if(my $d = $self->get_destination($msg->destination))
 		{
-			$d->pump();
 
 			$self->notify(ack => {
 				destination  => $d,
@@ -357,9 +374,8 @@ sub ack_message
 					size       => $msg->size,
 				}
 			});
+			$self->storage->remove($message_id, sub {$d->pump()});
 		}
-
-		$self->storage->remove($message_id);
 	});
 }
 
@@ -395,11 +411,14 @@ sub shutdown
 
 	$self->log('alert', 'Initiating message queue shutdown...');
 
+	$self->log(alert => 'Shutting down all destinations');
+	$_->shutdown() foreach $self->all_destinations;
+
 	# stop listening for connections
 	$poe_kernel->post( $self->alias => 'shutdown' );
 
 	# shutdown all client connections
-	$poe_kernel->post($_ => 'shutdown') foreach (keys %{$self->clients});
+	$poe_kernel->post($_ => 'shutdown') foreach ($self->all_client_ids);
 
 	# shutdown the storage
 	$self->storage->storage_shutdown(sub { $self->_shutdown_complete(@_) });
@@ -409,17 +428,15 @@ sub dispatch_message
 {
 	my ($self, $msg, $subscriber) = @_;
 	my $msg_id = $msg->id;
-	my $destination = $self->destinations->{$msg->destination};
-	my $pump_later = sub {
-		# So that the stack doesn't grow, we defer the pump.
-		$poe_kernel->post($self->alias => _pump => $destination);
-	};
+	my $destination = $self->get_destination($msg->destination);
+	my $pump_later = sub { $destination->pump() };
 
 	if(my $client = $subscriber->client)
 	{
 		my $client_id = $client->id;
 		if ($client->send_frame($msg->create_stomp_frame()))
 		{
+			$self->log(info => "Dispatching message $msg_id to client $client_id");
 			if ($subscriber->ack_type eq 'client')
 			{
 				$subscriber->ready(0);
@@ -438,7 +455,7 @@ sub dispatch_message
 		{
 			$self->log(warning => 
 				"MASTER: Couldn't send frame to client $client_id: removing.");
-			$self->remove_client($client, $pump_later);
+			$self->remove_client($client_id, $pump_later);
 		}
 	}
 	else

@@ -25,7 +25,7 @@ sub send
 {
 	my ($self, $message) = @_;
 
-	foreach my $subscriber (values %{$self->subscriptions})
+	foreach my $subscriber ($self->all_subscriptions)
 	{
 		$self->dispatch_message($message, $subscriber);
 	}
@@ -37,6 +37,7 @@ sub is_persistent { return 0 }
 
 # These do nothing now, but they may someday
 sub pump {}
+sub shutdown {}
 
 1;
 

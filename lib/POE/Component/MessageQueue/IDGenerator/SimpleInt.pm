@@ -17,6 +17,7 @@
 
 package POE::Component::MessageQueue::IDGenerator::SimpleInt;
 use Moose;
+use MooseX::AttributeHelpers;
 with qw(POE::Component::MessageQueue::IDGenerator);
 
 has 'filename' => (
@@ -26,9 +27,8 @@ has 'filename' => (
 );
 
 has 'last_id' => (
-	is      => 'rw',
-	isa     => 'Int',
-	default => 0,
+	metaclass => 'Counter',
+	is        => 'rw',
 );
 
 sub BUILD
@@ -51,14 +51,14 @@ sub BUILD
 		open my $out, '>', $filename ||
 			die "Couldn't touch $filename: $!";
 		close $out;
-		$self->last_id(0);;
+		$self->reset_last_id();
 	}
 }
 
 sub generate 
 {
 	my ($self) = @_;
-	$self->last_id($self->last_id+1);
+	$self->inc_last_id();
 	my $id = $self->last_id;
 	return "$id";
 }

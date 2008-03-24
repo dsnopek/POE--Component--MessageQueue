@@ -17,22 +17,21 @@
 
 package POE::Component::MessageQueue::Storage::Throttled;
 use Moose;
-with qw(POE::Component::MessageQueue::Storage::Double);
+use MooseX::AttributeHelpers;
 use POE;
 
-has 'throttle_max' => (
+with qw(POE::Component::MessageQueue::Storage::Double);
+
+has throttle_max => (
 	is       => 'ro',
 	isa      => 'Int',
 	default  => 2,
 	required => 1,
 );
 
-has 'sent' => (
-	isa     => 'Int',
-	default => 0,
-);
+has sent => (metaclass => 'Counter');
 
-has 'shutdown_callback' => (
+has shutdown_callback => (
 	is        => 'rw',
 	isa       => 'CodeRef',
 	clearer   => 'stop_shutdown',
@@ -58,6 +57,7 @@ sub _backstore_ready
 		{
 			my $id = $msg->id;
 			$self->log(info => "Sending throttled message $id");
+			$self->delete_front($id);
 			$self->front->remove($id, sub {
 				$self->back->store($msg, sub {
 					@_ = ($self);
@@ -67,7 +67,7 @@ sub _backstore_ready
 		}
 		else
 		{
-			$self->{sent}--;
+			$self->dec_sent();
 			$self->_shutdown_throttle_check();
 		}
 	});
@@ -76,9 +76,10 @@ sub _backstore_ready
 sub store
 {
 	my ($self, $message, $callback) = @_;
-	if ($self->{sent} < $self->throttle_max)
+	my $id = $message->id;
+	if ($self->sent < $self->throttle_max)
 	{
-		$self->{sent}++;
+		$self->inc_sent();
 		$self->back->store($message, sub {
 			# Do not tail call: the message is stored, but we want to do things
 			# after we satisfy the callback.
@@ -88,6 +89,7 @@ sub store
 	}
 	else
 	{
+		$self->set_front($id => {persisted => 0});
 		$self->front->store($message, $callback);
 	}
 }
@@ -95,7 +97,7 @@ sub store
 sub _shutdown_throttle_check
 {
 	my $self = shift;
-	if ($self->shutting_down && $self->{sent} == 0)
+	if ($self->shutting_down && $self->sent == 0)
 	{
 		# We have now finished sending things out of throttled, so -WE- are done.
 		# However, we'll still get message_storeds as our backstore finishes, and

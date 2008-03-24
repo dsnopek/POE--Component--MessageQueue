@@ -31,7 +31,7 @@ sub new
 sub cmp
 {
 	my ($self, $other) = @_;
-	return $self->val->timestamp - $other->val->timestamp;
+	return $self->val->timestamp <=> $other->val->timestamp;
 }
 
 1;
