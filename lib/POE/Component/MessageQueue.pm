@@ -107,6 +107,17 @@ has destinations => (
 	}
 );
 
+has owners => (
+	metaclass => 'Collection::Hash',
+	isa       => 'HashRef[POE::Component::MessageQueue::Subscription]',
+	default   => sub { {} },
+	provides  => {
+		'get'    => 'get_owner',
+		'set'    => 'set_owner',
+		'delete' => 'delete_owner',
+	},
+);
+
 make_immutable;
 
 sub BUILD
@@ -339,44 +350,29 @@ sub route_frame
 sub ack_message
 {
 	my ($self, $client, $message_id) = @_;
-	$self->storage->get($message_id, sub {
-		my $msg = $_[0];
-		my $client_id = $client->id;
-		unless ($msg)
-		{
-			$self->log(error => 
-				"Message $message_id didn't exist ".
-				"when client $client_id tried to ACK it."
-			);
-			return;
-		};
-		my $claimant = $msg->claimant;
+	my $client_id = $client->id;
 
-		if ($client_id ne $claimant)
-		{
-			$self->log(alert => "DANGER: Client $claimant trying to ACK message ".
-				"$message_id, which belongs to client $client_id!");
-			return;
-		}
-
-		my $s = $client->get_subscription($msg->destination);
-		$s->ready(1) if $s;
-
-		if(my $d = $self->get_destination($msg->destination))
-		{
-
-			$self->notify(ack => {
-				destination  => $d,
-				client       => $client,
-				message_info => {
-					message_id => $msg->id,
-					timestamp  => $msg->timestamp,
-					size       => $msg->size,
-				}
-			});
-			$self->storage->remove($message_id, sub {$d->pump()});
-		}
-	});
+	my $s = $self->get_owner($message_id);
+	if ($s && $s->client->id eq $client_id)
+	{
+		$self->delete_owner($message_id);
+		$s->ready(1);
+		my $d = $s->destination;
+		$self->notify(ack => {
+			destination  => $d,
+			client       => $client,
+			message_info => {
+				message_id => $message_id,
+			},
+		});
+		$self->storage->remove($message_id, sub {$d->pump()});
+	}
+	else
+	{
+		$self->log(alert => "DANGER: Client $client_id trying to ACK message ".
+			"$message_id, which he does not own!");
+		return;
+	}
 }
 
 sub _shutdown 
@@ -440,6 +436,7 @@ sub dispatch_message
 			if ($subscriber->ack_type eq 'client')
 			{
 				$subscriber->ready(0);
+				$self->set_owner($msg_id => $subscriber);
 			}
 			else
 			{

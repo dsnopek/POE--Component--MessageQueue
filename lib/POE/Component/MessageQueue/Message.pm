@@ -56,6 +56,7 @@ has 'claimant' => (
 # We can cache this if it's a bottleneck, but computing is simplest:
 sub size 
 {
+	use bytes;
 	return bytes::length($_[0]->body);
 }
 
