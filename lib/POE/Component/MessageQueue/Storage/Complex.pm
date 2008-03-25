@@ -91,6 +91,7 @@ has expirations => (
 		'set'    => 'set_expiration',
 		'delete' => 'delete_expiration',
 		'clear'  => 'clear_expirations',
+		'count'  => 'count_expirations',
 		'kv'     => 'expiration_pairs',
 	},	
 );
@@ -193,7 +194,15 @@ sub BUILD
 {
 	my $self = shift;
 	POE::Session->create(
-		object_states => [ $self => [qw(_start _expiration_check)] ],
+		object_states => [ $self => [qw(_expire)] ],
+		inline_states => {
+			_start => sub {
+				$poe_kernel->alias_set($self->alias);
+			},
+			_check => sub {
+				$poe_kernel->delay(_expire => $self->granularity);
+			},
+		},
 	);
 	$self->children({FRONT => $self->front, BACK => $self->back});
 	$self->add_names qw(COMPLEX);
@@ -236,31 +245,10 @@ sub store
 
 	$self->set_expiration($id, time()) if ($message->persistent);
 	$self->front->store($message, $callback);
+	$poe_kernel->post($self->alias, '_check') if ($self->count_expirations == 1);
 }
 
-sub _start
-{
-	my ($self, $kernel) = @_[OBJECT, KERNEL];
-	$poe_kernel->alias_set($self->alias);
-	$poe_kernel->post($self->alias, '_expiration_check');
-}
-
-sub expire_messages
-{
-	my ($self, $ids) = @_;
-	return unless @$ids;
-
-	my $idstr = join(', ', @$ids);
-	$self->log(info => "Pushing expired messages ($idstr) to backstore.");
-	$_->{persisted} = 1 foreach $self->get_front(@$ids);
-	$self->delete_expiration(@$ids);
-	$self->front->get($ids, sub {
-		# Messages in two places is dangerous, so we are careful!
-		$self->back->store($_->clone) foreach (@{$_[0]});
-	});
-}
-
-sub _expiration_check
+sub _expire
 {
 	my ($self, $kernel) = @_[OBJECT, KERNEL];
 
@@ -268,12 +256,21 @@ sub _expiration_check
 
 	my $thresh = time() - $self->timeout;
 
-	my $expired = [map  {$_->[0]} 
-	               grep {my $s = $_->[1]; $s > 0 && $s < $thresh} 
-	               $self->expiration_pairs];
+	my @expired = map  {$_->[0]} 
+	              grep {my $s = $_->[1]; $s > 0 && $s < $thresh} 
+	              $self->expiration_pairs;
 
-	$self->expire_messages($expired);
-	$kernel->alarm(_expiration_check => time() + $self->granularity);
+	my $idstr = join(', ', @expired);
+	$self->log(info => "Pushing expired messages ($idstr) to backstore.");
+	$_->{persisted} = 1 foreach $self->get_front(@expired);
+	$self->delete_expiration(@expired);
+
+	$self->front->get(\@expired, sub {
+		# Messages in two places is dangerous, so we are careful!
+		$self->back->store($_->clone) foreach (@{$_[0]});
+	});
+
+	$kernel->yield('_check') if ($self->count_expirations);
 }
 
 sub storage_shutdown

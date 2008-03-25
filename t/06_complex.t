@@ -53,7 +53,7 @@ sub _store {
 		});	
 	}
 	else {
-		$kernel->delay($done, $complex->timeout+1);
+		$kernel->delay($done, $complex->timeout+2);
 	}
 }
 
