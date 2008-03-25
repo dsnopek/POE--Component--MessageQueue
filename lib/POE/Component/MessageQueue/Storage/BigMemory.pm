@@ -56,8 +56,6 @@ has 'message_heap' => (
 	default => sub { Heap::Fibonacci->new },
 );
 
-make_immutable;
-
 # Where messages are stored:
 #   -- A heap of all unclaimed messages sorted by timestamp
 #   -- Per destination heaps for unclaimed messages

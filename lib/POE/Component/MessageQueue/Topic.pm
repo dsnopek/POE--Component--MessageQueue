@@ -19,7 +19,7 @@ package POE::Component::MessageQueue::Topic;
 use Moose;
 
 with qw(POE::Component::MessageQueue::Destination);
-make_immutable;
+__PACKAGE__->meta->make_immutable();
 
 sub send
 {

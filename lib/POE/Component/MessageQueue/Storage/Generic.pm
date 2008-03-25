@@ -63,8 +63,6 @@ has 'generic' => (
 	isa      => 'POE::Component::Generic',
 );
 
-make_immutable;
-
 # Because PoCo::Generic needs the constructor options passed to it in this
 # funny way, we have to set up generic in BUILD.
 sub BUILD 

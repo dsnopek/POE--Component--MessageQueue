@@ -102,8 +102,6 @@ after 'set_logger' => sub {
 	$self->info_store->set_logger($logger);
 };
 
-make_immutable;
-
 sub BUILD 
 {
 	my $self = shift;

@@ -118,8 +118,6 @@ has owners => (
 	},
 );
 
-make_immutable;
-
 sub BUILD
 {
 	my ($self, $args) = @_;

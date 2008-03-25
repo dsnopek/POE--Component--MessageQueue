@@ -47,7 +47,7 @@ has connected => (
 has login => (is => 'rw');
 has passcode => (is => 'rw');
 
-make_immutable;
+__PACKAGE__->meta->make_immutable();
 
 sub subscribe
 {

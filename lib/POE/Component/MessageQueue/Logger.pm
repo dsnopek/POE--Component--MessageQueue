@@ -47,8 +47,6 @@ has 'log_function' => (
 	predicate => 'has_log_function',
 );
 
-make_immutable;
-
 sub log
 {
 	my ($self, $type, $msg) = @_;

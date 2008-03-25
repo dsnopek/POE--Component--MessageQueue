@@ -59,8 +59,6 @@ has 'dbh' => (
 	},
 );
 
-make_immutable;
-
 sub BUILD 
 {
 	my ($self, $args) = @_;

@@ -38,8 +38,6 @@ has shutdown_callback => (
 	predicate => 'shutting_down',
 );
 
-make_immutable;
-
 sub BUILD 
 {
 	my $self = shift;

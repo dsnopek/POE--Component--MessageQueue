@@ -174,8 +174,6 @@ around claim_and_retrieve => sub {
 	});
 };
 
-make_immutable;
-
 sub _activity
 {
 	my ($self, $arg) = @_;

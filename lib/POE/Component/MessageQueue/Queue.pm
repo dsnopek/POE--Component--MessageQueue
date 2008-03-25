@@ -29,7 +29,7 @@ has pumping => flag;
 has pump_pending => flag;
 has shutting_down => flag;
 
-make_immutable;
+__PACKAGE__->meta->make_immutable();
 
 sub BUILD
 {

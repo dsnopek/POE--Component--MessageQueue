@@ -25,8 +25,6 @@ has 'package_name' => (
 	default => 'POE::Component::MessageQueue::Storage::Generic::DBI',
 );
 
-make_immutable;
-
 1;
 
 __END__

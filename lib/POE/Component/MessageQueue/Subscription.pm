@@ -42,6 +42,6 @@ has 'ready' => (
 	default => 1,
 );
 
-make_immutable;
+__PACKAGE__->meta->make_immutable();
 
 1;
