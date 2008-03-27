@@ -18,6 +18,7 @@
 package POE::Component::MessageQueue::Storage::Complex::IdleElement;
 use Heap::Elem;
 use base qw(Heap::Elem);
+BEGIN {eval q(use Time::HiRes qw(time))}
 
 sub new
 {
@@ -33,7 +34,6 @@ sub cmp
 
 1;
 
-
 package POE::Component::MessageQueue::Storage::Complex;
 use Moose;
 use MooseX::AttributeHelpers;
@@ -43,7 +43,7 @@ use POE;
 use Heap::Fibonacci;
 use List::MoreUtils qw(zip);
 use List::Util qw(sum);
-eval q(use Time::HiRes qw(time)); # more accurate time() if available
+BEGIN {eval q(use Time::HiRes qw(time))}
 
 has timeout => (
 	is       => 'ro',
@@ -80,21 +80,40 @@ has front_max => (
 	required => 1,
 );
 
-# Messages which have not yet been expired to the backstore have a storage
-# timestamp in this hash.
-has expirations => (
+has front_expirations => (
 	metaclass => 'Collection::Hash',
 	is        => 'ro', 
 	isa       => 'HashRef[Num]',
 	default   => sub { {} },
 	provides  => {
-		'set'    => 'set_expiration',
-		'delete' => 'delete_expiration',
-		'clear'  => 'clear_expirations',
-		'count'  => 'count_expirations',
-		'kv'     => 'expiration_pairs',
+		'set'    => 'expire_from_front',
+		'delete' => 'delete_front_expiration',
+		'clear'  => 'clear_front_expirations',
+		'count'  => 'count_front_expirations',
+		'kv'     => 'front_expiration_pairs',
 	},	
 );
+
+has nonpersistent_expirations => (
+	metaclass => 'Collection::Hash',
+	is => 'ro',
+	isa => 'HashRef',
+	default => sub { {} },
+	provides => {
+		'set'    => 'expire_nonpersistent',
+		'delete' => 'delete_nonpersistent_expiration',
+		'clear'  => 'clear_nonpersistent_expirations',
+		'count'  => 'count_nonpersistent_expirations',
+		'kv'     => 'nonpersistent_expiration_pairs',
+	},
+);
+
+sub count_expirations 
+{
+	my $self = $_[0];
+	return $self->count_nonpersistent_expirations +
+	       $self->count_front_expirations;
+}
 
 has idle_hash => (
 	metaclass => 'Collection::Hash',
@@ -146,8 +165,9 @@ after remove => sub {
 
 	$self->delete_idle(@ids);
 	$self->delete_expiration(@ids);
+	$self->delete_nonpersistent_expiration(@ids);
 
-	$self->less_front(sum map {$_->{size}} 
+	$self->less_front(sum map  {$_->{size}} 
 	                      grep {$_}
 	                      $self->delete_front(@ids))
 };
@@ -156,7 +176,8 @@ after empty => sub {
 	my ($self) = @_;
 	$self->clear_front();
 	$self->clear_idle();
-	$self->clear_expirations();
+	$self->clear_front_expirations();
+	$self->clear_nonpersistent_expirations();
 	$self->front_size(0);
 };
 
@@ -233,19 +254,37 @@ sub store
 		my $idstr = join(', ', @bump);
 		$self->log(info => "Bumping ($idstr) off the frontstore.");
 		$self->delete_idle(@bump);
-		$self->delete_expiration(@bump);
+		$self->delete_front_expiration(@bump);
 		$self->front->get(\@bump, sub {
+			my $now = time();
 			$self->front->remove(\@bump);
 			$self->back->store($_) foreach 
-				grep { $need_persist{$_->id} }    # things not in backstore
-				grep { $_->persistent }           # that are persistent
-				@{ $_[0] };                       # that we just got
+				grep { $need_persist{$_->id} } 
+				grep { !$_->has_expiration or $now < $_->expire_at } 
+				grep { $_->persistent || $_->has_expiration }
+				@{ $_[0] }; 
 		});
 	}
 
-	$self->set_expiration($id, time()) if ($message->persistent);
+	if ($message->persistent)
+	{
+		$self->expire_from_front($id, time() + $self->timeout);
+	}
+	elsif ($message->has_expiration)
+	{
+		$self->expire_nonpersistent($id, $message->expire_at);
+	}
+
 	$self->front->store($message, $callback);
 	$poe_kernel->post($self->alias, '_check') if ($self->count_expirations == 1);
+}
+
+sub _is_expired
+{
+	my $now = time();
+	map  {$_->[0]}
+	grep {$_->[1] <= $now}
+	@_;
 }
 
 sub _expire
@@ -254,21 +293,27 @@ sub _expire
 
 	return if $self->shutting_down;
 
-	my $thresh = time() - $self->timeout;
+	if (my @front_exp = _is_expired($self->front_expiration_pairs))
+	{
+		my $idstr = join(', ', @front_exp);
+		$self->log(info => "Pushing expired messages ($idstr) to backstore.");
+		$_->{persisted} = 1 foreach $self->get_front(@front_exp);
+		$self->delete_front_expiration(@front_exp);
 
-	my @expired = map  {$_->[0]} 
-	              grep {my $s = $_->[1]; $s > 0 && $s < $thresh} 
-	              $self->expiration_pairs;
+		$self->front->get(\@front_exp, sub {
+			# Messages in two places is dangerous, so we are careful!
+			$self->back->store($_->clone) foreach (@{$_[0]});
+		});
+	}
 
-	my $idstr = join(', ', @expired);
-	$self->log(info => "Pushing expired messages ($idstr) to backstore.");
-	$_->{persisted} = 1 foreach $self->get_front(@expired);
-	$self->delete_expiration(@expired);
-
-	$self->front->get(\@expired, sub {
-		# Messages in two places is dangerous, so we are careful!
-		$self->back->store($_->clone) foreach (@{$_[0]});
-	});
+	if (my @np_exp = _is_expired($self->nonpersistent_expiration_pairs))
+	{
+		my $idstr = join(', ', @np_exp);
+		$self->log(info => "Nonpersistent messages ($idstr) have expired.");
+		my @remove = grep { $self->in_back($_) } @np_exp;
+		$self->back->remove(\@remove) if (@remove);
+		$self->delete_nonpersistent_expiration(@np_exp);
+	}
 
 	$kernel->yield('_check') if ($self->count_expirations);
 }

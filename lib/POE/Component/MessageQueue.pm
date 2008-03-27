@@ -273,6 +273,12 @@ sub route_frame
 				body        => $frame->body,
 			);
 
+			unless ($persistent)
+			{
+				my $after = $frame->headers->{expire_after};
+				$message->expire_at(time() + $after) if $after;
+			}
+
 			if(my $d = $self->get_destination ($destination_name) ||
 			           $self->make_destination($destination_name))
 			{

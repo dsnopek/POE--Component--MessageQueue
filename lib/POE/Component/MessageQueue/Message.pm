@@ -20,32 +20,38 @@ use Moose;
 use Net::Stomp::Frame;
 
 # Use Time::HiRes's time() if available for more accurate ordering. 
-eval q(require Time::HiRes qw(time));
+BEGIN {eval q(use Time::HiRes qw(time))}
 
-has 'id' => (
+has id => (
 	is       => 'ro',
 	isa      => 'Str',
 	required => 1,
 );
 
-has 'destination' => (
+has destination => (
 	is       => 'ro',
 	isa      => 'Str',
 	required => 1,
 );
 
-has 'body' => (
+has body => (
 	is => 'rw',
 	clearer => 'delete_body',
 );
 
-has 'persistent' => (
+has persistent => (
 	is       => 'ro',
 	isa      => 'Bool',
 	required => 1,
 );
 
-has 'claimant' => (
+has expire_at => (
+	is        => 'rw',
+	isa       => 'Num',
+	predicate => 'has_expiration',
+);
+
+has claimant => (
 	is        => 'rw',
 	isa       => 'Maybe[Int]',
 	writer    => 'claim',
