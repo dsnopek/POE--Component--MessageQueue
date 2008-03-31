@@ -23,6 +23,7 @@ use POE::Session;
 use POE::Filter::Stream;
 use POE::Wheel::ReadWrite;
 use IO::File;
+use IO::Dir;
 
 has 'info_store' => (
 	is       => 'ro',
@@ -258,10 +259,8 @@ sub empty
 	my ($self, $callback) = @_;
 
 	$self->info_store->empty(sub {
-
-	# Delete all the message files that don't have writes pending
-		use DirHandle;
-		my $dh = DirHandle->new($self->data_dir);
+		# Delete all the message files that don't have writes pending
+		my $dh = IO::Dir->new($self->data_dir);
 		foreach my $fn ($dh->read())
 		{
 			if ($fn =~ /msg-\(.*\)\.txt/)
