@@ -35,7 +35,7 @@ has destination => (
 );
 
 has body => (
-	is => 'ro',
+	is => 'rw',
 	clearer => 'delete_body',
 );
 
