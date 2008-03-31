@@ -82,8 +82,8 @@ sub send_frame
 	my ($self, $frame) = @_;
 	my ($session, $socket);
 
-	return unless ($session = $poe_kernel->alias_resolve($self->id));
-	return unless ($socket = $session->get_heap()->{client});
+	return 0 unless ($session = $poe_kernel->alias_resolve($self->id));
+	return 0 unless ($socket = $session->get_heap()->{client});
 
 	$socket->put($frame);
 	return 1;

@@ -359,25 +359,40 @@ desired after timeout expiration, subclass and override "expire_messages".
 
 =head1 SYNOPSIS
 
-	use POE;
-	use POE::Component::MessageQueue;
-	use POE::Component::MessageQueue::Storage::Complex;
-	use strict;
+  use POE;
+  use POE::Component::MessageQueue;
+  use POE::Component::MessageQueue::Storage::Complex;
+  use strict;
 
-	POE::Component::MessageQueue->new({
-		storage => POE::Component::MessageQueue::Storage::Complex->new({
-			timeout      => 4,
-			granularity  => 2,
-			throttle_max => 2,
-			front      => POE::Component::MessageQueue::Storage::BigMemory->new(),
-			back       => POE::Component::MessageQueue::Storage::Throttled->new({
-				storage => My::Persistent::But::Slow::Datastore->new(),	
-			}),
-		})
-	});
+  POE::Component::MessageQueue->new({
+    storage => POE::Component::MessageQueue::Storage::Complex->new({
+      timeout      => 4,
+      granualarity => 2,
+      throttle_max => 2,
 
-	POE::Kernel->run();
-	exit;
+      front => POE::Component::MessageQueue::Storage::Memory->new(),
+      # Or, an alternative memory store is available!
+      #front => POE::Component::MessageQueue::Storage::BigMemory->new(),
+
+      back => POE::Component::MessageQueue::Storage::Throttled->new({
+        storage => My::Persistent::But::Slow::Datastore->new()
+
+        # Examples include:
+        #storage => POE::Component::MessageQueue::Storage::DBI->new({ ... });
+        #storage => POE::Component::MessageQueue::Storage::FileSystem->new({ ... });
+      }),
+
+      # Optional: Action to perform on after timeout.  By default moves all
+      # persistent messages into the backstore.
+      expire_messages => sub {
+        my $arrayref_of_message_ids = shift;
+        do_something($arrayref_of_message_ids);
+      },
+    })
+  });
+
+  POE::Kernel->run();
+  exit;
 
 =head1 DESCRIPTION
 

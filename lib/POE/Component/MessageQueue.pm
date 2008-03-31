@@ -204,7 +204,7 @@ sub _client_disconnected
 	my ($kernel, $heap) = @_[ KERNEL, HEAP ];
 
 	my $id = $kernel->get_active_session()->ID();
-	$self->remove_client($id);;
+	$self->remove_client($id);
 }
 
 sub _client_error

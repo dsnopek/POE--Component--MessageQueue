@@ -80,7 +80,7 @@ has 'pending_writes'       => empty_hashref;
 has 'alias' => (
 	is       => 'ro',
 	isa      => 'Str',
-  default  => 'MQ-Storage-Filesystem',
+	default  => 'MQ-Storage-Filesystem',
 	required => 1,
 );
 

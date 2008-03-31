@@ -35,7 +35,7 @@ has destination => (
 );
 
 has body => (
-	is => 'rw',
+	is => 'ro',
 	clearer => 'delete_body',
 );
 
@@ -59,12 +59,16 @@ has claimant => (
 	clearer   => 'disown',
 );
 
-# We can cache this if it's a bottleneck, but computing is simplest:
-sub size 
-{
-	use bytes;
-	return bytes::length($_[0]->body);
-}
+has 'size' => (
+	is      => 'ro',
+	isa     => 'Num',
+	lazy    => 1,
+	default => sub {
+		my $self = shift;
+		use bytes;
+		return bytes::length($self->body);
+	}
+);
 
 has 'timestamp' => (
 	is      => 'ro',
