@@ -275,7 +275,7 @@ sub route_frame
 
 			unless ($persistent)
 			{
-				my $after = $frame->headers->{expire_after};
+				my $after = $frame->headers->{'expire-after'};
 				$message->expire_at(time() + $after) if $after;
 			}
 
