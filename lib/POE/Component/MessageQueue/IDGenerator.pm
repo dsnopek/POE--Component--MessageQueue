@@ -15,28 +15,16 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-use strict;
-use warnings;
 package POE::Component::MessageQueue::IDGenerator;
+use Moose::Role;
 
-sub new 
-{
-	my $class = shift;
-	return bless ({}, $class);
-}
-
-sub generate 
-{
-	my ($self, $message) = @_;
-	die "Abstract";
-}
+requires qw(generate);
 
 1;
 
 =head1 NAME
 
-POE::Component::MessageQueue::IDGenerator - Abstract base class for 
-id generators.
+POE::Component::MessageQueue::IDGenerator - Role for id generators.
 
 =head1 DESCRIPTION
 
@@ -54,9 +42,7 @@ reading from persistence, or whatnot here.
 
 =item generate => SCALAR
 
-Returns some kind of unique string.  The parameter is an an otherwise 
-filled-out Message object, to be used potentially as seed/unique data for the 
-ID generation.
+Returns some kind of unique string.  
 
 =back
 

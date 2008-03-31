@@ -28,6 +28,10 @@ requires 'IO::File';
 requires 'Carp';
 requires 'Best';
 requires 'YAML';
+requires 'Heap';
+requires 'Heap::Fibonacci';
+requires 'Moose';
+requires 'MooseX::AttributeHelpers';
 
 recommends 'YAML::Syck';
 

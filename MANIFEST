@@ -42,15 +42,12 @@ lib/POE/Component/MessageQueue/Storage/Generic.pm
 lib/POE/Component/MessageQueue/Storage/Generic/Base.pm
 lib/POE/Component/MessageQueue/Storage/Generic/DBI.pm
 lib/POE/Component/MessageQueue/Storage/Memory.pm
-lib/POE/Component/MessageQueue/Storage/Structure/DLList.pm
-lib/POE/Component/MessageQueue/Storage/Structure/DLList/Cell.pm
 lib/POE/Component/MessageQueue/Storage/Throttled.pm
 lib/POE/Component/MessageQueue/Subscription.pm
 lib/POE/Component/MessageQueue/Topic.pm
 lib/POE/Component/Server/Stomp.pm
 LICENSE
 log.conf
-Makefile
 Makefile.PL
 MANIFEST			This list of files
 MANIFEST.SKIP
@@ -65,6 +62,5 @@ t/01_load.t
 t/02_client.t
 t/03_queue.t
 t/04_message.t
-test.sh
-test/Storage/DBI.pm
-test/Storage/Generic/DBI.pm
+t/05_storage_api.t
+t/05_complex.t

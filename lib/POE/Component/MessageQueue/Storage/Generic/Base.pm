@@ -1,24 +1,26 @@
-
 package POE::Component::MessageQueue::Storage::Generic::Base;
-use base qw(POE::Component::MessageQueue::Storage);
-use POE::Component::MessageQueue;
-use strict;
+use Moose::Role;
 
-sub new
+# Exclude log cause we have our own - we want to call our setted postback.
+with 'POE::Component::MessageQueue::Storage' => { excludes => 'log' };
+
+sub log
 {
-	my $class = shift;
-	my $args  = shift;
+	my $self = shift;;
+	$self->log_function->(@_) if $self->has_log_function;
+	return;
+}
 
-	my $self = $class->SUPER::new( $args );
+has 'log_function' => (
+	is        => 'rw',
+	writer    => 'set_log_function',
+	predicate => 'has_log_function',
+);
 
-	# We're in a child process when this happens: if we don't do this, we'll get
-	# killed on these signals and PoCo::MQ::Storage::Generic will get a broken
-	# pipe when it tries to talk to us.
-	foreach my $sig (POE::Component::MessageQueue->SHUTDOWN_SIGNALS) {
-		$SIG{$sig} = 'IGNORE';
-	} 
-
-	return bless $self, $class;
+sub ignore_signals
+{
+	my ($self, @signals) = @_;
+	$SIG{$_} = 'IGNORE' foreach (@signals);
 }
 
 1;

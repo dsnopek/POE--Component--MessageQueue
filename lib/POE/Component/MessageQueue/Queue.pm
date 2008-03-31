@@ -17,302 +17,120 @@
 
 package POE::Component::MessageQueue::Queue;
 
-use POE::Component::MessageQueue::Subscription;
-use strict;
+use List::Util qw(first);
+use POE;
+use POE::Session;
+use Moose;
 
-use Data::Dumper;
+with qw(POE::Component::MessageQueue::Destination);
 
-sub new
+use constant flag => (is => 'rw', default => 0);
+has pumping => flag;
+has pump_pending => flag;
+has shutting_down => flag;
+
+__PACKAGE__->meta->make_immutable();
+
+sub BUILD
 {
-	my $class = shift;
-	my $args  = shift;
+	my ($self, $args) = @_;
+	POE::Session->create(
+		object_states => [ $self => [qw(_start _shutdown _subloop)]],
+	);
+}
 
-	my $parent;
-	my $queue_name;
+sub _start
+{
+	my ($self, $kernel) = @_[OBJECT, KERNEL];
+	$kernel->alias_set($self->name);
+}
 
-	if ( ref($args) eq 'HASH' )
+sub shutdown { $poe_kernel->post($_[0]->name, '_shutdown') }
+sub _shutdown
+{
+	my ($self, $kernel) = @_[OBJECT, KERNEL];
+	$self->shutting_down(1);
+	$kernel->alias_remove($self->name);
+}
+
+# This is the pumping philosophy:  When we receive a pump request, we will
+# give everyone a chance to claim a message.  If any pumps are asked for while
+# this is happening, we will remember and do another pump when this one is
+# finished (just one).
+
+sub is_persistent { return 1 }
+
+sub _subloop
+{
+	my ($self, $subs) = @_[OBJECT, ARG0];
+	return if $self->shutting_down;
+	my $s; while ($s = shift(@$subs)) { last if $s->ready };
+	if($s && $s->client)
 	{
-		$parent     = $args->{parent};
-		$queue_name = $args->{queue_name};
+		$s->ready(0);
+		$self->storage->claim_and_retrieve($self->name, $s->client->id, sub {
+			if (my $msg = $_[0])
+			{
+				$self->dispatch_message($msg, $s);
+				$poe_kernel->post($self->name, _subloop => $subs);
+			}
+			else
+			{
+				$s->ready(1);
+				$self->_done_pumping();
+			}
+		});
 	}
 	else
 	{
-		$parent     = $args;
-		$queue_name = shift;
-	}
-
-	# TODO: deal with the circular reference
-
-	my $self = {
-		parent               => $parent,
-		queue_name           => $queue_name,
-		subscriptions        => [ ],
-		sub_map              => { },
-		has_pending_messages => 1,
-		pumping              => 0
-	};
-
-	bless  $self, $class;
-	return $self;
-}
-
-sub get_parent { return shift->{parent}; }
-
-sub _log
-{
-	my $self = shift;
-	$self->get_parent()->_log(@_);
-}
-
-sub add_subscription
-{
-	my $self   = shift;
-	my $client = shift;
-	my $ack_type = shift;
-	my $sub    = POE::Component::MessageQueue::Subscription->new( $client, $ack_type );
-	push @{$self->{subscriptions}}, $sub;
-
-	# add the subscription to the sub_map.
-	$self->{sub_map}->{$sub->{client}->{client_id}} = $sub;
-	
-	# add to the client's list of subscriptions
-	$sub->{client}->_add_queue_name( $self->{queue_name} );
-
-	$self->get_parent->{notify}->notify('subscribe', { queue => $self, client => $client });
-	# pump the queue now that we have a new subscriber
-	$self->pump();
-}
-
-sub remove_subscription
-{
-	my $self   = shift;
-	my $client = shift;
-
-	my $i;
-	my $max = scalar @{$self->{subscriptions}};
-
-	for( $i = 0; $i < $max; $i++ )
-	{
-		if ( $self->{subscriptions}->[$i]->{client} == $client )
-		{
-			# remove from the map
-			delete $self->{sub_map}->{$client->{client_id}};
-
-			# remove from the queue list
-			splice @{$self->{subscriptions}}, $i, 1;
-			$client->_remove_queue_name( $self->{queue_name} );
-
-			# disown all messages on the storage layer for this client on
-			# this queue.
-			$self->get_parent()->get_storage()->disown(
-				"/queue/$self->{queue_name}", $client->{client_id} );
-
-			$self->get_parent->{notify}->notify('unsubscribe', { queue => $self, client => $client });
-			return;
-		}
+		$self->_done_pumping();
 	}
 }
 
-sub get_subscription
+sub _done_pumping
 {
-	my ($self, $client) = @_;
-
-	return $self->{sub_map}->{$client->{client_id}};
-}
-
-sub get_available_subscriber
-{
-	my $self = shift;
-	my $args = shift;
-
-	my $total = scalar @{$self->{subscriptions}};
-	my $sub;
-	my $i;
-
-	for( $i = 0; $i < $total; $i++ )
-	{
-		if ( $self->{subscriptions}->[$i]->is_ready() )
-		{
-			$sub = $self->{subscriptions}->[$i];
-			last;
-		}
-	}
-
-	if ( $sub and $total != 1 )
-	{
-		# Here we remove the chosen one from the subscription list and 
-		# push it on the end, so that we favor other subscribers.
-		splice @{$self->{subscriptions}}, $i, 1;
-		push   @{$self->{subscriptions}}, $sub;
-	}
-
-	return $sub;
-}
-
-sub has_pending_messages
-{
-	my ($self, $value) = @_;
-
-	# TODO: doesn't work for some reason.
-#	if ( $value == 0 )
-#	{
-#		$self->{has_pending_messages} = 0;
-#	}
-
-	return $self->{has_pending_messages};
-}
-
-sub has_available_subscribers
-{
-	my $self = shift;
-
-	foreach my $sub ( @{$self->{subscriptions}} )
-	{
-		if ( $sub->is_ready() )
-		{
-			return 1;
-		}
-	}
-
-	return 0;
+	my $self = $_[0];
+	$self->pumping(0);
+	$self->pump() if $self->pump_pending;
 }
 
 sub pump
 {
-	my $self = shift;
-
-	# Make sure we don't end up in some kind of recursive pump loop!
-	if ( $self->{pumping} )
+	my $self = $_[0];
+	if($self->pumping)
 	{
-		return;
-	}
-	$self->{pumping} = 1;
-	
-	$self->_log( 'debug', " -- PUMP QUEUE: $self->{queue_name} -- " );
-	$self->get_parent->{notify}->notify('pump');
-
-	# attempt to get a pending message and pass it the the 'send_queue' action.
-	if ( $self->{has_pending_messages} )
-	{
-		my $sub = $self->get_available_subscriber();
-		if ( $sub )
-		{
-			# get a message out of the backing store
-			my $ret = $self->get_parent()->get_storage()->claim_and_retrieve({
-				destination => "/queue/$self->{queue_name}",
-				client_id   => $sub->{client}->{client_id}
-			});
-
-			# if a message was actually claimed!
-			if ( $ret and $sub->{ack_type} eq 'client' )
-			{
-				# makes sure that this subscription isn't double picked
-				$sub->set_handling_message();
-			}
-		}
-	}
-
-	# end pumping lock!
-	$self->{pumping} = 0;
-}
-
-sub send_message
-{
-	my ($self, $message) = @_;
-
-	my $sub = $self->get_available_subscriber();
-	if ( defined $sub )
-	{
-		$self->dispatch_message_to( $message, $sub );
+		$self->pump_pending(1);
 	}
 	else
 	{
-		# we have messages waiting in the store
-		$self->{has_pending_messages} = 1;
+		$self->log(debug => ' -- PUMP QUEUE: '.$self->name.' -- ');
+		$self->notify('pump');
+		my @subs = $self->all_subscriptions;
+		$self->pump_pending(0);
+		$self->pumping(1);
+		$poe_kernel->post($self->name, '_subloop', \@subs);
 	}
 }
 
-sub dispatch_message_to
-{
-	my ($self, $message, $receiver) = @_;
-
-	my $sub;
-
-	if ( ref($receiver) eq 'POE::Component::MessageQueue::Client' )
-	{
-		# automatically convert clients to subscribers!
-		$sub = $self->get_subscription( $receiver );
-	}
-	else
-	{
-		$sub = $receiver;
-	}
-
-	my $result = 0;
-
-	if ( defined $sub )
-	{
-		$self->_log( "QUEUE: Sending message $message->{message_id} to client $sub->{client}->{client_id}" );
-
-		# send actual message
-		$result = $sub->get_client()->send_frame( $message->create_stomp_frame() );
-	}
-
-	if ( not $result )
-	{
-		my $client_id = (defined $sub) ? $sub->{client}->{client_id} : $receiver->{client_id};
-
-		# This can happen when a client disconnects before the server
-		# can give them the message intended for them.
-		$self->_log( 'warning', "QUEUE: Message $message->{message_id} intended for $client_id on /queue/$self->{queue_name} could not be delivered" );
-
-		# The message *NEEDS* to be disowned in the storage layer, otherwise
-		# it will live forever as being claimed by a client that doesn't exist.
-		$self->get_parent()->get_storage()->disown(
-			"/queue/$self->{queue_name}", $client_id );
-
-		# pump the queue to get the message to another suscriber.
-		$self->pump();
-
-		return;
-	}
-
-	# mark as needing ack, or remove message.
-	if ( $sub->{ack_type} eq 'client' )
-	{
-		# Put into waiting for ACK mode.
-		$sub->set_handling_message();
-
-		# add to the general list of messages requiring ACK
-		$self->get_parent()->push_unacked_message( $message, $sub->get_client() );
-	}
-	else
-	{
-		$self->get_parent()->get_storage()->remove( $message->get_message_id() );
-
-		# we aren't waiting for anything, so pump the queue
-		# NOTE: For some reason, using the deferred pump is so much more performant!
-		$self->get_parent->pump_deferred("/queue/$self->{queue_name}");
-	}
-}
-
-sub enqueue
+sub send
 {
 	my ($self, $message) = @_;
 
 	# If we already have a ready subscriber, we'll claim and dispatch before we
 	# store to give the subscriber a headstart on processing.
-	if ( my $sub = $self->get_available_subscriber() )
+	if (my $subscriber = first {$_->ready} $self->all_subscriptions)
 	{
-		my $client_id = $sub->{client}->{client_id};
-		$message->set_in_use_by( $client_id );
-		$self->_log('info', 
-			"QUEUE: Message $message->{message_id} ".
-			"claimed by client $client_id during enqueue"
-		);
-		$self->dispatch_message_to( $message, $sub );
+		my $cid = $subscriber->client->id;
+		$message->claim($cid);
+		$self->log(info => 
+			'QUEUE: Message '.$message->id." claimed by $cid during send");
+		$self->dispatch_message($message, $subscriber);
 	}
-	$self->get_parent()->get_storage()->store( $message );
+
+	$self->storage->store($message, sub {
+		$self->notify(store => { destination => $self, message => $message });
+		$self->pump();
+	});
 }
 
 1;

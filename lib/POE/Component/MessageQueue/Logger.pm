@@ -16,9 +16,8 @@
 #
 
 package POE::Component::MessageQueue::Logger;
-
+use Moose;
 use POE::Kernel;
-use strict;
 
 my $LEVELS = {
 	debug     => 0,
@@ -31,50 +30,26 @@ my $LEVELS = {
 	emergency => 7
 };
 
-our $LEVEL = 3;
+has 'level' => (
+	is => 'rw',
+	default => 3,
+);
 
-sub new
-{
-	my $class = shift;
-	my $args  = shift;
+has 'logger_alias' => (
+	is        => 'rw',
+	writer    => 'set_logger_alias',
+	predicate => 'has_logger_alias',
+);
 
-	my $logger_alias;
-	my $log_function;
-
-	if ( ref($args) eq 'HASH' )
-	{
-		$logger_alias = $args->{logger_alias};
-		$log_function = $args->{log_function};
-	}
-
-	my $self = {
-		logger_alias => $logger_alias,
-		log_function => $log_function,
-	};
-
-	bless  $self, $class;
-	return $self;
-}
-
-sub set_log_function
-{
-	my ($self, $func) = @_;
-	$self->{log_function} = $func;
-	undef;
-}
-
-sub set_logger_alias
-{
-	my ($self, $alias) = @_;
-	$self->{logger_alias} = $alias;
-	undef;
-}
+has 'log_function' => (
+	is        => 'rw',
+	writer    => 'set_log_function',
+	predicate => 'has_log_function',
+);
 
 sub log
 {
-	my $self = shift;
-	my $type = shift;
-	my $msg  = shift;
+	my ($self, $type, $msg) = @_;
 
 	if ( not defined $msg )
 	{
@@ -82,15 +57,15 @@ sub log
 		$type = 'info';
 	}
 
-	if ( defined $self->{log_function} )
+	if ( $self->has_log_function )
 	{
-		$self->{log_function}->( $type, $msg );
+		$self->log_function->( $type, $msg );
 	}
-	elsif ( defined $self->{logger_alias} )
+	elsif ( $self->has_logger_alias )
 	{
-		$poe_kernel->post( $self->{logger_alias}, $type, "$msg\n" );
+		$poe_kernel->post($self->logger_alias, $type, "$msg\n" );
 	}
-	elsif ( $LEVELS->{$type} >= $LEVEL )
+	elsif ($LEVELS->{$type} >= $self->level )
 	{
 		print STDERR "$msg\n";
 	}
@@ -100,9 +75,9 @@ sub shutdown
 {
 	my $self = shift;
 
-	if ( defined $self->{logger_alias} )
+	if ($self->has_logger_alias)
 	{
-		$poe_kernel->signal( $self->{logger_alias}, 'TERM' );
+		$poe_kernel->signal( $self->logger_alias, 'TERM' );
 	}
 }
 

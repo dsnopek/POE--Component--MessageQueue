@@ -16,44 +16,32 @@
 #
 
 package POE::Component::MessageQueue::Subscription;
+use Moose;
 
-use strict;
+has 'client' => (
+	is       => 'ro',
+	isa      => 'POE::Component::MessageQueue::Client',
+	weak_ref => 1,
+	required => 1,
+);
 
-sub new
-{
-	my $class = shift;
-	my $args  = shift;
+has destination => (
+	is       => 'ro',
+	does     => 'POE::Component::MessageQueue::Destination',
+	weak_ref => 1,
+	required => 1,
+);
 
-	my $client;
-	my $ack_type;
+has 'ack_type' => (
+	is       => 'ro',
+	required => 1,
+);
 
-	if ( ref($args) eq 'HASH' )
-	{
-		$client   = $args->{client};
-		$ack_type = $args->{ack_type};
-	}
-	else
-	{
-		$client   = $args;
-		$ack_type = shift;
-	}
+has 'ready' => (
+	is      => 'rw',
+	default => 1,
+);
 
-	my $self =
-	{
-		client    => $client,
-		ack_type  => $ack_type,
-		ready     => 1
-	};
-
-	bless  $self, $class;
-	return $self;
-}
-
-sub get_client            { return shift->{client}; }
-sub get_ack_type          { return shift->{ack_type}; }
-sub is_ready              { return shift->{ready}; }
-sub set_handling_message  { shift->{ready} = 0; }
-sub set_done_with_message { shift->{ready} = 1; }
+__PACKAGE__->meta->make_immutable();
 
 1;
-

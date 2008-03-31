@@ -1,4 +1,4 @@
-#
+
 # Copyright 2007, 2008 David Snopek <dsnopek@gmail.com>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -16,133 +16,101 @@
 #
 
 package POE::Component::MessageQueue::Client;
-
+use Moose;
+use MooseX::AttributeHelpers;
+use POE::Component::MessageQueue::Subscription;
 use POE::Kernel;
-use strict;
 
-sub new
+has subscriptions => (
+	metaclass => 'Collection::Hash',
+	is => 'ro',
+	isa => 'HashRef[POE::Component::MessageQueue::Subscription]',
+	default => sub { {} },
+	provides => {
+		'set'    => 'set_subscription',
+		'get'    => 'get_subscription',
+		'values' => 'all_subscriptions',
+		'delete' => 'delete_subscription',
+	},
+);
+
+has id => (
+	is       => 'ro',
+	required => 1,
+);
+
+has connected => (
+	is => 'rw',
+	default => 0,
+);
+
+has login => (is => 'rw');
+has passcode => (is => 'rw');
+
+__PACKAGE__->meta->make_immutable();
+
+sub subscribe
 {
-	my $class = shift;
-	my $args  = shift;
+	my ($self, $destination, $ack_type) = @_;
 
-	my $client_id;
+	my $subscription = POE::Component::MessageQueue::Subscription->new(
+		destination => $destination,
+		client      => $self,
+		ack_type    => $ack_type,	
+	);
 
-	if ( ref($args) eq 'HASH' )
-	{
-		$client_id = $args->{client_id};
-	}
-	else
-	{
-		$client_id = $args;
-	}
-
-	my $self = 
-	{
-		client_id   => $client_id,
-		# a list of queues we are subscribed to.
-		queue_names => [ ],
-		connected   => 0,
-		login       => '',
-		passcode    => '',
-	};
-
-	bless  $self, $class;
-	return $self;
+	$self->set_subscription($destination->name => $subscription);
+	$destination->set_subscription($self->id   => $subscription);
+	return $subscription;
 }
 
-sub get_subscribed_queue_names
+sub unsubscribe
 {
-	my $self = shift;
-	my @queues = @{ $self->{queue_names} || [] };
-	return @queues;
-}
+	my ($self, $destination) = @_;
 
-sub _add_queue_name
-{
-	my ($self, $queue_name) = @_;
-	push @{$self->{queue_names}}, $queue_name;
-}
+	$self->delete_subscription($destination->name);
+	$destination->delete_subscription($self->id);
 
-sub _remove_queue_name
-{
-	my ($self, $queue_name) = @_;
-
-	my $i;
-	my $max = scalar @{$self->{queue_names}};
-
-	for( $i = 0; $i < $max; $i++ )
+	if ($destination->is_persistent)
 	{
-		if ( $self->{queue_names}->[$i] == $queue_name )
-		{
-			splice @{$self->{queue_names}}, $i, 1;
-			return;
-		}
+		$destination->storage->disown_destination($destination->name, $self->id);
 	}
 }
 
 sub send_frame
 {
-	my $self  = shift;
-	my $frame = shift;
+	my ($self, $frame) = @_;
+	my ($session, $socket);
 
-	my $client_session = $poe_kernel->alias_resolve( $self->{client_id} );
+	return 0 unless ($session = $poe_kernel->alias_resolve($self->id));
+	return 0 unless ($socket = $session->get_heap()->{client});
 
-	# Check to see if the client's session is still around
-	if ( defined $client_session )
-	{
-		my $client = $client_session->get_heap()->{client};
-
-		# Check to see if the socket's Wheel is still around
-		if ( defined $client )
-		{
-			$client->put($frame);
-
-			return 1;
-		}
-	}
-
-	return 0;
+	$socket->put($frame);
+	return 1;
 }
 
 sub connect
 {
-	my $self = shift;
-	my $args = shift;
+	my ($self, $login, $passcode) = @_;
 
-	my $login;
-	my $passcode;
+	$self->login($login);
+	$self->passcode($passcode);
+	$self->connected(1);
 
-	if ( ref($args) eq 'HASH' )
-	{
-		$login    = $args->{login};
-		$passcode = $args->{passcode};
-	}
-	else
-	{
-		$login    = $args;
-		$passcode = shift;
-	}
-
-	# set variables, yo!
-	$self->{login}     = $login;
-	$self->{passcode}  = $passcode;
-	$self->{connected} = 1;
-
-	# send connection confirmation
-	my $response = Net::Stomp::Frame->new({
+	my $id = $self->id;
+	$self->send_frame(Net::Stomp::Frame->new({
 		command => "CONNECTED",
 		headers => {
-			session => "client-$self->{client_id}",
+			session => "client-$id",
 		},
-	});
-	$self->send_frame( $response );
+	}));
 }
 
 sub shutdown
 {
 	my $self = shift;
 
-	$poe_kernel->post( $self->{client_id}, "shutdown" );
+	$poe_kernel->post($self->id, "shutdown");
 }
 
 1;

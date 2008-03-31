@@ -1,283 +1,277 @@
+#
+# Copyright 2007, 2008 David Snopek <dsnopek@gmail.com>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
 
 package POE::Component::MessageQueue::Storage::Generic::DBI;
-use base qw(POE::Component::MessageQueue::Storage::Generic::Base);
+use Moose;
+
+with qw(POE::Component::MessageQueue::Storage::Generic::Base);
 
 use DBI;
 use Exception::Class::DBI;
 use Exception::Class::TryCatch;
-use Data::UUID;
-use strict;
 
-sub new
+has 'dsn' => (
+	is       => 'ro',
+	isa      => 'Str',
+	required => 1,	
+);
+
+has 'username' => (
+	is       => 'ro',
+	isa      => 'Str',
+	required => 1,	
+);
+
+has 'password' => (
+	is       => 'ro',
+	isa      => 'Str',
+	required => 1,	
+);
+
+has 'options' => (
+	is => 'ro',
+	isa => 'HashRef',
+	default => sub { {} },
+	required => 1,
+);
+
+has 'dbh' => (
+	is => 'ro',
+	isa => 'Object',
+	lazy => 1,
+	default => sub {
+		my $self = shift;
+		DBI->connect($self->dsn, $self->username, $self->password, $self->options);
+	},
+);
+
+sub BUILD 
 {
-	my $class = shift;
-	my $args  = shift;
+	my ($self, $args) = @_;
+	
+	# Force exception handling
+	$self->options->{'HandleError'} = Exception::Class::DBI->handler,
+	$self->options->{'PrintError'} = 0;
+	$self->options->{'RaiseError'} = 0;
 
-	my $dsn;
-	my $username;
-	my $password;
-	my $options;
-
-	if ( ref($args) eq 'HASH' )
-	{
-		$dsn      = $args->{dsn};
-		$username = $args->{username};
-		$password = $args->{password};
-		$options  = $args->{options};
-	}
-	else
-	{
-		$dsn      = $args;
-		$username = shift;
-		$password = shift;
-		$options  = shift;
-	}
-
-	# force use of exceptions
-	$options->{'HandleError'} = Exception::Class::DBI->handler,
-	$options->{'PrintError'} = 0;
-	$options->{'RaiseError'} = 0;
-
-	my $dbh = DBI->connect($dsn, $username, $password, $options);
-
-	# before going any further, clear some old state
-	$dbh->do( "UPDATE messages SET in_use_by = NULL" );
-
-	my $self = $class->SUPER::new( $args );
-	$self->{dbh}        = $dbh;
-
-	return bless $self, $class;
+	# This actually makes DBH connect, and makes sure there's no claims left
+	# over from the last time we shut down MQ.
+	$self->dbh->do( "UPDATE messages SET in_use_by = NULL" );
 }
+
+sub _wrap
+{
+	my ($self, $name, $action) = @_;
+	try eval {
+		$action->();
+	};
+	if (my $err = catch)
+	{
+		$self->log(error => "Error in $name(): $err");
+	}
+	return;
+}
+
+sub _make_where
+{
+	my $ids = shift;
+	return join(' OR ', map "message_id = '$_'", @$ids);
+}
+
+sub _wrap_ids
+{
+	my ($self, $ids, $name, $action) = @_;
+	$self->_wrap(name => sub {$action->(_make_where($ids))}) if (@$ids > 0);
+}
+
+sub _make_message { 
+	my $h = $_[0];
+	my %map = (
+		id          => 'message_id',
+		destination => 'destination',
+		body        => 'body',
+		persistent  => 'persistent',
+		claimant    => 'in_use_by',
+		size        => 'size',
+		timestamp   => 'timestamp',
+	);
+	my %args;
+	foreach my $field (keys %map) 
+	{
+		my $val = $h->{$map{$field}};
+		$args{$field} = $val if (defined $val);
+	}
+	return POE::Component::MessageQueue::Message->new(%args);
+};
+
+# Note:  We explicitly set @_ in all the storage methods in this module,
+# because when we do our tail-calls (goto $method), we don't want to pass them
+# anything unneccessary, particulary $callbacks.
 
 sub store
 {
-	my ($self, $message) = @_;
+	my ($self, $m, $callback) = @_;
 
-	my $SQL = "INSERT INTO messages (message_id, destination, body, persistent, in_use_by, timestamp, size) VALUES ( ?, ?, ?, ?, ?, ?, ? )";
-
-	try eval
-	{
-		my $stmt;
-		$stmt = $self->{dbh}->prepare($SQL);
-		$stmt->execute(
-			$message->{message_id},
-			$message->{destination},
-			$message->{body},
-			$message->{persistent},
-			$message->{in_use_by},
-			$message->{timestamp},
-			$message->{size},
-		);
-	};
-	my $err = catch;
-
-	if ( $err )
-	{
-		$self->_log('error', "STORE: DBI: Error storing $message->{message_id} in $message->{destination}: $err");
-	}
-	else
-	{
-		$self->_log("STORE: DBI: Message $message->{message_id} stored in $message->{destination}");
-	}
-
-	if ( defined $self->{message_stored} )
-	{
-		$self->{message_stored}->( $message );
-	}
-
-	undef;
-}
-
-sub remove
-{
-	my ($self, $message_id) = @_;
-
-	my $SQL = "DELETE FROM messages WHERE message_id = ?";
-
-	try eval
-	{
-		my $stmt;
-		$stmt = $self->{dbh}->prepare($SQL);
-		$stmt->execute($message_id);
-	};
-	my $err = catch;
-
-	if ( $err )
-	{
-		$self->_log("STORE: DBI: Error deleting message $message_id: $err");
-	}
-	else
-	{
-		$self->_log("STORE: DBI: Message $message_id deleted");
-	}
-
-	undef;
-}
-
-sub _retrieve
-{
-	my ($self, $destination) = @_;
-
-	my $SQL = "SELECT * FROM messages WHERE destination = ? AND in_use_by IS NULL ORDER BY timestamp ASC LIMIT 1";
-
-	my $result;
-
-	try eval
-	{
-		my $stmt;
-		$stmt = $self->{dbh}->prepare($SQL);
-		$stmt->execute($destination);
-		$result = $stmt->fetchrow_hashref;
-	};
-	my $err = catch;
-
-	if ( $err )
-	{
-		$self->_log("error", "STORE: DBI: $err");
-	}
-	elsif ( defined $result )
-	{
-		return POE::Component::MessageQueue::Message->new({
-			message_id  => $result->{message_id},
-			destination => $result->{destination},
-			persistent  => $result->{persistent},
-			body        => $result->{body},
-			in_use_by   => $result->{in_use_by},
-			timestamp   => $result->{timestamp},
-			size        => $result->{size},
+	$self->_wrap(store => sub {
+		my $sth = $self->dbh->prepare(q{
+			INSERT INTO messages (
+				message_id, destination, body, 
+				persistent, in_use_by,  
+				timestamp,  size
+			) VALUES (
+				?, ?, ?, 
+				?, ?, 
+				?, ?
+			)
 		});
-	}
+		$sth->execute(
+			$m->id,         $m->destination, $m->body, 
+			$m->persistent, $m->claimant, 
+			$m->timestamp,  $m->size,
+		);
+	});
 
-	undef;
+	@_ = ();
+	goto $callback if $callback;
 }
 
-sub _claim
+sub _get
 {
-	my ($self, $message) = @_;
+	my ($self, $name, $clause, $callback) = @_;
+	my @messages;
+	$self->_wrap($name => sub {
+		my $sth = $self->dbh->prepare("SELECT * FROM messages	$clause");
+		$sth->execute;
+		my $results = $sth->fetchall_arrayref({});
+		@messages = map _make_message($_), @$results;
+	});
+	@_ = (\@messages);
+	goto $callback;
+}
 
-	my $SQL = "UPDATE messages SET in_use_by = ? WHERE message_id = ?";
+sub _get_one
+{
+	my ($self, $name, $clause, $callback) = @_;
+	$self->_get($name, $clause, sub {
+		my $messages = $_[0];
+		@_ = (@$messages > 0 ? $messages->[0] : undef);
+		goto $callback;
+	});
+}
 
-	try eval
-	{
-		my $stmt;
-		$stmt = $self->{dbh}->prepare($SQL);
-		$stmt->execute($message->{in_use_by}, $message->{message_id});
-	};
-	my $err = catch;
+sub get
+{
+	my ($self, $message_ids, $callback) = @_;
+	$self->_get(get => 'WHERE '._make_where($message_ids), $callback);
+}
 
-	if ( $err )
-	{
-		$self->_log("error", "STORE: DBI: Error claiming message $message->{message_id} for $message->{in_use_by}: $err");
-	}
-	else
-	{
-		$self->_log('info', 
-			"STORE: DBI: Message $message->{message_id} ".
-			"claimed by $message->{in_use_by}"
-		);
-	}
+sub get_all
+{
+	my ($self, $callback) = @_;
+	$self->_get(get_all => '', $callback);
+}
 
-	undef;
+sub get_oldest
+{
+	my ($self, $callback) = @_;
+	$self->_get_one(get_oldest => 'ORDER BY timestamp ASC LIMIT 1', $callback);
 }
 
 sub claim_and_retrieve
 {
-	my $self = shift;
-	my $args = shift;
-
-	if ( not defined $self->{dispatch_message} )
-	{
-		die "Pulled message from backstore, but there is no dispatch_message handler";
-	}
-
-	my $destination;
-	my $client_id;
-
-	if ( ref($args) eq 'HASH' )
-	{
-		$destination = $args->{destination};
-		$client_id   = $args->{client_id};
-	}
-	else
-	{
-		$destination = $args;
-		$client_id   = shift;
-	}
-
-	# first, we retrieve a message
-	my $message = $self->_retrieve( $destination );
-	
-	# if we actually got a message, then we need to claim it.
-	if ( defined $message )
-	{
-		# set to the client_id that's funna get it
-		$message->{in_use_by} = $client_id;
-	}
-
-	# send the message to the handler, regardless if we actually got
-	# one or not.
-	# NOTE: We can do this before claiming the message, so I figure, why
-	# not do it since it will give the other thread something to do.
-	$self->{dispatch_message}->( $message, $destination, $client_id );
-
-	if ( defined $message )
-	{
-		# claim away!
-		$self->_claim( $message );
-
-		if ( defined $self->{destination_ready} )
+	my ($self, $destination, $client_id, $callback) = @_;
+	$self->_get_one(claim_and_retrieve => qq{
+		WHERE destination = '$destination' AND in_use_by IS NULL
+		ORDER BY timestamp ASC LIMIT 1
+	}, sub {
+		if(my $message = $_[0])
 		{
-			# after it is claimed, we declare the destination ready for 
-			# more action!
-			$self->{destination_ready}->( $destination );
+			$self->claim($message->id, $client_id)
 		}
-	}
-
-	undef;
+		goto $callback;
+	});
 }
 
-sub disown
+sub remove
 {
-	my ($self, $destination, $client_id) = @_;
-
-	my $SQL = "UPDATE messages SET in_use_by = NULL WHERE destination = ? AND in_use_by = ?";
-
-	try eval
-	{
-		my $stmt;
-		$stmt = $self->{dbh}->prepare($SQL);
-		$stmt->execute($destination, $client_id);
-	};
-	my $err = catch;
-
-	if ( $err )
-	{
-		$self->_log("error", "STORE: DBI: Error disowning all messages on $destination for $client_id: $err");
-	}
-	else
-	{
-		$self->_log("STORE: DBI: All messages on $destination disowned for client $client_id");
-	}
-
-	undef;
+	my ($self, $message_ids, $callback) = @_;
+	$self->_wrap_ids($message_ids, remove => sub {
+		my $where = shift;
+		$self->dbh->do("DELETE FROM messages WHERE $where");
+	});
+	@_ = ();
+	goto $callback if $callback;
 }
 
-sub shutdown
+sub empty
 {
-	my ($self) = @_;
+	my ($self, $callback) = @_;
+	$self->_wrap(empty => sub {$self->dbh->do("DELETE FROM messages")});
+	@_ = ();
+	goto $callback if $callback;
+}
 
-	$self->_log('alert', 'Shutting down DBI storage engine...');
+sub claim
+{
+	my ($self, $message_ids, $client_id, $callback) = @_;
+	$self->_wrap_ids($message_ids, claim => sub {
+		my $where = shift;
+		$self->dbh->do(qq{
+			UPDATE messages SET in_use_by = '$client_id' WHERE $where
+		});
+	});
+	@_ = ();
+	goto $callback if $callback;
+}
 
-	# close the database handle.
-	$self->{dbh}->disconnect();
+sub disown_destination
+{
+	my ($self, $destination, $client_id, $callback) = @_;
+	$self->_wrap(disown_destination => sub {
+		$self->dbh->do(qq{
+			UPDATE messages SET in_use_by = NULL WHERE in_use_by = '$client_id'
+			AND destination = '$destination'
+		});
+	});
+	@_ = ();
+	goto $callback if $callback;
+}
 
-	# call the shutdown handler.
-	if ( defined $self->{shutdown_complete} )
-	{
-		$self->{shutdown_complete}->();
-	}
+sub disown_all
+{
+	my ($self, $client_id, $callback) = @_;
+	$self->_wrap(disown_all => sub {
+		$self->dbh->do(qq{
+			UPDATE messages SET in_use_by = NULL WHERE in_use_by = '$client_id'
+		});
+	});
+	@_ = ();
+	goto $callback if $callback;
+}
 
-	return undef;
+sub storage_shutdown
+{
+	my ($self, $callback) = @_;
+
+	$self->log(alert => 'Shutting down DBI storage engine...');
+
+	$self->dbh->disconnect();
+	@_ = ();
+	goto $callback if $callback;
 }
 
 1;

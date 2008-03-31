@@ -16,145 +16,99 @@
 #
 
 package POE::Component::MessageQueue::Storage;
-
+use Moose::Role;
 use POE::Component::MessageQueue::Logger;
-use strict;
 
-sub new
+requires qw(
+	get            get_all 
+	get_oldest     claim_and_retrieve
+	claim          store
+	disown_all     disown_destination
+	empty          remove     
+	storage_shutdown
+);
+
+# Given a method name, makes its first argument OPTIONALLY be an aref.  If it
+# is not an aref, it normalizes it into one.  If mangle_callback is true, it
+# also unpacks it in the callback.
+sub _areffify
 {
-	my $class = shift;
-	my $args  = shift;
+	my ($method, $mangle_callback) = @_;
 
-	# a null logger
-	my $logger = POE::Component::MessageQueue::Logger->new();
-
-	my $self = {
-		logger            => $logger,
-		message_stored    => undef,
-		dispatch_message  => undef,
-		destination_ready => undef,
-		shutdown_complete => undef,
-		# TODO: do something with this.
-		started           => 0
-	};
-
-	bless  $self, $class;
-	return $self;
+	around($method => sub {
+		my @args = @_;
+		my $original = shift(@args);
+		my $arg = $args[1];
+		unless (ref $arg eq 'ARRAY')
+		{
+			$args[1] = [$arg];
+			if ($mangle_callback)
+			{
+				my $cb = $args[-1];
+				$args[-1] = sub {
+					my @response = @_;
+					my $arr = $response[0];
+					$response[0] = (@$arr > 0) ? $arr->[0] : undef;
+					@_ = @response;
+					goto $cb;
+				}
+			};
+		}	
+		@_ = @args;
+		goto $original;
+	});
 }
 
-sub _log
+_areffify($_, 1) foreach qw(get);
+_areffify($_, 0) foreach qw(claim remove);
+
+has 'names' => (
+	is      => 'rw',
+	isa     => 'ArrayRef',
+	writer  => 'set_names',
+	default => sub { [] },
+);
+
+has 'namestr' => (
+	is      => 'rw',
+	isa     => 'Str',
+	default => q{},
+);
+
+has 'children' => (
+	is => 'rw',
+	isa => 'HashRef',
+	default => sub { {} },
+);
+
+has 'logger' => (
+	is      => 'rw',
+	writer  => 'set_logger',
+	default => sub { POE::Component::MessageQueue::Logger->new() },
+);
+
+sub add_names
 {
-	my $self = shift;
-	$self->{logger}->log(@_);
+	my ($self, @names) = @_;
+	my @prev_names = @{$self->names};
+	push(@prev_names, @names);
+	$self->set_names(\@prev_names);
 }
 
-sub set_message_stored_handler
-{
-	my ($self, $handler) = @_;
-	$self->{message_stored} = $handler;
-	undef;
-}
-
-sub set_dispatch_message_handler
-{
-	my ($self, $handler) = @_;
-	$self->{dispatch_message} = $handler;
-	undef;
-}
-
-sub set_destination_ready_handler
-{
-	my ($self, $handler) = @_;
-	$self->{destination_ready} = $handler;
-	undef;
-}
-
-sub set_shutdown_complete_handler
-{
-	my ($self, $handler) = @_;
-	$self->{shutdown_complete} = $handler;
-	undef;
-}
-
-sub set_logger
-{
-	my ($self, $logger) = @_;
-	$self->{logger} = $logger;
-	undef;
-}
-
-# A hack to allow POE::Component::Generic to set the log function
-# in a single event.  This allows us to setup the logger before any
-# other events happen.
-sub set_log_function
-{
-	my ($self, $func) = @_;
-	$self->get_logger()->set_log_function($func);
-	undef;
-}
-
-sub get_logger
-{
-	my $self = shift;
-	return $self->{logger};
-}
-
-sub store
-{
-	my ($self, $message) = @_;
-
-	die "Abstract.";
-}
-
-sub remove
-{
-	my ($self, $message_id) = @_;
-
-	die "Abstract.";
-}
-
-sub claim_and_retrieve
-{
-	my $self = shift;
-	my $args = shift;
-
-	my $destination;
-	my $client_id;
-
-	if ( ref($args) eq 'HASH' )
+after 'set_names' => sub {
+	my ($self, $names) = @_;
+	while (my ($name, $store) = each %{$self->children})
 	{
-		$destination = $args->{destination};
-		$client_id   = $args->{client_id};
+		$store->set_names([@$names, $name]);
 	}
-	else
-	{
-		$destination = $args;
-		$client_id   = shift;
-	}
+	$self->namestr(join(': ', @$names));
+};
 
-	die "Abstract.";
-}
-
-sub disown
+sub log
 {
-	my ($self, $destination, $client_id) = @_;
-
-	die "Abstract.";
-}
-
-# a semi-hidden alias that we need when using a storage engine
-# behind POE::Component::MessageQueue::Storage::Generic!
-sub storage_shutdown
-{
-	my $self = shift;
-	$self->shutdown();
-}
-
-sub shutdown
-{
-	my $self = shift;
-
-	die "Abstract.";
+	my ($self, $type, $msg, @rest) = @_;
+	my $namestr = $self->namestr;
+	return $self->logger->log($type, "STORE: $namestr: $msg", @rest);
 }
 
 1;
@@ -169,59 +123,95 @@ POE::Component::MessageQueue::Storage -- Parent of provided storage engines
 
 =head1 DESCRIPTION
 
-The parent class of the provided storage engines.  This is an "abstract" class that can't be used as is, but defines the interface for other objects of this type.
+The role implemented by all storage engines.  It provides a few bits of global
+functionality, but mostly exists to define the interface for storage engines.
+
+=head1 CONCEPTS
+
+=over 2
+
+=item optional arefs
+
+Some functions take an "optional aref" as an argument.  What this means is
+that you can pass either a plain-old-scalar argument (such as a message id) or
+an arrayref of such objects.  If you pass the former, your callback (if any)
+will receive a single value.  If the latter, it will receive an arrayref.
+Note that the normalization is done by this role - storage engines need only
+implement the version that takes an aref, and send arefs to the callbacks.
+
+=item callbacks
+
+Every storage method has a callback as its last argument.  Callbacks are Plain
+Old Subs. If the method doesn't have some kind of return value, the callback is 
+optional and has no arguments.  It's simply called so you you know the method
+is done.   If the method does have some kind of return value, the 
+callback is not optional and the argument will be said value.  Return values
+of storage functions are not significant and should never be used.  Unless
+otherwise specified, assume the functions below have plain success callbacks.
+
+=back
 
 =head1 INTERFACE
 
 =over 2
 
-=item set_message_stored_handler I<CODEREF>
-
-Takes a CODEREF which will get called back when a message has been successfully stored.  This functwion will be called with one argument, the name of the destination.
-
-=item set_dispatch_message_handler I<CODEREF>
-
-Takes a CODEREF which will get called back when a message has been retrieved from the store.  This will be called with three arguments: the message, the destination string, and the client id.  If no message could be retrieved the function will still be called but with the message undefined.
-
-=item set_destination_ready_handler I<CODEREF>
-
-Takes a CODEREF which will get called back when a destination is ready to be claimed from again.  This is necessary for storage engines that will lock a destination while attempting to retrieve a message.  This handler will be called when the destination is unlocked so that message queue knows that it can claim more messages.  If your storage engine doesn't lock anything, you B<must> call this handler immediately after called the above handler.  
-
-It will be called with a single argument: the destination string.
-
-=item set_shutdown_complete_handler I<CODEREF>
-
-Takes a CODEREF which will get called when the storage engine has finished shutting down.  The shutdown process is started by calling I<shutdown()> on the storage engine (see below).
-
-It will be called without any arguments.
-
 =item set_logger I<SCALAR>
 
-Takes an object of type L<POE::Component::MessageQueue::Logger> that should be used for logging.
+Takes an object of type L<POE::Component::MessageQueue::Logger> that should be 
+used for logging.  This isn't a storage method and does not have any callback
+associated with it.
 
-=item get_next_message_id
+=item store I<Message>
 
-Should return the next available message_id.
+Takes one or more objects of type L<POE::Component::MessageQueue::Message> 
+that should be stored.
 
-=item store I<SCALAR>
+=item get I<optional-aref>
 
-Takes an object of type L<POE::Component::MessageQueue::Message> that should be stored.  This call will eventually result in the I<message_stored_handler> being called exactly once.
+Passes the message(s) specified by the passed id(s) to the callback.
 
-=item remove I<SCALAR>
+=item get_all
 
-Takes a message_id to be removed from the storage engine.
+=item get_oldest
 
-=item claim_and_retrieve I<SCALAR, SCALAR> or I<HASHREF>
+Self-explanatory.
 
-Takes the destination string and client id (or a HASHREF with keys "destination" and "client_id").  Should claim a message for the given client id on the given destination.  This call will eventually result in the I<dispatch_message_handler> and I<destination_ready_handler> being called exactly once each.
+=item remove I<optional-aref>
 
-=item disown I<SCALAR>, I<SCALAR>
+Removes the message(s) specified by the passed id(s).
 
-Takes a destination and client id.  All messages which are owned by this client id on this destination should be marked as owned by nobody.
+=item empty
 
-=item shutdown
+Deletes all messages from the storage engine.
 
-Will start shutting down the storage engine.  The I<shutdown_complete> handler will be called when the storage engine has finished shutting down.  This should be a graceful operation.  Ie., The storage engine will attempt to clean-up and push messages to persistent storage if possible before calling the I<shutdown_complete> handler.
+=item claim I<optional-aref>, I<client-id>
+
+Naively claims the specified messages for the specified client, even if they
+are already claimed.  This is intended to be called by stores that wrap other
+stores to maintain synchronicity between multiple message copies - non-store
+clients usually want claim_and_retrieve.
+
+=item claim_and_retrieve I<destination>, I<client-id>
+
+Claims the "next" message intended for I<destination> for I<client-id> and
+passes it to the supplied callback.  Storage engines are free to define what 
+"next" means, but the intended meaning is "oldest unclaimed message for this 
+destination".
+
+=item disown_all I<client-id>
+
+Disowns all messages owned by the client.
+
+=item disown_destination I<destination>, I<client-id>
+
+Disowns the message owned by the specified client on the specified
+destination.  (This should only be one message).
+
+=item storage_shutdown
+
+Starts shutting down the storage engine.  The storage engine will
+attempt to do any cleanup (persisting of messages, etc) before calling the
+callback.
 
 =back
 
