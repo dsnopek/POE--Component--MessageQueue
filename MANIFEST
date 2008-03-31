@@ -23,6 +23,7 @@ inc/Module/Install/Win32.pm
 inc/Module/Install/WriteAll.pm
 lib/POE/Component/MessageQueue.pm
 lib/POE/Component/MessageQueue/Client.pm
+lib/POE/Component/MessageQueue/Destination.pm
 lib/POE/Component/MessageQueue/IDGenerator.pm
 lib/POE/Component/MessageQueue/IDGenerator/SimpleInt.pm
 lib/POE/Component/MessageQueue/IDGenerator/UUID.pm
@@ -37,6 +38,7 @@ lib/POE/Component/MessageQueue/Storage/BigMemory.pm
 lib/POE/Component/MessageQueue/Storage/Complex.pm
 lib/POE/Component/MessageQueue/Storage/DBI.pm
 lib/POE/Component/MessageQueue/Storage/Default.pm
+lib/POE/Component/MessageQueue/Storage/Double.pm
 lib/POE/Component/MessageQueue/Storage/FileSystem.pm
 lib/POE/Component/MessageQueue/Storage/Generic.pm
 lib/POE/Component/MessageQueue/Storage/Generic/Base.pm
@@ -63,4 +65,4 @@ t/02_client.t
 t/03_queue.t
 t/04_message.t
 t/05_storage_api.t
-t/05_complex.t
+t/06_complex.t
