@@ -62,7 +62,7 @@ has claimant => (
 has 'size' => (
 	is      => 'ro',
 	isa     => 'Num',
-	lazy	=> 1,
+	lazy    => 1,
 	default => sub {
 		my $self = shift;
 		use bytes;

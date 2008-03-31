@@ -84,16 +84,20 @@ has clients => (
 );
 
 after remove_client => sub {
-	my ($self, $id, $done) = @_; # done is optional 
+	my ($self, $id) = @_;
 	my $client = $self->get_client($id) || return;
 
 	$self->log(notice => "MASTER: Removing client $id");
 	
-	$client->unsubscribe($_->destination) foreach $client->all_subscriptions;
-
-	# shutdown TCP connection
-	$client->shutdown();
-	$self->storage->disown_all($id, $done);
+	$self->storage->disown_all($id, sub {
+		foreach my $s ($client->all_subscriptions)
+		{
+			$client->unsubscribe($s->destination);
+			$s->destination->pump();
+		}
+		# shutdown TCP connection
+		$client->shutdown();
+	});
 };
 	
 has destinations => (
@@ -429,7 +433,6 @@ sub dispatch_message
 	my ($self, $msg, $subscriber) = @_;
 	my $msg_id = $msg->id;
 	my $destination = $self->get_destination($msg->destination);
-	my $pump_later = sub { $destination->pump() };
 
 	if(my $client = $subscriber->client)
 	{
@@ -444,7 +447,7 @@ sub dispatch_message
 			}
 			else
 			{
-				$self->storage->remove($msg_id, $pump_later);
+				$self->storage->remove($msg_id);
 			}
 			$self->notify(dispatch => {
 				destination => $destination, 
@@ -456,7 +459,7 @@ sub dispatch_message
 		{
 			$self->log(warning => 
 				"MASTER: Couldn't send frame to client $client_id: removing.");
-			$self->remove_client($client_id, $pump_later);
+			$self->remove_client($client_id);
 		}
 	}
 	else
@@ -465,7 +468,9 @@ sub dispatch_message
 			"MASTER: Message $msg_id could not be delivered (no client)");
 		if ($msg->claimed)
 		{
-			$self->storage->disown_all($msg->claimant, $pump_later);
+			$self->storage->disown_all($msg->claimant, sub {
+				$destination->pump();
+			});
 		}
 	}
 }
