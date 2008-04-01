@@ -108,7 +108,7 @@ sub pump
 		my @subs = $self->all_subscriptions;
 		$self->pump_pending(0);
 		$self->pumping(1);
-		$poe_kernel->post($self->name, '_subloop', \@subs);
+		$poe_kernel->call($self->name, '_subloop', \@subs);
 	}
 }
 
