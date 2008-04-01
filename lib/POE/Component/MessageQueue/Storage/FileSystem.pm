@@ -369,6 +369,10 @@ sub _read_message_from_disk
 		# we need to get the message out of the info store
 		$self->info_store->remove( $id );
 
+		# TODO: This is the right thing to do in every situation EXCEPT claim_and_retreive,
+		# when we really want to initiate another claim and retrieve cycle, because sending
+		# "undef" means that there are no messages on this destination which will stop the
+		# pump cycle!
 		@_ = (undef);
 		goto $callback;
 	}
