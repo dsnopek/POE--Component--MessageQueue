@@ -227,7 +227,7 @@ sub _read_loop
 	{
 		$message->body($body);
 		push(@$done_reading, $message);
-		goto $again;	
+		goto $again;
 	}
 	else
 	{
@@ -361,6 +361,11 @@ sub _read_message_from_disk
 	# of crash recovery.
 	unless ($fh)
 	{
+		$self->log( 'warning', "Can't find $fn on disk!  Discarding message." );
+
+		# we need to get the message out of the info store
+		$self->info_store->remove( $id );
+
 		@_ = (undef);
 		goto $callback;
 	}
