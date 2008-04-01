@@ -241,7 +241,7 @@ my %args = (
 		timeout      => $timeout,
 		throttle_max => $throttle_max,
 		front        => $front_store,
-		front_max    => parse_size($front_max),
+		front_max    => $front_max ? parse_size($front_max) : undef,
 		granularity  => $granularity,
 	),
 

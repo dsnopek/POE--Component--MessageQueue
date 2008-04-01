@@ -233,14 +233,14 @@ sub _shutdown_complete
 	$poe_kernel->signal( $self->alias, 'TERM' );
 	$poe_kernel->signal( $self->master_alias, 'TERM' );
 
-	$self->log(alert => 'Shutting down the logger');
-	$self->logger->shutdown();
-
 	$self->log(alert => 'Shutting down all observers');
 	if (my $oref = $self->observers)
 	{
 		$_->shutdown() foreach (@$oref);
 	}
+
+	$self->log(alert => 'Shutting down the logger');
+	$self->logger->shutdown();
 }
 
 sub route_frame

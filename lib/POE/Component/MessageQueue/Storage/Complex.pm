@@ -41,7 +41,6 @@ with qw(POE::Component::MessageQueue::Storage::Double);
 
 use POE;
 use Heap::Fibonacci;
-use List::MoreUtils qw(zip);
 use List::Util qw(sum);
 BEGIN {eval q(use Time::HiRes qw(time))}
 
@@ -139,11 +138,13 @@ has idle_heap => (
 sub set_idle
 {
 	my ($self, @ids) = @_;
-	my @elems = map {
-		POE::Component::MessageQueue::Storage::Complex::IdleElement->new($_);
-	} @ids;
-	$self->_hashset_idle(zip @ids, @elems);
-	$self->idle_heap->add($_) foreach @elems;
+
+	my %idles = map {($_ => 
+		POE::Component::MessageQueue::Storage::Complex::IdleElement->new($_)
+	)} @ids;
+
+	$self->_hashset_idle(%idles);
+	$self->idle_heap->add($_) foreach (values %idles);
 }
 
 around delete_idle => sub {
@@ -167,9 +168,12 @@ after remove => sub {
 	$self->delete_front_expiration(@ids);
 	$self->delete_nonpersistent_expiration(@ids);
 
-	$self->less_front(sum map  {$_->{size}} 
-	                      grep {$_}
-	                      $self->delete_front(@ids))
+	my $sum = 0;
+	foreach my $info ($self->delete_front(@ids))
+	{
+		$sum += $info->{size} if $info;
+	}
+	$self->less_front($sum);
 };
 
 after empty => sub {

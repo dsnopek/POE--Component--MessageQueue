@@ -23,6 +23,7 @@ use POE::Session;
 use POE::Filter::Stream;
 use POE::Wheel::ReadWrite;
 use IO::File;
+use IO::Dir;
 
 has 'info_store' => (
 	is       => 'ro',
@@ -115,6 +116,9 @@ sub BUILD
 			)]
 		],
 	));
+
+	# Uncomment the following line to log some intense debuging information.
+	#$poe_kernel->post($self->session, '_log_state');
 }
 
 sub _start
@@ -226,7 +230,7 @@ sub _read_loop
 	{
 		$message->body($body);
 		push(@$done_reading, $message);
-		goto $again;	
+		goto $again;
 	}
 	else
 	{
@@ -258,10 +262,8 @@ sub empty
 	my ($self, $callback) = @_;
 
 	$self->info_store->empty(sub {
-
-	# Delete all the message files that don't have writes pending
-		use DirHandle;
-		my $dh = DirHandle->new($self->data_dir);
+		# Delete all the message files that don't have writes pending
+		my $dh = IO::Dir->new($self->data_dir);
 		foreach my $fn ($dh->read())
 		{
 			if ($fn =~ /msg-\(.*\)\.txt/)
@@ -352,7 +354,6 @@ sub _read_message_from_disk
 		return;
 	}
 
-	# setup the wheel
 	my $fn = $self->_get_filename($id);
 	my $fh = IO::File->new( $fn );
 	
@@ -362,10 +363,20 @@ sub _read_message_from_disk
 	# of crash recovery.
 	unless ($fh)
 	{
+		$self->log( 'warning', "Can't find $fn on disk!  Discarding message." );
+
+		# we need to get the message out of the info store
+		$self->info_store->remove( $id );
+
+		# TODO: This is the right thing to do in every situation EXCEPT claim_and_retreive,
+		# when we really want to initiate another claim and retrieve cycle, because sending
+		# "undef" means that there are no messages on this destination which will stop the
+		# pump cycle!
 		@_ = (undef);
 		goto $callback;
 	}
 	
+	# setup the wheel
 	my $wheel = POE::Wheel::ReadWrite->new(
 		Handle       => $fh,
 		Filter       => POE::Filter::Stream->new(),
