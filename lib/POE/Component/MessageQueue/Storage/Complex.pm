@@ -164,7 +164,7 @@ after remove => sub {
 	my @ids = (grep $self->in_front($_), @$aref) or return;
 
 	$self->delete_idle(@ids);
-	$self->delete_expiration(@ids);
+	$self->delete_front_expiration(@ids);
 	$self->delete_nonpersistent_expiration(@ids);
 
 	$self->less_front(sum map  {$_->{size}} 

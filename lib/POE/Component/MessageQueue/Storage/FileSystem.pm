@@ -116,6 +116,9 @@ sub BUILD
 			)]
 		],
 	));
+
+	# Uncomment the following line to log some intense debuging information.
+	#$poe_kernel->post($self->session, '_log_state');
 }
 
 sub _start
