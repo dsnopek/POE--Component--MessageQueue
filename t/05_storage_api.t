@@ -32,8 +32,8 @@ BEGIN {
 		},
 		FileSystem => {
 			args     => sub {(
-				info_store => make_engine('DBI'),
-				data_dir   => DATA_DIR,
+				info_storage => make_engine('DBI'),
+				data_dir     => DATA_DIR,
 			)},
 		},
 		Throttled  => {

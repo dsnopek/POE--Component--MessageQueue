@@ -41,7 +41,6 @@ with qw(POE::Component::MessageQueue::Storage::Double);
 
 use POE;
 use Heap::Fibonacci;
-use List::Util qw(sum);
 BEGIN {eval q(use Time::HiRes qw(time))}
 
 has timeout => (

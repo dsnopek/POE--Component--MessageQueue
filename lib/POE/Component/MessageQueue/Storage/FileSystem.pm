@@ -25,7 +25,7 @@ use POE::Wheel::ReadWrite;
 use IO::File;
 use IO::Dir;
 
-has 'info_store' => (
+has 'info_storage' => (
 	is       => 'ro',
 	required => 1,	
 	does     => qw(POE::Component::MessageQueue::Storage),
@@ -39,7 +39,7 @@ foreach my $method qw(get get_all)
 	__PACKAGE__->meta->add_method($method, sub {
 		my $self = shift;
 		my $callback = pop;
-		$self->info_store->$method(@_, sub {
+		$self->info_storage->$method(@_, sub {
 			$self->_read_loop($_[0], [], $callback);
 		});
 	});
@@ -51,7 +51,7 @@ foreach my $method qw(get_oldest claim_and_retrieve)
 	__PACKAGE__->meta->add_method($method, sub {
 		my $self = shift;
 		my $callback = pop;
-		$self->info_store->$method(@_, sub {
+		$self->info_storage->$method(@_, sub {
 			$self->_read_loop([$_[0]], [], sub {
 				@_ = ($_[0]->[0]);
 				goto $callback;
@@ -100,13 +100,13 @@ has 'live_session' => (
 
 after 'set_logger' => sub {
 	my ($self, $logger) = @_;
-	$self->info_store->set_logger($logger);
+	$self->info_storage->set_logger($logger);
 };
 
 sub BUILD 
 {
 	my $self = shift;
-	$self->children({INFO => $self->info_store});
+	$self->children({INFO => $self->info_storage});
 	$self->session(POE::Session->create(
 		object_states => [
 			$self => [qw(
@@ -163,7 +163,7 @@ sub store
 	# initiate file writing process (only the body will be written)
 	$poe_kernel->post($self->session, _write_message_to_disk => $message);
 
-	$self->info_store->store($info_copy, $callback);
+	$self->info_storage->store($info_copy, $callback);
 }
 
 sub _get_filename
@@ -251,7 +251,7 @@ sub _read_loop
 sub remove
 {
 	my ($self, $message_ids, $callback) = @_;
-	$self->info_store->remove($message_ids, sub {
+	$self->info_storage->remove($message_ids, sub {
 		$self->_hard_delete($_) foreach (@$message_ids);
 		goto $callback if $callback;
 	});
@@ -261,7 +261,7 @@ sub empty
 {
 	my ($self, $callback) = @_;
 
-	$self->info_store->empty(sub {
+	$self->info_storage->empty(sub {
 		# Delete all the message files that don't have writes pending
 		my $dh = IO::Dir->new($self->data_dir);
 		foreach my $fn ($dh->read())
@@ -285,7 +285,7 @@ sub storage_shutdown
 
 	$self->shutdown_callback($complete);
 
-	$self->info_store->storage_shutdown(sub {
+	$self->info_storage->storage_shutdown(sub {
 		return if ($self->live_session);
 		$self->stop_shutdown();
 		goto $complete if $complete;
@@ -366,7 +366,7 @@ sub _read_message_from_disk
 		$self->log( 'warning', "Can't find $fn on disk!  Discarding message." );
 
 		# we need to get the message out of the info store
-		$self->info_store->remove( $id );
+		$self->info_storage->remove( $id );
 
 		# TODO: This is the right thing to do in every situation EXCEPT claim_and_retreive,
 		# when we really want to initiate another claim and retrieve cycle, because sending
@@ -515,7 +515,7 @@ POE::Component::MessageQueue::Storage::FileSystem -- A storage engine that keeps
 
   POE::Component::MessageQueue->new({
     storage => POE::Component::MessageQueue::Storage::FileSystem->new({
-      info_store => POE::Component::MessageQueue::Storage::DBI->new({
+      info_storage => POE::Component::MessageQueue::Storage::DBI->new({
         dsn      => $DB_DSN,
         username => $DB_USERNAME,
         password => $DB_PASSWORD,
@@ -542,7 +542,7 @@ having been stored.
 
 =over 2
 
-=item info_store => L<POE::Component::MessageQueue::Storage>
+=item info_storage => L<POE::Component::MessageQueue::Storage>
 
 The storage engine used to store message properties.
 

@@ -32,6 +32,7 @@ requires 'Heap';
 requires 'Heap::Fibonacci';
 requires 'Moose';
 requires 'MooseX::AttributeHelpers';
+requires 'MooseX::MultiInitArg';
 
 recommends 'YAML::Syck';
 
