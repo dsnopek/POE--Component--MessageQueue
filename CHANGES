@@ -1,4 +1,17 @@
 
+== 0.2.0 -- 4/??/2008 ==
+
+ * Massive refactor:
+   - Built on Moose.
+   - Any storage engine can be a front-store.
+   - Callback passing (versus old static method).
+ * Storage::Complex:
+   - Treat the front store like a cache.
+   - Separate 'granularity' parameter.
+ * Storage::Throttled:
+   - Can claim and retrieve messages for improved performance.
+ * Comprehensive unit-test suite.
+
 == 0.1.8 -- 2/5/2008 ==
 
  * Configurable message ID generators (UUIDs are now the default).
