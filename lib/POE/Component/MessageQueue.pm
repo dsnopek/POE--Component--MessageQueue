@@ -17,7 +17,7 @@
 
 package POE::Component::MessageQueue;
 use vars qw($VERSION);
-$VERSION = '0.1.8';
+$VERSION = '0.2.0';
 
 use POE 0.38;
 use POE::Component::Server::Stomp;
