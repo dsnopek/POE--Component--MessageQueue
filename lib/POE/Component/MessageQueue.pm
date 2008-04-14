@@ -83,7 +83,7 @@ has clients => (
 	}
 );
 
-after remove_client => sub {
+before remove_client => sub {
 	my ($self, $id) = @_;
 	my $client = $self->get_client($id) || return;
 
