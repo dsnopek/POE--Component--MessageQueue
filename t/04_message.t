@@ -33,7 +33,7 @@ can_ok(
         headers => {
             'destination'    => $destination,
             'message-id'     => $message_id,
-						'content-length' => length($body),
+            'content-length' => length($body),
         },
         body    => $body
     });
