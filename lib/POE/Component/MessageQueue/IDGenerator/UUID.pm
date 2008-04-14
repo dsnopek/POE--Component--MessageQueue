@@ -15,30 +15,24 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-use strict;
-use warnings;
 package POE::Component::MessageQueue::IDGenerator::UUID;
-use base qw(POE::Component::MessageQueue::IDGenerator);
+use Moose;
+with qw(POE::Component::MessageQueue::IDGenerator);
 
 use Data::UUID;
 
-sub new 
-{
-	my $class = shift;
-	my $self = $class->SUPER::new(@_);
-
-	$self->{gen} = Data::UUID->new();
-
-	return bless $self, $class;
-}
+has 'generator' => (
+	is => 'ro',
+	default => sub { Data::UUID->new() },
+);
 
 sub generate 
 {
-	my ($self, $message) = @_;
+	my ($self) = @_;
 	# We could return something more compact (like a b64string) but that would
-	# screw with Storage::Filesystem, and anyone elese that doesn't like special
+	# screw with Storage::Filesystem, and anyone else that doesn't like special
 	# characters.
-	return $self->{gen}->create_str();
+	return $self->generator->create_str();
 }
 
 1;

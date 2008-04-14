@@ -1,5 +1,5 @@
 #
-# Copyright 2007, 2008 Paul Driver <frodwith@gmail.com>
+# Copyright 2007 Paul Driver <frodwith@gmail.com>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -15,29 +15,34 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-package POE::Component::MessageQueue::Topic;
-use Moose;
+package POE::Component::MessageQueue::Destination;
+use Moose::Role;
 
-with qw(POE::Component::MessageQueue::Destination);
-__PACKAGE__->meta->make_immutable();
+has parent => (
+	is       => 'ro',
+	required => 1,
+	handles  => [qw(log notify storage dispatch_message)],
+);
 
-sub send
-{
-	my ($self, $message) = @_;
+has subscriptions => (
+	metaclass => 'Collection::Hash',
+	is => 'ro',
+	isa => 'HashRef[POE::Component::MessageQueue::Subscription]',
+	default => sub { {} },
+	provides => {
+		'set'    => 'set_subscription',
+		'get'    => 'get_subscription',
+		'delete' => 'delete_subscription',
+		'values' => 'all_subscriptions',
+	},
+);
 
-	foreach my $subscriber ($self->all_subscriptions)
-	{
-		$self->dispatch_message($message, $subscriber);
-	}
+has name => (
+	is       => 'ro',
+	required => 1,
+);
 
-	return;
-}
-
-sub is_persistent { return 0 }
-
-# These do nothing now, but they may someday
-sub pump {}
-sub shutdown {}
+requires qw(send is_persistent pump shutdown);
 
 1;
 

@@ -16,198 +16,126 @@
 #
 
 package POE::Component::MessageQueue::Storage::Generic;
-use base qw(POE::Component::MessageQueue::Storage);
-
+use Moose;
 use POE;
 use POE::Component::Generic 0.1001;
 use POE::Component::MessageQueue::Logger;
-use strict;
 
-use Data::Dumper;
-
-sub new
+# We're going to proxy some methods to the generic object.  Yay MOP!
+my @proxy_methods = qw(
+	get            get_all 
+	get_oldest     claim_and_retrieve 
+	claim          empty          
+	remove         store          
+	disown_all     disown_destination 
+);
+foreach my $method (@proxy_methods)
 {
-	my $class = shift;
-	my $args  = shift;
+	__PACKAGE__->meta->add_method($method, sub {
+		my ($self, @args) = @_;
+		$self->generic->yield(
+			$method, 
+			{session => $self->session->ID, event => '_general_handler'},
+			@args,
+		);		
+		return;
+	});
+}
 
-	my $package;
-	my $options;
+# Have to do with after we add those methods, or the role will fail.
+with qw(POE::Component::MessageQueue::Storage);
 
-	if ( ref($args) eq 'HASH' )
-	{
-		$package = $args->{package};
-		$options = $args->{options};
-	}
-	else
-	{
-		$package = $args;
-		$options = shift;
-	}
+has 'alias' => (
+	is       => 'ro',
+	isa      => 'Str',
+	default  => 'MQ-Storage-Generic',
+	required => 1,
+);
 
-	my $self = $class->SUPER::new( $args );
+# This is the place for PoCo::Generic to post events back to.
+has 'session' => (
+	is       => 'rw',
+	isa      => 'POE::Session',
+);
 
-	$self->{claiming}     = { };
+has 'generic' => (
+	is       => 'rw',
+	isa      => 'POE::Component::Generic',
+);
 
-	my $generic = POE::Component::Generic->spawn(
-		package => $package,
-		object_options => $options,
+# Because PoCo::Generic needs the constructor options passed to it in this
+# funny way, we have to set up generic in BUILD.
+sub BUILD 
+{
+	my ($self, $args) = @_;
+	my $package = $self->package_name; 
+
+	$self->session(POE::Session->create(
+		object_states => [
+			$self => [qw(_general_handler _log_proxy _error _start _shutdown)],
+		],
+	));
+
+	$self->generic(POE::Component::Generic->spawn(
+		package => $package, 
+		object_options => [%$args],
 		packages => {
-			$package =>
-			{
-				postbacks => [
-					'set_message_stored_handler',
-					'set_dispatch_message_handler',
-					'set_destination_ready_handler',
-					'set_shutdown_complete_handler',
-					'set_log_function'
-				],
-				factories => [ 'get_logger' ],
+			$package => {
+				callbacks => [@proxy_methods, qw(storage_shutdown)],
+				postbacks => [qw(set_log_function)],
 			},
-			'POE::Component::MessageQueue::Logger' =>
-			{
-				postbacks => [ 'set_log_function' ]
-			}
 		},
 		error => {
-			session => 'MQ-Storage-Generic',
+			session => $self->alias,
 			event   => '_error'
 		},
 		#debug => 1,
-		#verbose => 1
-	);
+		#verbose => 1,
+	));
 
-	$self->{session_alias} = 'MQ-Storage-Generic';
+	$self->generic->set_log_function({}, {
+		session => $self->alias, 
+		event   => '_log_proxy'
+	});
 
-	my $session = POE::Session->create(
-		inline_states => {
-			_start => sub {
-				$_[KERNEL]->alias_set($self->{session_alias})
-			},
-		},
-		object_states => [
-			$self => [
-				'_general_handler',
-				'_log_proxy',
-				'_message_stored',
-				'_dispatch_message',
-				'_destination_ready',
-				'_finished_claiming',
-				'_shutdown_complete',
-				'_error',
-			]
-		]
-	);
+	use POE::Component::MessageQueue;
+	$self->generic->ignore_signals({}, 
+		POE::Component::MessageQueue->SHUTDOWN_SIGNALS);
+};
 
-	# store the sessions
-	$self->{generic} = $generic;
-	$self->{session} = $session;
-
-	# before anything else, set the log function
-	$self->{generic}->set_log_function(
-		{ session => $session->ID(), event => '_general_handler' },
-		{ session => $session->ID(), event => '_log_proxy' });
-	# set-up the postbacks for all the handlers
-	$self->{generic}->set_message_stored_handler(
-		{ session => $session->ID(), event => '_general_handler' },
-		{ session => $session->ID(), event => '_message_stored' });
-	$self->{generic}->set_dispatch_message_handler(
-		{ session => $session->ID(), event => '_general_handler' },
-		{ session => $session->ID(), event => '_dispatch_message' });
-	$self->{generic}->set_destination_ready_handler(
-		{ session => $session->ID(), event => '_general_handler' },
-		{ session => $session->ID(), event => '_destination_ready' });
-	$self->{generic}->set_shutdown_complete_handler(
-		{ session => $session->ID(), event => '_general_handler' },
-		{ session => $session->ID(), event => '_shutdown_complete' });
-
-	return bless $self, $class;
+sub package_name
+{
+	die "Abstract.";
 }
 
-sub store
+sub _start
 {
-	my ($self, $message) = @_;
-
-	$self->{generic}->store(
-		{ session => $self->{session}->ID(), event => '_general_handler' },
-		$message
-	);
+	my ($self, $kernel) = @_[OBJECT, KERNEL];
+	$kernel->alias_set($self->alias);
 }
 
-sub remove
+sub _shutdown
 {
-	my ($self, $message_id) = @_;
-
-	$self->{generic}->remove(
-		{ session => $self->{session}->ID(), event => '_general_handler' },
-		$message_id
-	);
+	my ($self, $kernel, $callback) = @_[OBJECT, KERNEL, ARG0];
+	$self->generic->shutdown();
+	$kernel->alias_remove($self->alias);
+	$self->log('alert', 'Generic storage engine is shutdown!');
+	goto $callback;
 }
 
-sub claim_and_retrieve
+sub storage_shutdown
 {
-	my $self = shift;
-	my $args = shift;
+	my ($self, $complete) = @_;
+	$self->log('alert', 'Shutting down generic storage engine...');
 
-	my $destination;
-	my $client_id;
+	# Send the shutdown message to generic - it will come back when it's cleaned
+	# up its resources, and we can stop it for reals (as well as stop our own
+	# session).  
+	$self->generic->yield('storage_shutdown', {}, sub {
+		$poe_kernel->post($self->session, '_shutdown', $complete);
+	});
 
-	if ( ref($args) eq 'HASH' )
-	{
-		$destination = $args->{destination};
-		$client_id   = $args->{client_id};
-	}
-	else
-	{
-		$destination = $args;
-		$client_id   = shift;
-	}
-
-	if ( $self->{claiming}->{$destination} )
-	{
-		# we are already attempting to claim a message for this destination!
-		return 0;
-	}
-	else
-	{
-		# lock temporarily.
-		$self->{claiming}->{$destination} = $client_id;
-	}
-
-	$self->{generic}->claim_and_retrieve(
-		{ session => $self->{session}->ID(), event => '_finished_claiming',
-			data => { destination => $destination }
-		},
-		{ destination => $destination, client_id => $client_id }
-	);
-
-	# let the caller know that this is actually going down.
-	return 1;
-}
-
-sub disown
-{
-	my ($self, $destination, $client_id) = @_;
-
-	$self->{generic}->disown(
-		{ session => $self->{session}->ID(), event => '_general_handler' },
-		$destination, $client_id
-	);
-}
-
-sub shutdown
-{
-	my $self = shift;
-
-	$self->_log('alert', 'Shutting down generic storage engine...');
-
-	$self->{shutdown} = 1;
-
-	# Send the shutdown message.  When the underlying object calls
-	# the callback, we will then be sure that all message before it
-	# have gotten through and handled.
-	$self->{generic}->yield( storage_shutdown =>
-		{ session => $self->{session}->ID(), event => '_general_handler' }
-	);
+	return;
 }
 
 sub _general_handler
@@ -216,8 +144,9 @@ sub _general_handler
 
 	if ( $ref->{error} )
 	{
-		$self->_log("error", "Generic error: $ref->{error}");
+		$self->log('error', "Generic error: $ref->{error}");
 	}
+	return;
 }
 
 sub _error
@@ -226,99 +155,24 @@ sub _error
 
 	if ( $err->{stderr} )
 	{
-		$self->_log('debug', $err->{stderr});
+		$self->log('debug', $err->{stderr});
 	}
 	else
 	{
-		$self->_log('error', "Generic error:  $err->{operation} $err->{errnum} $err->{errstr}");
-
-		if ( $self->{shutdown} )
-		{
-			# if any error occurs while attempting to shutdown, then
-			# we simply force a shutdown.
-			$self->_log('error', 'Forcing shutdown from error');
-			$poe_kernel->post( $self->{session}, '_shutdown_complete' );
-		}
+		my $op = $err->{operation} || q{};
+		my $num = $err->{errnum}   || q{};
+		my $str = $err->{errstr}   || q{};
+		$self->log('error', "Generic error: $op $num $str");
 	}
+	return;
 }
 
 sub _log_proxy
 {
 	my ($self, $type, $msg) = @_[ OBJECT, ARG0, ARG1 ];
 
-	$self->_log($type, $msg);
-}
-
-sub _finished_claiming
-{
-	my ($self, $ref, $result) = @_[ OBJECT, ARG0, ARG1 ];
-
-	my $destination = $ref->{data}->{destination};
-
-	# unlock claiming from this destination.  We need to do this here
-	# because _destination_ready will only occure after a message has been
-	# fully claimed, but not if no message was claimed.  This covers the
-	# empty queue case.
-	delete $self->{claiming}->{$destination};
-}
-
-sub _message_stored
-{
-	my ($self, $destination) = @_[ OBJECT, ARG0 ];
-
-	if ( defined $self->{message_stored} )
-	{
-		$self->{message_stored}->( $destination );
-	}
-}
-
-sub _dispatch_message
-{
-	my ($self, $message, $destination, $client_id) = @_[ OBJECT, ARG0, ARG1, ARG2 ];
-
-	if ( not defined $self->{dispatch_message} )
-	{
-		die "Pulled message from backstore, but there is no dispatch_message handler";
-	}
-
-	# call the handler because the message is complete
-	$self->{dispatch_message}->( $message, $destination, $client_id );
-}
-
-sub _destination_ready
-{
-	my ($self, $destination) = @_[ OBJECT, ARG0 ];
-
-	# NOTE: This will happen after a message is fully claimed.
-
-	# unlock claiming from this destination
-	delete $self->{claiming}->{$destination};
-
-	# notify whoaver, that the destination is ready for another client to try to claim
-	# a message.
-	if ( defined $self->{destination_ready} )
-	{
-		$self->{destination_ready}->( $destination );
-	}
-}
-
-sub _shutdown_complete
-{
-	my ($self) = @_[ OBJECT ];
-
-	# shutdown the generic object
-	$self->{generic}->shutdown();
-
-	# clear our alias, so this session should end.
-	$poe_kernel->alias_remove($self->{session_alias});
-
-	$self->_log('alert', 'Generic storage engine is shutdown!');
-
-	# We are shutdown!  Hurray!  Start passing it up the chain.
-	if ( defined $self->{shutdown_complete} )
-	{
-		$self->{shutdown_complete}->();
-	}
+	$self->log($type, $msg);
+	return;
 }
 
 1;
@@ -368,17 +222,14 @@ Using this module is by far the easiest way to write custom storage engines beca
 
 There is only one package currently provided designed to work with this module: L<POE::Component::MessageQueue::Storage::Generic::DBI>.
 
-=head1 CONSTRUCTOR PARAMETERS
+=head1 METHODS
 
 =over 2
 
-=item package => SCALAR
+=item package_name
 
-The name of the package to wrap.
-
-=item options => ARRAYREF
-
-The arguments to pass to the new() function of the above package.
+Classes implenting this role are required to provide a "package_name" method
+that returns the name of the package to wrap.
 
 =back
 

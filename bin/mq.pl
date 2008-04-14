@@ -1,5 +1,4 @@
 #!/usr/bin/perl
-
 use POE;
 use POE::Component::Logger;
 use POE::Component::MessageQueue;
@@ -20,6 +19,7 @@ my $CONF_LOG = "$CONF_DIR/log.conf";
 my $port     = 61613;
 my $hostname = undef;
 my $timeout  = 4;
+my $granularity;
 my $throttle_max = 2;
 my $background = 0;
 my $debug_shell = 0;
@@ -30,13 +30,16 @@ my $statistics   = 0;
 my $uuids = 1;
 my $stat_interval = 10;
 my $front_store = 'memory';
+my $front_max;
 my $crash_cmd = undef;
 
 GetOptions(
 	"port|p=i"         => \$port,
 	"hostname|h=s"     => \$hostname,
 	"timeout|i=i"      => \$timeout,
+	"granularity=i"    => \$granularity,
 	"front-store|f=s"  => \$front_store,
+	"front-max=s"      => \$front_max,
 	"throttle|T=i"     => \$throttle_max,
 	"data-dir=s"       => \$DATA_DIR,
 	"log-conf=s"       => \$CONF_LOG,
@@ -51,6 +54,28 @@ GetOptions(
 	"help|h"           => \$show_usage,
 );
 
+# byte kilo mega giga tera peta exa zetta yotta
+my @size_units = qw(b k m g t p e z y);
+my $size_pattern = '((?:\d*\.)?\d+)(['.join('',@size_units).']?)$';
+my $size_regex = qr/$size_pattern/i;
+sub parse_size
+{
+	my $string = shift;
+	if ($string =~ $size_regex)
+	{
+		my ($number, $unit) = ($1, lc($2));
+		return $number unless $unit;
+		for(my $i = 0; $i < @size_units; $i++)
+		{
+			if ($unit eq $size_units[$i])
+			{
+				return $number * (1024**$i);	
+			}
+		}
+	}
+	die "Unable to parse size: $string";
+}
+
 sub version
 {
 	print "POE::Component::MessageQueue version $POE::Component::MessageQueue::VERSION\n";
@@ -63,14 +88,15 @@ sub usage
 {
 	my $X = ' ' x (length $0);
     print <<"ENDUSAGE";
-$0 [--port|-p <num>] [--hostname|-h <host>]
-$X [--front-store <str>] [--nouuids]
-$X [--timeout|-i <seconds>]   [--throttle|-T <count>]
-$X [--data-dir <path_to_dir>] [--log-conf <path_to_file>]
-$X [--stats] [--stats-interval|-i <seconds>]
-$X [--background|-b] [--pidfile|-p <path_to_file>]
+$0 [--port|-p <num>]               [--hostname|-h <host>]
+$X [--front-store <str>]           [--front-max <size>] 
+$X [--granularity <seconds>]       [--nouuids]
+$X [--timeout|-i <seconds>]        [--throttle|-T <count>]
+$X [--data-dir <path_to_dir>]      [--log-conf <path_to_file>]
+$X [--stats-interval|-i <seconds>] [--stats]
+$X [--pidfile|-p <path_to_file>]   [--background|-b]
 $X [--crash-cmd <path_to_script>]
-$X [--debug-shell] [--version|-v] [--help|-h]
+$X [--debug-shell] [--version|-v]  [--help|-h]
 
 SERVER OPTIONS:
   --port     -p <num>     The port number to listen on (Default: 61613)
@@ -80,8 +106,13 @@ SERVER OPTIONS:
 STORAGE OPTIONS:
   --front-store -f <str>  Specify which in-memory storage engine to use for
                           the front-store (can be memory or bigmemory).
+  --front-max <size>      How much message body the front-store should cache.
+                          This size is specified in "human-readable" format
+                          as per the -h option of ls, du, etc. (ex. 2.5M)
   --timeout  -i <secs>    The number of seconds to keep messages in the 
                           front-store (Default: 4)
+  --granularity <secs>    How often (in seconds) Complex should check for
+                          messages that have passed the timeout.  
   --[no]uuids             Use (or do not use) UUIDs instead of incrementing
                           integers for message IDs.  Default: uuids 
   --throttle -T <count>   The number of messages that can be stored at once 
@@ -197,7 +228,7 @@ else
 {
 	use POE::Component::MessageQueue::IDGenerator::SimpleInt;
 	$idgen = POE::Component::MessageQueue::IDGenerator::SimpleInt->new(
-		"$DATA_DIR/last_id.mq",
+		filename => "$DATA_DIR/last_id.mq",
 	);
 }
 
@@ -205,16 +236,19 @@ my %args = (
 	port     => $port,
 	hostname => $hostname,
 
-	storage => POE::Component::MessageQueue::Storage::Default->new({
+	storage => POE::Component::MessageQueue::Storage::Default->new(
 		data_dir     => $DATA_DIR,
 		timeout      => $timeout,
 		throttle_max => $throttle_max,
-		front_store  => $front_store,
-	}),
+		front        => $front_store,
+		front_max    => $front_max ? parse_size($front_max) : undef,
+		granularity  => $granularity,
+	),
 
 	idgen => $idgen,
 	logger_alias => $logger_alias,
 );
+
 if ($statistics) {
 	require POE::Component::MessageQueue::Statistics;
 	require POE::Component::MessageQueue::Statistics::Publish::YAML;
@@ -226,7 +260,7 @@ if ($statistics) {
 	);
 	$args{observers} = [ $stat ];
 }
-my $mq = POE::Component::MessageQueue->new(\%args);
+my $mq = POE::Component::MessageQueue->new(%args);
 
 # install the debug shell if requested
 if ( $debug_shell )

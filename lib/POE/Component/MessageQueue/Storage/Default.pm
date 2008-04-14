@@ -1,11 +1,14 @@
 package POE::Component::MessageQueue::Storage::Default;
 
+# Not using moose for this cause it's just a frontend to whatever our
+# recommended storage engine is.  There's no point.
+
 use strict;
 use warnings;
 use POE::Component::MessageQueue::Storage::Throttled;
 use POE::Component::MessageQueue::Storage::DBI;
 use POE::Component::MessageQueue::Storage::FileSystem;
-use POE::Component::MessageQueue::Storage::Memory;
+use POE::Component::MessageQueue::Storage::BigMemory;
 use POE::Component::MessageQueue::Storage::Complex;
 use DBI;
 
@@ -161,7 +164,7 @@ sub _make_db
 sub new 
 {
 	my $class = shift;
-	my $args = shift;
+	my $args = (@_ > 1 ? {@_} : $_[0]);
 
 	my $data_dir = $args->{data_dir} || die "No data dir.";
 
@@ -176,25 +179,31 @@ sub new
 
 	_make_db($db_file, $db_dsn, $db_username, $db_password);
 
+	my $dbi = POE::Component::MessageQueue::Storage::DBI->new(
+		dsn      => $db_dsn,
+		username => $db_username,
+		password => $db_password,
+	);
+
+	my $fs = POE::Component::MessageQueue::Storage::FileSystem->new(
+		info_storage => $dbi,
+		data_dir     => $data_dir,
+	);
+	
+	my $throttled = POE::Component::MessageQueue::Storage::Throttled->new(
+		back         => $fs,
+		throttle_max => $args->{throttle_max},
+	);
+
 	# We don't bless anything because we're just returning a Complex...
-	return POE::Component::MessageQueue::Storage::Complex->new({
-		timeout         => $args->{timeout} || 4,	
-
-		front_store     => $args->{front_store} ||
-			POE::Component::MessageQueue::Storage::Memory->new(),
-
-		back_store      => POE::Component::MessageQueue::Storage::Throttled->new({
-			storage => POE::Component::MessageQueue::Storage::FileSystem->new({
-				info_storage    => POE::Component::MessageQueue::Storage::DBI->new({
-					dsn             => $db_dsn,
-					username        => $db_username,
-					password        => $db_password,
-				}),
-				data_dir        => $data_dir,
-			}),
-			throttle_max    => $args->{throttle_max},
-		}),
-	});
+	return POE::Component::MessageQueue::Storage::Complex->new(
+		timeout     => $args->{timeout}     || 4,	
+		granularity => $args->{granularity} || 2,
+		front_max   => $args->{front_max}   || 64 * 1024 * 1024,
+		front       => $args->{front}       ||
+			POE::Component::MessageQueue::Storage::BigMemory->new(),
+		back        => $throttled,
+	);
 }
 
 1;

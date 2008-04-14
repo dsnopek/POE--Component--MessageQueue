@@ -16,112 +16,101 @@
 #
 
 package POE::Component::MessageQueue::Message;
-
+use Moose;
 use Net::Stomp::Frame;
-use strict;
 
-sub new
+# Use Time::HiRes's time() if available for more accurate ordering. 
+BEGIN {eval q(use Time::HiRes qw(time))}
+
+has id => (
+	is       => 'ro',
+	isa      => 'Str',
+	required => 1,
+);
+
+has destination => (
+	is       => 'ro',
+	isa      => 'Str',
+	required => 1,
+);
+
+has body => (
+	is => 'rw',
+	clearer => 'delete_body',
+);
+
+has persistent => (
+	is       => 'ro',
+	isa      => 'Bool',
+	required => 1,
+);
+
+has expire_at => (
+	is        => 'rw',
+	isa       => 'Num',
+	predicate => 'has_expiration',
+);
+
+has claimant => (
+	is        => 'rw',
+	isa       => 'Maybe[Int]',
+	writer    => 'claim',
+	predicate => 'claimed',
+	clearer   => 'disown',
+);
+
+has 'size' => (
+	is      => 'ro',
+	isa     => 'Num',
+	lazy    => 1,
+	default => sub {
+		my $self = shift;
+		use bytes;
+		return bytes::length($self->body);
+	}
+);
+
+has 'timestamp' => (
+	is      => 'ro',
+	isa     => 'Num',
+	default => sub { time() },
+);
+
+__PACKAGE__->meta->make_immutable();
+
+sub equals
 {
-	my $class = shift;
-	my $args  = shift;
-
-	my $message_id;
-	my $destination;
-	my $body;
-	my $persistent;
-	my $in_use_by;
-	my $size;
-	my $timestamp;
-
-	if ( ref($args) eq 'HASH' )
+	my ($self, $other) = @_;
+	foreach my $ameta (values %{__PACKAGE__->meta->get_attribute_map})
 	{
-		$message_id  = $args->{message_id};
-		$destination = $args->{destination};
-		$body        = $args->{body};
-		$persistent  = $args->{persistent};
-		$in_use_by   = $args->{in_use_by};
-		$timestamp   = $args->{timestamp};
-		$size        = $args->{size};
+		my $reader = $ameta->get_read_method;
+		my ($one, $two) = ($self->$reader, $other->$reader);
+		next if (!defined $one) && (!defined $two);
+		return 0 unless (defined $one) && (defined $two);
+		return 0 unless ($one eq $two);
 	}
-	else
-	{
-		$message_id  = $args;
-		$destination = shift;
-		$body        = shift;
-		$persistent  = shift;
-	}
-
-	if ( not defined $size )
-	{
-		$size = ($body) ? length $body : 0;
-	}
-
-	my $self =
-	{
-		message_id  => $message_id,
-		destination => $destination,
-		body        => $body       || '',
-		persistent  => $persistent || 0,
-		in_use_by   => $in_use_by  || undef,
-		timestamp   => $timestamp  || time(),
-		size        => $size,
-	};
-
-	bless  $self, $class;
-	return $self;
+	return 1;
 }
 
-sub get_message_id  { return shift->{message_id}; }
-sub get_destination { return shift->{destination}; }
-sub get_body        { return shift->{body}; }
-sub get_persistent  { return shift->{persistent}; }
-sub get_in_use_by   { return shift->{in_use_by}; }
-sub get_timestamp   { return shift->{timestamp}; }
-sub get_size        { return shift->{size}; }
-
-sub is_in_queue
+sub clone
 {
-	return shift->{destination} =~ /^\/queue\//;
-}
-
-sub is_in_topic
-{
-	return shift->{destination} =~ /^\/topic\//;
-}
-
-sub set_in_use_by
-{
-	my ($self, $in_use_by) = @_;
-	$self->{in_use_by} = $in_use_by;
-}
-
-sub get_queue_name
-{
-	my $self = shift;
-
-	if ( $self->{destination} =~ /^\/queue\/(.*)$/ )
-	{
-		return $1;
-	}
-
-	return undef;
+	my $self = $_[0];
+	return $self->meta->clone_object($self);
 }
 
 sub create_stomp_frame
 {
 	my $self = shift;
 
-	my $frame = Net::Stomp::Frame->new({
+	return Net::Stomp::Frame->new({
 		command => 'MESSAGE',
 		headers => {
-			'destination'    => $self->{destination},
-			'message-id'     => $self->{message_id},
-			'content-length' => $self->{size},
+			'destination'    => $self->destination,
+			'message-id'     => $self->id,
+			'content-length' => $self->size,
 		},
-		body => $self->{body}
+		body => $self->body,
 	});
-
-	return $frame;
 }
 
 1;

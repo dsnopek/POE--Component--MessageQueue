@@ -16,213 +16,169 @@
 #
 
 package POE::Component::MessageQueue::Storage::Memory;
-use base qw(POE::Component::MessageQueue::Storage);
+use Moose;
+with qw(POE::Component::MessageQueue::Storage);
 
-use strict;
-
-use Data::Dumper;
-
-sub new
-{
-	my $class = shift;
-	my $self  = $class->SUPER::new( @_ );
-
-	$self->{messages}   = { }; # destination => @messages
-
-	return bless $self, $class;
-}
-
-sub has_message
-{
-	my ($self, $message_id) = @_;
-
-	foreach my $dest ( keys %{$self->{messages}} )
-	{
-		my $messages = $self->{messages}->{$dest};
-		foreach my $message ( @{$messages} )
-		{
-			if ( $message->{message_id} eq $message_id )
-			{
-				return 1;
-			}
-		}
-	}
-
-	return 0;
-}
-
-# this function will clear out the engine and return an array reference
-# with all the messages on it.
-sub empty_all
-{
-	my $self = shift;
-
-	my @ret;
-
-	foreach my $messages ( values %{$self->{messages}} )
-	{
-		@ret = ( @ret, @$messages );
-	}
-	$self->{messages} = {};
-
-	return \@ret;
-}
+# destination => @messages
+has 'messages' => (is => 'ro', default => sub { {} });
 
 sub store
 {
-	my ($self, $message) = @_;
+	my ($self, $msg, $callback) = @_;
+
+	my $id = $msg->id;
+	my $destination = $msg->destination;
 
 	# push onto our array
-	$self->{messages}{ $message->{destination} } ||= [];
-	push @{$self->{messages}{$message->{destination}}}, $message;
-	$self->_log( 
-		"STORE: MEMORY: Added $message->{message_id} to in-memory store" 
-	);
+	my $aref = ($self->messages->{$destination} ||= []);
+	push(@$aref, $msg);
+	$self->log(info => "Added $id");
 
-	# call the message_stored handler
-	if ( defined $self->{message_stored} )
+	goto $callback if $callback;
+}
+
+sub _msg_foreach
+{
+	my ($self, $action) = @_;
+	foreach my $messages_in_dest (values %{$self->messages})
 	{
-		$self->{message_stored}->( $message );
+		foreach my $message (@$messages_in_dest)
+		{
+			$action->($message);
+		}
 	}
 }
 
-sub remove
+sub _msg_foreach_ids
 {
-	my ($self, $message_id) = @_;
-
-	foreach my $dest ( keys %{$self->{messages}} )
-	{
-		my $messages = $self->{messages}->{$dest};
-		my $max = scalar @{$messages};
-
-		# find the message and remove it
-		for ( my $i = 0; $i < $max; $i++ )
-		{
-			if ( $messages->[$i]->{message_id} eq $message_id )
-			{
-				$self->_log('info',
-					"STORE: MEMORY: Removed $message_id from in-memory store"
-				);
-				return splice(@{$messages}, $i, 1);
-			}
-		}
-	}
-
-	return 0;
+	my ($self, $ids, $action) = @_;
+	my %id_hash = map { ($_, 1) } (@$ids);
+	$self->_msg_foreach(sub {
+		my $msg = $_[0];
+		$action->($msg) if (exists $id_hash{$msg->id});
+	});
 }
 
-sub remove_multiple
+sub get
 {
-	my ($self, $message_ids) = @_;
+	my ($self, $ids, $callback) = @_;
+	my @messages;
+	$self->_msg_foreach_ids($ids, sub {push(@messages, $_[0])});
+	@_ = (\@messages);
+	goto $callback;
+}
 
-	my @removed;
-	while (my($dest, $messages) = each %{ $self->{messages} }) {
-		my $max = scalar @{$messages};
-
-		# find the message and remove it
-		for ( my $i = 0; $i < $max; $i++ )
-		{
-			my $message = $messages->[$i];
-
-			# check if its on the list of message ids
-			foreach my $other_id ( @$message_ids )
-			{
-				if ( $message->{message_id} eq $other_id )
-				{
-					# put on our list
-					push @removed, $message;
-
-					# remove
-					splice @{$messages}, $i--, 1;
-
-					# move onto next message
-					last;
-				}
-			}
-		}
-	}
-
-	return \@removed;
+sub get_all
+{
+	my ($self, $callback) = @_;
+	my @messages;
+	$self->_msg_foreach(sub {push(@messages, $_[0])});
+	@_ = (\@messages);
+	goto $callback;
 }
 
 sub claim_and_retrieve
 {
-	my $self = shift;
-	my $args = shift;
-
-	my $destination;
-	my $client_id;
-
-	if ( ref($args) eq 'HASH' )
+	my ($self, $destination, $client_id, $callback) = @_;
+	my $oldest;
+	my $aref = $self->messages->{$destination} || [];
+	foreach my $msg (@$aref)
 	{
-		$destination = $args->{destination};
-		$client_id   = $args->{client_id};
-	}
-	else
-	{
-		$destination = $args;
-		$client_id   = shift;
-	}
-
-	my @messages = @{ $self->{messages}{$destination} || [] };
-
-	# look for an unclaimed message and take it
-	foreach my $message (@messages)
-	{
-		if ( not defined $message->{in_use_by} )
+		unless ($msg->claimed || 
+		        ($oldest && $oldest->timestamp < $msg->timestamp))
 		{
-			if ( not defined $self->{dispatch_message} )
-			{
-				die "Pulled message from backstore, but there is no dispatch_message handler";
-			}
-
-			# claim it, yo!
-			$message->{in_use_by} = $client_id;
-			$self->_log('info',
-				"STORE: MEMORY: Message $message->{message_id} ".
-				"claimed by client $client_id."
-			);
-
-			# dispatch message
-			$self->{dispatch_message}->( $message, $destination, $client_id );
-
-			# let it know that the destination is ready
-			$self->{destination_ready}->( $destination );
-
-			# we are always capable to attempt to claim
-			return 1;
+			$oldest = $msg;
 		}
 	}
-	
-	return 0;
+	$self->_claim_it_yo($oldest, $client_id) if $oldest;
+	@_ = ($oldest);
+	goto $callback;
 }
 
-# unmark all messages owned by this client
-sub disown
+sub get_oldest
 {
-	my ($self, $destination, $client_id) = @_;
+	my ($self, $callback) = @_;
+	my $oldest;
+	$self->_msg_foreach(sub {
+		my $msg = shift;
+		$oldest = $msg unless ($oldest && ($oldest->timestamp < $msg->timestamp));
+	});
+	@_ = ($oldest);
+	goto $callback;
+}
 
-	my $messages = $self->{messages}{$destination} || [];
-	foreach my $message ( @{$messages} )
+sub remove
+{
+	my ($self, $message_ids, $callback) = @_;
+	# Stuff IDs into a hash so we can quickly check if a message is on the list
+	my %id_hash = map { ($_, 1) } (@$message_ids);
+
+	foreach my $messages (values %{$self->messages})
 	{
-		if ( $message->{in_use_by} == $client_id )
+		my $max = scalar @{$messages};
+
+		for ( my $i = 0; $i < $max; $i++ )
 		{
-			$message->{in_use_by} = undef;
+			my $message = $messages->[$i];
+			# Check if this messages is in the "remove" list
+			next unless exists $id_hash{$message->id};
+			splice @$messages, $i, 1;
+			$i--; $max--;
 		}
 	}
+
+	goto $callback if $callback;
 }
 
-sub shutdown
+sub empty 
 {
-	my $self = shift;
+	my ($self, $callback) = @_;
+	%{$self->messages} = ();
+	goto $callback if $callback;
+}
 
-	# this storage engine is so simple, it has nothing to do to
-	# shutdown!  Since its purely in memory, it can't even persist
-	# any messages.
-	if ( defined $self->{shutdown_complete} )
-	{
-		$self->{shutdown_complete}->();
-	}
+sub _claim_it_yo
+{
+	my ($self, $msg, $client_id) = @_;;
+	$msg->claim($client_id);
+	$self->log('info', sprintf('Message %s claimed by client %s',
+		$msg->id, $client_id));
+}
+
+sub claim
+{
+	my ($self, $ids, $client_id, $callback) = @_;
+
+	$self->_msg_foreach_ids($ids, sub {
+		$self->_claim_it_yo($_[0], $client_id);
+	});
+
+	goto $callback if $callback;
+}
+
+sub disown_destination
+{
+	my ($self, $destination, $client_id, $callback) = @_;
+	my $aref = $self->messages->{$destination} || [];
+	$_->disown foreach grep {$_->claimed && $_->claimant eq $client_id} @$aref;
+
+	goto $callback if $callback;
+}
+
+sub disown_all
+{
+	my ($self, $client_id, $callback) = @_;
+	$self->_msg_foreach(sub {
+		my $m = $_[0];
+		$m->disown() if $m->claimed && $m->claimant eq $client_id;
+	});
+	goto $callback if $callback;
+}
+
+sub storage_shutdown
+{
+	my ($self, $callback) = @_;
+	goto $callback if $callback;
 }
 
 1;

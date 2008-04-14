@@ -15,18 +15,26 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-use strict;
-use warnings;
 package POE::Component::MessageQueue::IDGenerator::SimpleInt;
-use base qw(POE::Component::MessageQueue::IDGenerator);
+use Moose;
+use MooseX::AttributeHelpers;
+with qw(POE::Component::MessageQueue::IDGenerator);
 
-sub new 
+has 'filename' => (
+	is       => 'ro',
+	isa      => 'Str',
+	required => 1,
+);
+
+has 'last_id' => (
+	metaclass => 'Counter',
+	is        => 'rw',
+);
+
+sub BUILD
 {
-	my ($class, $filename, @rest) = @_;
-	my $self = $class->SUPER::new(@rest);
-	
-	die "No filename for last_id storage." unless $filename;
-	$self->{filename} = $filename;
+	my $self = shift;
+	my $filename = $self->filename;
 
 	if (-e $filename) 
 	{
@@ -36,32 +44,33 @@ sub new
 		close $in;
 		chomp $line;
 		die "$filename didn't contain a number." unless ($line =~ /^\d+$/);
-		$self->{last_id} = 0 + $line;
+		$self->last_id(0 + $line);
 	}
 	else
 	{
 		open my $out, '>', $filename ||
 			die "Couldn't touch $filename: $!";
 		close $out;
-		$self->{last_id} = 0;
+		$self->reset_last_id();
 	}
-
-	return bless $self, $class;
 }
 
 sub generate 
 {
-	my ($self, $message) = @_;
-	my $id = ++$self->{last_id};
+	my ($self) = @_;
+	$self->inc_last_id();
+	my $id = $self->last_id;
 	return "$id";
 }
 
 sub DESTROY 
 {
 	my $self = shift;
-	open my $out, '>', $self->{filename} ||
-		die "Couldn't reopen $self->{filename} to write last ID!";
-	print $out "$self->{last_id}\n";
+	my $fn = $self->filename;
+	open my $out, '>', $fn ||
+		die "Couldn't reopen $fn to write last ID!";
+	my $id = $self->last_id;
+	print $out "$id\n";
 	close $out;
 }
 

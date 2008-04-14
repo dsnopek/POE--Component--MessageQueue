@@ -16,315 +16,329 @@
 #
 
 package POE::Component::MessageQueue::Storage::FileSystem;
-use base qw(POE::Component::MessageQueue::Storage);
+use Moose;
 
 use POE::Kernel;
 use POE::Session;
 use POE::Filter::Stream;
 use POE::Wheel::ReadWrite;
 use IO::File;
-use strict;
+use IO::Dir;
 
-use Data::Dumper;
+has 'info_storage' => (
+	is       => 'ro',
+	required => 1,	
+	does     => qw(POE::Component::MessageQueue::Storage),
+	handles  => [qw(claim disown_all disown_destination)],
+);
 
-sub new
+# For all these, we get an aref of stuff that needs bodies from our info
+# store.  So, let's just make them all at once.  
+foreach my $method qw(get get_all)
 {
-	my $class = shift;
-	my $args  = shift;
-
-	my $info_storage;
-	my $data_dir;
-
-	if ( ref($args) eq 'HASH' )
-	{
-		$info_storage = $args->{info_storage};
-		$data_dir     = $args->{data_dir};
-	}
-
-	my $self = $class->SUPER::new( $args );
-
-	# for storing message properties
-	$self->{info_storage} = $info_storage;
-	$self->{info_storage}->set_dispatch_message_handler( $self->__closure('_dispatch_message') );
-	$self->{info_storage}->set_shutdown_complete_handler( $self->__closure('_shutdown_complete') );
-
-	# for keeping the message body on the FS
-	$self->{data_dir}    = $data_dir;
-	$self->{file_wheels} = { };
-	$self->{wheel_to_message_map} = { };
-
-	# marks when we are shutting down
-	$self->{shutdown} = 0;
-
-	my $session = POE::Session->create(
-		inline_states => {
-			_start => sub {
-				$_[KERNEL]->alias_set('MQ-Storage-FileSystem')
-			},
-		},
-		object_states => [
-			$self => [
-				'_write_message_to_disk',
-				'_read_message_from_disk',
-				'_read_input',
-				'_read_error',
-				'_write_flushed_event',
-
-				# for debug!
-				'_log_state'
-			]
-		]
-	);
-
-	# store sessions
-	$self->{session} = $session;
-
-	# DEBUG!
-	#$poe_kernel->post( $self->{session}, '_log_state' );
-
-	return bless $self, $class ;
+	__PACKAGE__->meta->add_method($method, sub {
+		my $self = shift;
+		my $callback = pop;
+		$self->info_storage->$method(@_, sub {
+			$self->_read_loop($_[0], [], $callback);
+		});
+	});
 }
 
-sub __closure
+# These are similar to the above, but for single messages
+foreach my $method qw(get_oldest claim_and_retrieve) 
 {
-	my ($self, $method_name) = @_;
-	my $func = sub {
-		return $self->$method_name(@_);
-	};
-	return $func;
+	__PACKAGE__->meta->add_method($method, sub {
+		my $self = shift;
+		my $callback = pop;
+		$self->info_storage->$method(@_, sub {
+			$self->_read_loop([$_[0]], [], sub {
+				@_ = ($_[0]->[0]);
+				goto $callback;
+			});
+		});
+	});
 }
 
-# set_dispatch_message_handler()  -- We maintain the parents version.
-# set_shutdown_complete_handler() -- We maintain the parents version.
+# Apply the role here, after we've monkeyed with the metaclass
+with qw(POE::Component::MessageQueue::Storage);
 
-sub set_message_stored_handler
-{
-	my ($self, $handler) = @_;
+has 'data_dir' => (
+	is       => 'ro',
+	isa      => 'Str',
+	required => 1,
+);
 
-	# We never need to call this directly, info_storage will!
-	#$self->SUPER::set_message_stored_handler( $handler );
+use constant empty_hashref => (
+	is       => 'ro',
+	default  => sub{ {} },
+);
 
-	$self->{info_storage}->set_message_stored_handler( $handler );
-}
+has 'file_wheels'          => empty_hashref;
+has 'wheel_to_message_map' => empty_hashref;
+has 'pending_writes'       => empty_hashref;
 
-sub set_destination_ready_handler
-{
-	my ($self, $handler) = @_;
+has 'alias' => (
+	is       => 'ro',
+	isa      => 'Str',
+	default  => 'MQ-Storage-Filesystem',
+	required => 1,
+);
 
-	# We never need to call this directly, info_storage will!
-	#$self->SUPER::set_destination_ready_handler( $handler );
+has 'session' => (is => 'rw');
 
-	$self->{info_storage}->set_destination_ready_handler( $handler );
-}
+has 'shutdown_callback' => (
+	is        => 'ro',
+	writer    => 'set_shutdown_callback',
+	predicate => 'shutting_down',
+	clearer   => 'stop_shutdown',
+);
 
-sub set_logger
-{
+has 'shutdown_waiting' => (
+	is      => 'rw',
+	isa     => 'Bool',
+	default => 1,
+);
+
+after 'set_logger' => sub {
 	my ($self, $logger) = @_;
+	$self->info_storage->set_logger($logger);
+};
 
-	$self->SUPER::set_logger( $logger );
-	$self->{info_storage}->set_logger( $logger );
+sub BUILD 
+{
+	my $self = shift;
+	$self->children({INFO => $self->info_storage});
+	$self->session(POE::Session->create(
+		object_states => [
+			$self => [qw(
+				_start                   _stop                 _shutdown
+				_read_message_from_disk  _read_input           _read_error  
+				_write_message_to_disk   _write_flushed_event  _log_state
+			)]
+		],
+	));
+
+	# Uncomment the following line to log some intense debuging information.
+	#$poe_kernel->post($self->session, '_log_state');
+}
+
+sub _start
+{
+	my ($self, $kernel) = @_[OBJECT, KERNEL];
+	$kernel->alias_set($self->alias);
+}
+
+sub _shutdown
+{
+	my ($self, $kernel) = @_[OBJECT, KERNEL];
+	$kernel->alias_remove($self->alias);
+}
+
+# POE calls this when the session dies.
+sub _stop
+{
+	my ($self) = $_[OBJECT];
+	$self->_something_finished_shutting();
+}
+
+sub _something_finished_shutting {
+	my $self     = $_[0];
+	my $complete = $self->shutdown_callback;
+
+	if($self->shutdown_waiting) 
+	{
+		$self->shutdown_waiting(0);
+	}
+	else 
+	{
+		goto $complete if $complete;
+	}
+}
+
+sub storage_shutdown
+{
+	my ($self, $complete) = @_;
+
+	# We need to wait for two states: info_storage complete and no wheels.
+	$self->set_shutdown_callback($complete);
+
+	$self->info_storage->storage_shutdown(sub { 
+		$self->_something_finished_shutting();
+	});
+
+	$poe_kernel->post($self->alias, '_shutdown');
 }
 
 sub store
 {
-	my ($self, $message) = @_;
-
-	# grab the masseg body
-	my $body = $message->{body};
-	
-	# remake the message, but without the body
-	my $temp = POE::Component::MessageQueue::Message->new({
-		message_id  => $message->{message_id},
-		destination => $message->{destination},
-		persistent  => $message->{persistent},
-		in_use_by   => $message->{in_use_by},
-		size        => $message->{size},
-		body        => undef,
-	});
-	$message = $temp;
+	my ($self, $message, $callback) = @_;
 
 	# DRS: To avaid a race condition where:
 	#
-	#  (1) We post _writer_message_to_disk
+	#  (1) We post _write_message_to_disk
 	#  (2) Message is "removed" from disk (even though it isn't there yet)
-	#  (3) We start writting message to disk
+	#  (3) We start writing message to disk
 	#
 	# Mark message as needing to be written.
-	$self->{file_wheels}->{$message->{message_id}} = { write_message => 1 };
+	# 
+	# PLD: Also, multiple copies of messages is bad juju.  Delete the body from
+	#      a clone.
+	my $info_copy = $message->clone;
 
-	# initiate file writting process
-	$poe_kernel->post( $self->{session}, '_write_message_to_disk', $message, $body );
+	# Make sure the size is computed before we delete the body
+	$info_copy->size;
+	$self->pending_writes->{$message->id} = $info_copy->delete_body();
 
-	# hand-off to the info storage
-	$self->{info_storage}->store( $message );
+	# initiate file writing process (only the body will be written)
+	$poe_kernel->post($self->session, _write_message_to_disk => $message);
+
+	$self->info_storage->store($info_copy, $callback);
+}
+
+sub _get_filename
+{
+	my ($self, $message_id) = @_;
+	return sprintf('%s/msg-%s.txt', $self->data_dir, $message_id);
+}
+
+sub _hard_delete
+{
+	my ($self, $id) = @_; 
+	
+	# Just unlink it unless there are pending writes
+	return $self->_unlink_file($id) unless delete $self->pending_writes->{$id};
+
+	my $info = $self->file_wheels->{$id};
+	if ($info) 
+	{
+		$self->log('debug', "Stopping wheels for message $id (removing)");
+		my $wheel = $info->{write_wheel} || $info->{read_wheel};
+		$wheel->shutdown_input();
+		$wheel->shutdown_output();
+
+		# Mark for deletion: we'll detect this primarly in 
+		# _write_flushed_event and unlink the file at that time 
+		# (prevents a file descriptor leak)
+		$info->{delete_me} = 1;
+	}
+	else
+	{
+		# If we haven't started yet, _write_message_to_disk will just abort.
+		$self->log('debug', "Removing message $id before writing started");
+	}
+}
+
+sub _unlink_file
+{
+	my ($self, $message_id) = @_;
+	my $fn = $self->_get_filename($message_id);
+	$self->log( 'debug', "Deleting $fn" );
+	unlink $fn || 
+		$self->log( 'error', "Unable to remove $fn: $!" );
+	return;
+}
+
+# We can't use an iterative loop, because we may have to read messages from
+# disk.  So, here's our recursive function that may pause in the middle to
+# wait for disk reads.
+sub _read_loop
+{
+	my ($self, $to_read, $done_reading, $callback) = @_;
+	my $again = sub { 
+		@_ = ($self, $to_read, $done_reading, $callback); 
+		goto &_read_loop;
+	};
+
+	my $message = pop(@$to_read);
+	unless ($message) {
+		@_ = ($done_reading);
+		goto $callback;
+	}
+
+	if (my $body = $self->pending_writes->{$message->id}) 
+	{
+		$message->body($body);
+		push(@$done_reading, $message);
+		goto $again;
+	}
+	else
+	{
+		# Don't have the body anymore, so we'll have to read it from disk.
+		$poe_kernel->post($self->session, 
+			_read_message_from_disk => $message->id, sub {
+				if (my $body = $_[0])
+				{
+					$message->body($body);
+					push(@$done_reading, $message);
+				}
+				goto $again;
+			}
+		);
+	}
 }
 
 sub remove
 {
-	my ($self, $message_id) = @_;
-
-	if ( exists $self->{file_wheels}->{$message_id} )
-	{
-		if ( defined $self->{file_wheels}->{$message_id}->{write_message} )
-		{
-			$self->_log( 'debug', 'STORE: FILE: Removing message before we could start writting' );
-			$self->{file_wheels}->{$message_id}->{write_message} = 0;
-		}
-		else
-		{
-			$self->_log( 'debug', "STORE: FILE: Stopping wheels for mesasge $message_id (deleting)" );
-			
-			my $infos = $self->{file_wheels}->{$message_id};
-			my $wheel = $infos->{write_wheel} || $infos->{read_wheel};
-
-			my $wheel_id = $wheel->ID();
-
-			# stop the wheel
-			$wheel->shutdown_input();
-			$wheel->shutdown_output();
-
-			# mark to actually delete message, but don't do it now, in order
-			# to not leak FD's!
-			$self->{file_wheels}->{$message_id}->{delete_me} = 1;
-		}
-	}
-	else
-	{
-		# Actually delete the file, but *only* if there are no open wheels.
-		my $fn = "$self->{data_dir}/msg-$message_id.txt";
-		$self->_log( 'debug', "STORE: FILE: Deleting $fn" );
-		unlink $fn || $self->_log( 'error', "STORE: FILE: Unable to remove $fn: $!" );
-	}
-
-	# remove from the info store
-	$self->{info_storage}->remove( $message_id );
+	my ($self, $message_ids, $callback) = @_;
+	$self->info_storage->remove($message_ids, sub {
+		$self->_hard_delete($_) foreach (@$message_ids);
+		goto $callback if $callback;
+	});
 }
 
-sub claim_and_retrieve
+sub empty
 {
-	my $self = shift;
-	return $self->{info_storage}->claim_and_retrieve( @_ );
-}
+	my ($self, $callback) = @_;
 
-sub disown
-{
-	my ($self, $destination, $client_id ) = @_;
-	return $self->{info_storage}->disown( $destination, $client_id );
-}
-
-sub shutdown
-{
-	my $self = shift;
-
-	$self->{shutdown} = 1;
-
-	# stop ALL message reading (at this point we only care
-	# about finishing writing messages).
-	my @message_ids = keys %{$self->{file_wheels}};
-	foreach my $message_id ( @message_ids )
-	{
-		my $wheel = $self->{file_wheels}->{$message_id}->{read_wheel};
-
-		if ( $wheel )
+	$self->info_storage->empty(sub {
+		# Delete all the message files that don't have writes pending
+		my $dh = IO::Dir->new($self->data_dir);
+		foreach my $fn ($dh->read())
 		{
-			# stop the wheel
-			$wheel->shutdown_input();
-			$wheel->shutdown_output();
-
-			# remove from the list, so that we can get a count
-			# of how much writing is still left to do.
-			delete $self->{file_wheels}->{$message_id};
+			if ($fn =~ /msg-\(.*\)\.txt/)
+			{
+				my $id = $1;
+				$self->_unlink_file($id) unless exists $self->pending_writes->{$id};	
+			}
 		}
-	}
-
-	my $wheel_count = scalar keys %{$self->{file_wheels}};
-	if ( $wheel_count == 0 )
-	{
-		# send shutdown to the info storage!
-		$self->{info_storage}->shutdown();
-	}
-	else
-	{
-		$self->_log('alert', 'Waiting for messages to finish writing to disk...');
-	}
-}
-
-#
-# For handling responses from database:
-#
-
-sub _dispatch_message
-{
-	my ($self, $message, $destination, $client_id) = @_;
-
-	if ( defined $message )
-	{
-		# check to see if we even finished writting to disk
-		if ( defined $self->{file_wheels}->{$message->{message_id}} )
-		{
-			$self->_log( 'debug', "STORE: FILE: Returning message before in store: $message->{message_id}" );
-			# attach the saved body to the message
-			$message->{body} = $self->{file_wheels}->{$message->{message_id}}->{body};
-
-			# NOTE: We don't stop writting, because if the message is not 
-			# removed (ie. no ACK) we want it to get saved to disk.
-
-			# distribute the message
-			$self->{dispatch_message}->( $message, $destination, $client_id );
-		}
-		else
-		{
-			# pull the message body from disk
-			$poe_kernel->post( $self->{session}, '_read_message_from_disk',
-				$message, $destination, $client_id );
-		}
-	}
-	else
-	{
-		$self->{dispatch_message}->( undef, $destination, $client_id );
-	}
-}
-
-sub _shutdown_complete
-{
-	my $self = shift;
-
-	# Ok!  This means that the info storage is totally shutdown, so we
-	# are ready to kill our internal session.
-	$poe_kernel->signal( $self->{session}, 'TERM' );
-
-	if ( defined $self->{shutdown_complete} )
-	{
-		$self->{shutdown_complete}->();
-	}
+	
+		# Do the special dance for deleting those that are pending
+		$self->_hard_delete($_) foreach (keys %{$self->pending_writes});
+		goto $callback if $callback;
+	});
 }
 
 #
 # For handling disk access
 #
-
 sub _write_message_to_disk
 {
-	my ($self, $kernel, $message, $body) = @_[ OBJECT, KERNEL, ARG0, ARG1 ];
+	my ($self, $kernel, $message) = @_[ OBJECT, KERNEL, ARG0, ARG1 ];
 
-	if ( not defined $self->{file_wheels}->{$message->{message_id}}->{write_message} )
+	if ($self->file_wheels->{$message->id})
 	{
-		$self->_log( 'emergency', "POE::Component::MessageQueue::Storage::FileSystem::_write_message_to_disk(): A wheel already exists for this messages $message->{message_id}!  This should never happen!" );
+		$self->log('emergency', sprintf(
+			'%s::_write_message_to_disk: wheel already exists for message %s!',
+			__PACKAGE__, $message->id
+		));
 		return;
 	}
-	if ( not $self->{file_wheels}->{$message->{message_id}}->{write_message} )
+	 
+	unless ($self->pending_writes->{$message->id})
 	{
-		$self->_log( 'debug', "STORE: FILE: Abort write of message $message->{message_id} to disk" );
-
-		delete $self->{file_wheels}->{$message->{message_id}};
-
+		$self->log('debug', sprintf('Abort write of message %s to disk',
+			$message->id));
+		delete $self->file_wheels->{$message->id};
 		return;
 	}
 
-	# setup the wheel
-	my $fn = "$self->{data_dir}/msg-$message->{message_id}.txt";
-	my $fh = IO::File->new( ">$fn" )
-		|| die "Unable to save message in $fn: $!";
+	# Yes, we do want to die if we can't open the file for writing.  It
+	# means something is wrong and it's very unlikely we can persist other
+	# messages.
+	my $fn = $self->_get_filename($message->id);
+	my $fh = IO::File->new( ">$fn" ) || die "Unable to save message in $fn: $!";
+
 	my $wheel = POE::Wheel::ReadWrite->new(
 		Handle       => $fh,
 		Filter       => POE::Filter::Stream->new(),
@@ -332,48 +346,51 @@ sub _write_message_to_disk
 	);
 
 	# initiate the write to disk
-	$wheel->put( $body );
+	$wheel->put($self->pending_writes->{$message->id});
 
 	# stash the wheel in our maps
-	$self->{file_wheels}->{$message->{message_id}} = {
-		write_wheel => $wheel,
-		body        => $body
-	};
-	$self->{wheel_to_message_map}->{$wheel->ID()} = $message->{message_id};
+	$self->file_wheels->{$message->id} = {write_wheel => $wheel};
+
+	$self->wheel_to_message_map->{$wheel->ID()} = $message->id;
 }
 
 sub _read_message_from_disk
 {
-	my ($self, $kernel, $message, $destination, $client_id) = @_[ OBJECT, KERNEL, ARG0..ARG2 ];
+	my ($self, $kernel, $id, $callback) = @_[ OBJECT, KERNEL, ARG0, ARG1 ];
 
-	if ( defined $self->{file_wheels}->{$message->{message_id}} )
+	if ($self->file_wheels->{$id})
 	{
-		$self->_log( 'emergency', "POE::Component::MessageQueue::Storage::FileSystem::_read_message_from_disk(): A wheel already exists for this messages $message->{message_id}!  This should never happen!" );
+		my $here = __PACKAGE__.'::_read_message_from_disk()';
+		$self->log('emergency',
+			"$here: A wheel already exists for this message ($id)! ".
+			'This should never happen!'
+		);
 		return;
 	}
 
-	# setup the wheel
-	my $fn = "$self->{data_dir}/msg-$message->{message_id}.txt";
+	my $fn = $self->_get_filename($id);
 	my $fh = IO::File->new( $fn );
 	
-	$self->_log( 'debug', "STORE: FILE: Starting to read $fn from disk" );
+	$self->log( 'debug', "Starting to read $fn from disk" );
 
 	# if we can't find the message body.  This usually happens as a result
 	# of crash recovery.
-	if ( not defined $fh )
+	unless ($fh)
 	{
-		$self->_log( 'warning', "STORE: FILE: Can't find $fn on disk!  Discarding message." );
+		$self->log( 'warning', "Can't find $fn on disk!  Discarding message." );
 
-		# we simply discard the message
-		$self->remove( $message->{message_id} );
+		# we need to get the message out of the info store
+		$self->info_storage->remove( $id );
 
-		# we need to send a null message to this client to mark it is ready again (it is
-		# waiting for a message).
-		$self->{dispatch_message}->( undef, $destination, $client_id );
-
-		return;
+		# TODO: This is the right thing to do in every situation EXCEPT claim_and_retreive,
+		# when we really want to initiate another claim and retrieve cycle, because sending
+		# "undef" means that there are no messages on this destination which will stop the
+		# pump cycle!
+		@_ = (undef);
+		goto $callback;
 	}
 	
+	# setup the wheel
 	my $wheel = POE::Wheel::ReadWrite->new(
 		Handle       => $fh,
 		Filter       => POE::Filter::Stream->new(),
@@ -382,74 +399,57 @@ sub _read_message_from_disk
 	);
 
 	# stash the wheel in our maps
-	$self->{file_wheels}->{$message->{message_id}} = {
+	$self->file_wheels->{$id} = {
 		read_wheel  => $wheel,
-		message     => $message,
-		destination => $destination,
-		client_id   => $client_id
+		accumulator => q{},
+		callback    => $callback
 	};
-	$self->{wheel_to_message_map}->{$wheel->ID()} = $message->{message_id};
+	$self->wheel_to_message_map->{$wheel->ID()} = $id;
 }
 
 sub _read_input
 {
 	my ($self, $kernel, $input, $wheel_id) = @_[ OBJECT, KERNEL, ARG0, ARG1 ];
 
-	if ( $self->{shutdown} )
-	{
-		# when shutting down, we don't care about reading.
-		return;
-	}
+	# We do care about reading during shutdown! Maybe.  We may be using this as
+	# a front-store (HA!), and doing empty.
 
-	my $message_id = $self->{wheel_to_message_map}->{$wheel_id};
-	my $message    = $self->{file_wheels}->{$message_id}->{message};
-
-	$message->{body} .= $input;
+	my $id = $self->wheel_to_message_map->{$wheel_id};
+	$self->file_wheels->{$id}->{accumulator} .= $input;	
 }
 
 sub _read_error
 {
 	my ($self, $op, $errnum, $errstr, $wheel_id) = @_[ OBJECT, ARG0..ARG3 ];
 
-	if ( $self->{shutdown} )
-	{
-		# when shutting down, we don't care about reading.
-		return;
-	}
-
 	if ( $op eq 'read' and $errnum == 0 )
 	{
 		# EOF!  Our message is now totally assembled.  Hurray!
 
-		my $message_id  = $self->{wheel_to_message_map}->{$wheel_id};
-		my $infos       = $self->{file_wheels}->{$message_id};
-		my $message     = $infos->{message};
-		my $destination = $infos->{destination};
-		my $client_id   = $infos->{client_id};
+		my $id       = $self->wheel_to_message_map->{$wheel_id};
+		my $info     = $self->file_wheels->{$id};
+		my $body     = $info->{accumulator};
+		my $callback = $info->{callback};
 
-		$self->_log( 'debug', "STORE: FILE: Finished reading $self->{data_dir}/msg-$message_id.txt" );
-
-		# send the message out!
-		$self->{dispatch_message}->( $message, $destination, $client_id );
+		my $fn = $self->_get_filename($id);
+		$self->log('debug', "Finished reading $fn");
 
 		# clear our state
-		delete $self->{wheel_to_message_map}->{$wheel_id};
-		delete $self->{file_wheels}->{$message_id};
+		delete $self->wheel_to_message_map->{$wheel_id};
+		delete $self->file_wheels->{$id};
 
-		if ( $infos->{delete_me} )
-		{
-			# NOTE:  I have never seen this called, but it seems theoretically possible
-			# and considering the former problem with leaking FD's, I'd rather keep this
-			# here just in case.
+		# NOTE:  I have never seen this happen, but it seems theoretically 
+		# possible.  Considering the former problem with leaking FD's, I'd 
+		# rather keep this here just in case.
+		$self->_unlink_file($id) if ($info->{delete_me});
 
-			my $fn = "$self->{data_dir}/msg-$message_id.txt";
-			$self->_log( 'debug', "STORE: FILE: Actually deleting $fn (on read error)" );
-			unlink $fn || $self->_log( 'error', "Unable to remove $fn: $!" );
-		}
+		# send the message out!
+		@_ = ($body);
+		goto $callback;
 	}
 	else
 	{
-		$self->_log( 'error', "STORE: $op: Error $errnum $errstr" );
+		$self->log( 'error', "$op: Error $errnum $errstr" );
 	}
 }
 
@@ -458,48 +458,37 @@ sub _write_flushed_event
 	my ($self, $kernel, $wheel_id) = @_[ OBJECT, KERNEL, ARG0 ];
 
 	# remove from the first map
-	my $message_id = delete $self->{wheel_to_message_map}->{$wheel_id};
+	my $id = delete $self->wheel_to_message_map->{$wheel_id};
 
-	$self->_log( 'debug', "STORE: FILE: Finished writting message $message_id to disk" );
+	$self->log( 'debug', "Finished writing message $id to disk" );
 
 	# remove from the second map
-	my $infos = delete $self->{file_wheels}->{$message_id};
+	my $info = delete $self->file_wheels->{$id};
 
-	if ( $infos->{delete_me} )
-	{
-		# NOTE: If we were actively writting the file when the message to delete
-		# came, we cannot actually delete it until the FD gets flushed, or the FD
-		# will live until the program dies.
+	# Write isn't pending anymore. :)
+	delete $self->pending_writes->{$id};
 
-		my $fn = "$self->{data_dir}/msg-$message_id.txt";
-		$self->_log( 'debug', "STORE: FILE: Actually deleting $fn (on write flush)" );
-		unlink $fn || $self->_log( 'error', "Unable to remove $fn: $!" );
-	}
-
-	if ( $self->{shutdown} )
-	{
-		my $wheel_count = scalar keys %{$self->{file_wheels}};
-		if ( $wheel_count == 0 )
-		{
-			# send shutdown to the info storage!
-			$self->{info_storage}->shutdown();
-		}
-	}
+	# If we were actively writing the file when the message to delete
+	# came, we cannot actually delete it until the FD gets flushed, or the FD
+	# will live until the program dies.
+	$self->_unlink_file($id) if ($info->{delete_me});
 }
 
 sub _log_state
 {
 	my ($self, $kernel) = @_[ OBJECT, KERNEL ];
 
-	my $wheel_count = scalar keys %{$self->{file_wheels}};
-	$self->_log('debug', "STORE: FILE: Currently there are $wheel_count wheels in action.");
+	use Data::Dumper;
 
-	my $wheel_to_message_map = Dumper($self->{wheel_to_message_map});
+	my $wheel_count = scalar keys %{$self->file_wheels};
+	$self->log('debug', "Currently there are $wheel_count wheels in action.");
+
+	my $wheel_to_message_map = Dumper($self->wheel_to_message_map);
 	$wheel_to_message_map =~ s/\n//g;
 	$wheel_to_message_map =~ s/\s+/ /g;
-	$self->_log('debug', "STORE: FILE: wheel_to_message_map: $wheel_to_message_map");
+	$self->log('debug', "wheel_to_message_map: $wheel_to_message_map");
 
-	while ( my ($key, $value) = each %{$self->{file_wheels}} )
+	while ( my ($key, $value) = each %{$self->file_wheels} )
 	{
 		my %tmp = ( %$value );
 		$tmp{write_wheel} = "$tmp{write_wheel}" if exists $tmp{write_wheel};
@@ -509,7 +498,7 @@ sub _log_state
 		$wheel =~ s/\n//g;
 		$wheel =~ s/\s+/ /g;
 		
-		$self->_log('debug', "STORE: FILE: wheel ($key): $wheel");
+		$self->log('debug', "wheel ($key): $wheel");
 	}
 
 	$kernel->delay_set('_log_state', 5);
