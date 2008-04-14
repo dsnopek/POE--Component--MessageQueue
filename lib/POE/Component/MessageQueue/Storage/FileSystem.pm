@@ -88,13 +88,15 @@ has 'alias' => (
 has 'session' => (is => 'rw');
 
 has 'shutdown_callback' => (
-	is        => 'rw',
+	is        => 'ro',
+	writer    => 'set_shutdown_callback',
 	predicate => 'shutting_down',
 	clearer   => 'stop_shutdown',
 );
 
-has 'live_session' => (
+has 'shutdown_waiting' => (
 	is      => 'rw',
+	isa     => 'Bool',
 	default => 1,
 );
 
@@ -133,14 +135,39 @@ sub _shutdown
 	$kernel->alias_remove($self->alias);
 }
 
+# POE calls this when the session dies.
 sub _stop
 {
 	my ($self) = $_[OBJECT];
-	$self->live_session(0);
-	if ($self->shutting_down)
+	$self->_something_finished_shutting();
+}
+
+sub _something_finished_shutting {
+	my $self     = $_[0];
+	my $complete = $self->shutdown_callback;
+
+	if($self->shutdown_waiting) 
 	{
-		$self->shutdown_callback();
+		$self->shutdown_waiting(0);
 	}
+	else 
+	{
+		goto $complete if $complete;
+	}
+}
+
+sub storage_shutdown
+{
+	my ($self, $complete) = @_;
+
+	# We need to wait for two states: info_storage complete and no wheels.
+	$self->set_shutdown_callback($complete);
+
+	$self->info_storage->storage_shutdown(sub { 
+		$self->_something_finished_shutting();
+	});
+
+	$poe_kernel->post($self->alias, '_shutdown');
 }
 
 sub store
@@ -158,6 +185,9 @@ sub store
 	# PLD: Also, multiple copies of messages is bad juju.  Delete the body from
 	#      a clone.
 	my $info_copy = $message->clone;
+
+	# Make sure the size is computed before we delete the body
+	$info_copy->size;
 	$self->pending_writes->{$message->id} = $info_copy->delete_body();
 
 	# initiate file writing process (only the body will be written)
@@ -277,22 +307,6 @@ sub empty
 		$self->_hard_delete($_) foreach (keys %{$self->pending_writes});
 		goto $callback if $callback;
 	});
-}
-
-sub storage_shutdown
-{
-	my ($self, $complete) = @_;
-
-	$self->shutdown_callback($complete);
-
-	$self->info_storage->storage_shutdown(sub {
-		return if ($self->live_session);
-		$self->stop_shutdown();
-		goto $complete if $complete;
-	});
-
-	# Session will die when it runs out of wheels now.
-	$poe_kernel->post($self->alias, '_shutdown');
 }
 
 #
