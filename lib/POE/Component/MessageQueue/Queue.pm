@@ -17,7 +17,6 @@
 
 package POE::Component::MessageQueue::Queue;
 
-use List::Util qw(first);
 use POE;
 use POE::Session;
 use Moose;
@@ -108,7 +107,7 @@ sub pump
 		my @subs = $self->all_subscriptions;
 		$self->pump_pending(0);
 		$self->pumping(1);
-		$poe_kernel->post($self->name, '_subloop', \@subs);
+		$poe_kernel->call($self->name, '_subloop', \@subs);
 	}
 }
 
@@ -118,13 +117,17 @@ sub send
 
 	# If we already have a ready subscriber, we'll claim and dispatch before we
 	# store to give the subscriber a headstart on processing.
-	if (my $subscriber = first {$_->ready} $self->all_subscriptions)
+	foreach my $s ($self->all_subscriptions)
 	{
-		my $cid = $subscriber->client->id;
-		$message->claim($cid);
-		$self->log(info => 
-			'QUEUE: Message '.$message->id." claimed by $cid during send");
-		$self->dispatch_message($message, $subscriber);
+		if ($s->ready)
+		{
+			my $cid = $s->client->id;
+			$message->claim($cid);
+			$self->log(info => 
+				'QUEUE: Message '.$message->id." claimed by $cid during send");
+			$self->dispatch_message($message, $s);
+			last;
+		}
 	}
 
 	$self->storage->store($message, sub {

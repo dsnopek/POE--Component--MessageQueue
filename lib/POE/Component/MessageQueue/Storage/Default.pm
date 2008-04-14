@@ -163,9 +163,10 @@ sub _make_db
 
 sub new 
 {
-	my ($class, %args) = @_;
+	my $class = shift;
+	my $args = (@_ > 1 ? {@_} : $_[0]);
 
-	my $data_dir = $args{data_dir} || die "No data dir.";
+	my $data_dir = $args->{data_dir} || die "No data dir.";
 
 	(-d $data_dir)    ||
 		mkdir $data_dir ||
@@ -185,21 +186,21 @@ sub new
 	);
 
 	my $fs = POE::Component::MessageQueue::Storage::FileSystem->new(
-		info_store => $dbi,
-		data_dir   => $data_dir,
+		info_storage => $dbi,
+		data_dir     => $data_dir,
 	);
 	
 	my $throttled = POE::Component::MessageQueue::Storage::Throttled->new(
 		back         => $fs,
-		throttle_max => $args{throttle_max},
+		throttle_max => $args->{throttle_max},
 	);
 
 	# We don't bless anything because we're just returning a Complex...
 	return POE::Component::MessageQueue::Storage::Complex->new(
-		timeout     => $args{timeout}     || 4,	
-		granularity => $args{granularity} || 2,
-		front_max   => $args{front_max}   || 64 * 1024 * 1024,
-		front       => $args{front}       ||
+		timeout     => $args->{timeout}     || 4,	
+		granularity => $args->{granularity} || 2,
+		front_max   => $args->{front_max}   || 64 * 1024 * 1024,
+		front       => $args->{front}       ||
 			POE::Component::MessageQueue::Storage::BigMemory->new(),
 		back        => $throttled,
 	);

@@ -18,6 +18,7 @@
 package POE::Component::MessageQueue::Storage::Double;
 use Moose::Role;
 use MooseX::AttributeHelpers;
+use MooseX::MultiInitArg;
 
 # These guys just call a method on both front and back stores and have a
 # simple no-arg completion callback.  No reason to write them all!
@@ -45,16 +46,20 @@ with qw(POE::Component::MessageQueue::Storage);
 use POE::Component::MessageQueue::Storage::BigMemory;
 
 has front => (
-	is       => 'ro',
-	does     => qw(POE::Component::MessageQueue::Storage),
-	default  => sub {POE::Component::MessageQueue::Storage::BigMemory->new()},
-	required => 1,
+	metaclass => 'MultiInitArg',
+	init_args => ['front_store'],
+	is        => 'ro',
+	does      => qw(POE::Component::MessageQueue::Storage),
+	default   => sub {POE::Component::MessageQueue::Storage::BigMemory->new()},
+	required  => 1,
 );
 
 has back => (
-	is       => 'ro',
-	does     => qw(POE::Component::MessageQueue::Storage),
-	required => 1,
+	is        => 'ro',
+	metaclass => 'MultiInitArg',
+	init_args => [qw(back_store storage)],
+	does      => qw(POE::Component::MessageQueue::Storage),
+	required  => 1,
 );
 
 # Any true value for a given ID means the message is in the front store.
