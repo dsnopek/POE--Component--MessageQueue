@@ -370,7 +370,7 @@ desired after timeout expiration, subclass and override "expire_messages".
   POE::Component::MessageQueue->new({
     storage => POE::Component::MessageQueue::Storage::Complex->new({
       timeout      => 4,
-      granualarity => 2,
+      granularity  => 2,
       throttle_max => 2,
 
       front => POE::Component::MessageQueue::Storage::Memory->new(),
