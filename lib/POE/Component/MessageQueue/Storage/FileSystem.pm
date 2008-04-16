@@ -25,6 +25,9 @@ use POE::Wheel::ReadWrite;
 use IO::File;
 use IO::Dir;
 
+use Exception::Class qw(PoCo::MQ::FileSystem::NotFound);
+use Exception::Class::TryCatch;
+
 has 'info_storage' => (
 	is       => 'ro',
 	required => 1,	
@@ -39,9 +42,16 @@ foreach my $method qw(get get_all)
 	__PACKAGE__->meta->add_method($method, sub {
 		my $self = shift;
 		my $callback = pop;
-		$self->info_storage->$method(@_, sub {
-			$self->_read_loop($_[0], [], $callback);
-		});
+		try eval {
+			$self->info_storage->$method(@_, sub {
+				$self->_read_loop($_[0], [], $callback);
+			});
+		};
+		if (catch my $err, ['PoCo::MQ::FileSystem::NotFound'])
+		{
+			@_ = (undef);
+			goto $callback;
+		}
 	});
 }
 
@@ -51,12 +61,18 @@ foreach my $method qw(get_oldest claim_and_retrieve)
 	__PACKAGE__->meta->add_method($method, sub {
 		my $self = shift;
 		my $callback = pop;
-		$self->info_storage->$method(@_, sub {
-			$self->_read_loop([$_[0]], [], sub {
-				@_ = ($_[0]->[0]);
-				goto $callback;
-			});
-		});
+		while (1) {
+			try eval { 
+				$self->info_storage->$method(@_, sub {
+					$self->_read_loop([$_[0]], [], sub {
+						@_ = ($_[0]->[0]);
+						goto $callback;
+					});
+				});
+			};
+			next if (catch my $err, ['PoCo::MQ::FileSystem::NotFound']);
+			last;
+		}
 	});
 }
 
@@ -380,14 +396,10 @@ sub _read_message_from_disk
 		$self->log( 'warning', "Can't find $fn on disk!  Discarding message." );
 
 		# we need to get the message out of the info store
-		$self->info_storage->remove( $id );
-
-		# TODO: This is the right thing to do in every situation EXCEPT claim_and_retreive,
-		# when we really want to initiate another claim and retrieve cycle, because sending
-		# "undef" means that there are no messages on this destination which will stop the
-		# pump cycle!
-		@_ = (undef);
-		goto $callback;
+		$self->info_storage->remove($id, sub {
+			PoCo::MQ::FileSystem::NotFound->throw("$fn not on disk");
+		});
+		return;
 	}
 	
 	# setup the wheel

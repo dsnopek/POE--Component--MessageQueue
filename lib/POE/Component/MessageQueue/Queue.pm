@@ -44,11 +44,15 @@ sub _start
 	$kernel->alias_set($self->name);
 }
 
-sub shutdown { $poe_kernel->post($_[0]->name, '_shutdown') }
+sub shutdown { 
+	my $self = $_[0];
+	$self->shutting_down(1);
+	$poe_kernel->post($self->name, '_shutdown') 
+}
+
 sub _shutdown
 {
 	my ($self, $kernel) = @_[OBJECT, KERNEL];
-	$self->shutting_down(1);
 	$kernel->alias_remove($self->name);
 }
 

@@ -66,9 +66,12 @@ has idgen => (
 has observers    => (is => 'ro');
 has logger_alias => (is => 'ro');
 
-has storage  => (
-	is => 'ro', 
-	required => 1,
+has storage => (
+	is        => 'ro', 
+	does      => 'POE::Component::MessageQueue::Storage',
+	required  => 1,
+	clearer   => 'delete_storage',
+	predicate => 'has_storage',
 );
 
 has clients => (
@@ -84,20 +87,26 @@ has clients => (
 );
 
 before remove_client => sub {
-	my ($self, $id) = @_;
-	my $client = $self->get_client($id) || return;
-
-	$self->log(notice => "MASTER: Removing client $id");
+	my ($self, @ids) = @_;
+	my $idstr = join(', ', @ids);
+	$self->log(notice => "MASTER: Removing client ($idstr)");
 	
-	$self->storage->disown_all($id, sub {
-		foreach my $s ($client->all_subscriptions)
+	foreach my $id (@ids) 
+	{
+		my $client = $self->get_client($id) || next;
+
+		my @destinations = map { $_->destination } $client->all_subscriptions;
+
+		$client->unsubscribe($_) foreach @destinations;
+
+		if ($self->has_storage)
 		{
-			$client->unsubscribe($s->destination);
-			$s->destination->pump();
+			$self->storage->disown_all($client->id, 
+				sub { $_->pump() foreach @destinations });
 		}
-		# shutdown TCP connection
+
 		$client->shutdown();
-	});
+	}
 };
 	
 has destinations => (
@@ -323,6 +332,8 @@ sub route_frame
 			if(my $d = $self->get_destination($destination_name))
 			{
 				$client->unsubscribe($d);
+				$self->storage->disown_destination($client->id, $d->name, 
+					sub { $d->pump() });
 				$self->notify(unsubscribe => {destination => $d, client => $client});
 			}
 		},
@@ -413,7 +424,7 @@ sub shutdown
 	}
 	$self->{shutdown} = 1;
 
-	$self->log('alert', 'Initiating message queue shutdown...');
+	$self->log(alert => 'Initiating message queue shutdown...');
 
 	$self->log(alert => 'Shutting down all destinations');
 	$_->shutdown() foreach $self->all_destinations;
@@ -422,10 +433,12 @@ sub shutdown
 	$poe_kernel->post( $self->alias => 'shutdown' );
 
 	# shutdown all client connections
-	$poe_kernel->post($_ => 'shutdown') foreach ($self->all_client_ids);
+	$self->remove_client( $self->all_client_ids );
 
 	# shutdown the storage
-	$self->storage->storage_shutdown(sub { $self->_shutdown_complete(@_) });
+	$self->delete_storage->storage_shutdown( sub {
+		$self->_shutdown_complete(@_)
+	});
 }
 
 sub dispatch_message
@@ -466,11 +479,10 @@ sub dispatch_message
 	{
 		$self->log(warning => 
 			"MASTER: Message $msg_id could not be delivered (no client)");
-		if ($msg->claimed)
+		if ($msg->claimed && $self->has_storage)
 		{
-			$self->storage->disown_all($msg->claimant, sub {
-				$destination->pump();
-			});
+			$self->storage->disown_all($msg->claimant, 
+				sub { $destination->pump() });
 		}
 	}
 }
