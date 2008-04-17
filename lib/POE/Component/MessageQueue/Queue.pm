@@ -118,6 +118,7 @@ sub pump
 sub send
 {
 	my ($self, $message) = @_;
+	return if $self->shutting_down;
 
 	# If we already have a ready subscriber, we'll claim and dispatch before we
 	# store to give the subscriber a headstart on processing.

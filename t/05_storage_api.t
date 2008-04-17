@@ -1,15 +1,11 @@
 use strict;
 use warnings;
-use Test::More qw(no_plan);
+use Test::More tests => 100;
 use File::Path;
 use POE;
 use POE::Session;
 use YAML; # for Dump!
-
-use constant MQ_PREFIX => 'POE::Component::MessageQueue';
-use constant DATA_DIR  => '/tmp/mq_test';
-use constant DB_FILE   => DATA_DIR.'/mq.db';
-use constant DSN       => 'DBI:SQLite:dbname='.DB_FILE;
+use lib 't/lib';
 
 # We -will- get recursion warnings the way these tests are written - if you
 # think there may be a bug involving runaway recursion, comment this out.
@@ -19,71 +15,73 @@ $SIG{__WARN__} = sub {
 	warn $m;
 };
 
-my %engines;
+#my %engines;
+#BEGIN {
+#	sub engine_package {MQ_PREFIX.'::Storage::'.shift} 
+#	%engines = (
+#		DBI        => {
+#			args    => sub {(
+#				dsn      => DSN,
+#				username => q(),
+#				password => q(),
+#			)},
+#		},
+#		FileSystem => {
+#			args     => sub {(
+#				info_storage => make_engine('DBI'),
+#				data_dir     => DATA_DIR,
+#			)},
+#		},
+#		Throttled  => {
+#			args    => sub {(
+#				throttle_max => 2,
+#				back         => make_engine('FileSystem'),
+#			)},
+#		},
+#		Complex    => {
+#			args    => sub {(
+#				timeout     => 4,
+#				granularity => 2,
+#				front_max   => 1024,
+#				front       => make_engine('BigMemory'),
+#				back        => make_engine('Throttled'),
+#			)}
+#		},
+#		BigMemory => {},
+#		Memory    => {},
+#	);
+#}
 BEGIN {
-	sub engine_package {MQ_PREFIX.'::Storage::'.shift} 
-	%engines = (
-		DBI        => {
-			args    => sub {(
-				dsn      => DSN,
-				username => q(),
-				password => q(),
-			)},
-		},
-		FileSystem => {
-			args     => sub {(
-				info_storage => make_engine('DBI'),
-				data_dir     => DATA_DIR,
-			)},
-		},
-		Throttled  => {
-			args    => sub {(
-				throttle_max => 2,
-				back         => make_engine('FileSystem'),
-			)},
-		},
-		Complex    => {
-			args    => sub {(
-				timeout     => 4,
-				granularity => 2,
-				front_max   => 1024,
-				front       => make_engine('BigMemory'),
-				back        => make_engine('Throttled'),
-			)}
-		},
-		BigMemory => {},
-		Memory    => {},
-	);
-}
-BEGIN {
-	require_ok(MQ_PREFIX.'::Message');
-	require_ok(MQ_PREFIX.'::Logger');
-	require_ok($_) foreach map { engine_package($_) } (keys %engines);
-	require_ok(MQ_PREFIX.'::Storage::Default');
+	my $prefix = 'POE::Component::MessageQueue';
+	use_ok("POE::Component::MessageQueue::Test::EngineMaker");
+	require_ok("${prefix}::Message");
+	require_ok("${prefix}::Logger");
+	require_ok($_) foreach map { engine_package($_) } engine_names();
+	require_ok("${prefix}::Storage::Default");
 }
 END {
 	rmtree(DATA_DIR);	
 }
 
-sub make_engine {
-	my $name = shift;
-	my $e = $engines{$name};
-	my $args = $e->{args} || sub {};
-	my $made = engine_package($name)->new($args->());
-	# Suppress all log messages, cause otherwise the output gets cluttered by
-	# shutdowns and such.  But this is a great place to put some debugging stuff
-	# if things are failing! 
-	my $logger = POE::Component::MessageQueue::Logger->new;
-	$logger->set_log_function(sub{});
-	#sub{ # You can uncomment this stuff for debugging
-	#	my ($level, $message) = @_;
-	#	print STDERR "$level: $message\n" if $level eq 'error' || $level eq
-#'debug';
-	#});
-	$made->set_logger($logger);
-	return $made;
-}
-
+#sub make_engine {
+#	my $name = shift;
+#	my $e = $engines{$name};
+#	my $args = $e->{args} || sub {};
+#	my $made = engine_package($name)->new($args->());
+#	# Suppress all log messages, cause otherwise the output gets cluttered by
+#	# shutdowns and such.  But this is a great place to put some debugging stuff
+#	# if things are failing! 
+#	my $logger = POE::Component::MessageQueue::Logger->new;
+#	$logger->set_log_function(sub{});
+#	#sub{ # You can uncomment this stuff for debugging
+#	#	my ($level, $message) = @_;
+#	#	print STDERR "$level: $message\n" if $level eq 'error' || $level eq
+##'debug';
+#	#});
+#	$made->set_logger($logger);
+#	return $made;
+#}
+#
 my $next_id = 0;
 my $when = time();
 my @destinations = map {"/queue/$_"} qw(foo bar baz grapefruit);
@@ -285,8 +283,7 @@ sub engine_loop {
 	my $name = pop(@$names) || return;
 	rmtree(DATA_DIR);
 	mkpath(DATA_DIR);
-	POE::Component::MessageQueue::Storage::Default::_make_db(
-		DB_FILE, DSN, q(), q());
+	make_db();
 
 	my $storage = make_engine($name);
 	my $clones = [values %messages];
@@ -304,8 +301,7 @@ sub engine_loop {
 
 POE::Session->create(
 	inline_states => { _start => sub {
-		my $arg = $ARGV[0];
-		engine_loop([$arg ? $arg : keys %engines])
+		engine_loop([$ARGV[0] || engine_names()])
 	}},
 );
 

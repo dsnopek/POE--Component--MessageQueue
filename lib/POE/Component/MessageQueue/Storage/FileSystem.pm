@@ -25,7 +25,10 @@ use POE::Wheel::ReadWrite;
 use IO::File;
 use IO::Dir;
 
-use Exception::Class qw(PoCo::MQ::FileSystem::NotFound);
+use constant NotFound =>
+	'POE::Component::MessageQueue::Storage::FileSystem::NotFound';
+
+use Exception::Class (NotFound);
 use Exception::Class::TryCatch;
 
 has 'info_storage' => (
@@ -47,7 +50,7 @@ foreach my $method qw(get get_all)
 				$self->_read_loop($_[0], [], $callback);
 			});
 		};
-		if (catch my $err, ['PoCo::MQ::FileSystem::NotFound'])
+		if (catch my $err, [NotFound])
 		{
 			@_ = (undef);
 			goto $callback;
@@ -70,7 +73,7 @@ foreach my $method qw(get_oldest claim_and_retrieve)
 					});
 				});
 			};
-			next if (catch my $err, ['PoCo::MQ::FileSystem::NotFound']);
+			next if (catch my $err, [NotFound]);
 			last;
 		}
 	});
@@ -397,7 +400,7 @@ sub _read_message_from_disk
 
 		# we need to get the message out of the info store
 		$self->info_storage->remove($id, sub {
-			PoCo::MQ::FileSystem::NotFound->throw("$fn not on disk");
+			NotFound->throw("$fn not on disk");
 		});
 		return;
 	}

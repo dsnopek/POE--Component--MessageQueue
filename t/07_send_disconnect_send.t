@@ -1,47 +1,26 @@
 use strict;
 use warnings;
 use POE;
+use lib 't/lib';
+use POE::Component::MessageQueue::Test::Stomp;
 
 # Once upon a time, we had a bug where the MQ would crash if you connected,
 # sent some messages, received them, disconnected, reconnected, and sent 
 # some more.
 
-sub stomp_connect {
-	my $stomp = Net::Stomp->new({hostname => 'localhost', port => 8099});
-	$stomp->connect({login => 'foo', password => 'bar'});
-	return $stomp;
-}
-
-sub send_stuff {
-	my $stomp = stomp_connect();
-	for (1..10) {
-		$stomp->send({
-			destination => '/queue/test7',
-			body => 'arglebargle',
-			persistent => 1,
-		});
-	}
-	$stomp->disconnect;
-}
-
 if(my $pid = fork) {
-	use Net::Stomp;
 	sleep 2;
 
 	for (1..2) {
-		my $stomp = stomp_connect();
-		$stomp->subscribe({
-			destination => '/queue/test7',
-			ack => 'client',
-		});
+		my $receiver = stomp_connect();
+		stomp_subscribe($receiver);
 
-		send_stuff();
+		my $sender = stomp_connect();
+		stomp_send($sender) for (1..10);
+		$sender->disconnect;
 
-		for (1..10) {
-			my $frame = $stomp->receive_frame();
-			$stomp->ack({frame => $frame});
-		}
-		$stomp->disconnect;
+		stomp_receive($receiver);
+		$receiver->disconnect;
 	}
 	kill "TERM", $pid;
 }
