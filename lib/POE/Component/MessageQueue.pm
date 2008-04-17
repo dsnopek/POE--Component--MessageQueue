@@ -424,8 +424,8 @@ sub shutdown
 			# If we handle three shutdown signals, we'll just die.  This is handy
 			# during debugging, and no one who wants MQ to shutdown gracefully will
 			# throw 3 kills at us.  TODO:  Make sure that's true.
-			my $msg = 
-				"Shutdown called $self->{shutdown} times!  Forcing ungraceful quit.";
+			my $msg = 'Shutdown called ' . $self->shutdown_count 
+				. ' times! Forcing ungraceful quit.';
 			$self->log('emergency', $msg);
 			print STDERR "$msg\n";
 			$poe_kernel->stop();

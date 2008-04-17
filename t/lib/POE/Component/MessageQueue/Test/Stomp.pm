@@ -16,11 +16,19 @@ sub stomp_connect {
 
 sub stomp_send {
 	my $stomp = $_[0];
+	my @chars = ['a'..'z', 'A'..'Z'];
+	my $nonce = join('', map { $chars[rand @chars] } (1..20));
+
 	$stomp->send({
 		destination => '/queue/test',
 		body => 'arglebargle',
-		persistent => 1,
+		persistent => 'true',
+		receipt => $nonce
 	});
+
+	my $frame = $stomp->receive_frame;
+	die unless ($frame->command eq 'RECEIPT' 
+		&& $frame->headers->{receipt} eq $nonce);
 }
 
 sub stomp_subscribe {
