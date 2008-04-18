@@ -16,8 +16,9 @@
 #
 
 package POE::Component::MessageQueue;
-use vars qw($VERSION);
-$VERSION = '0.2.0';
+use Moose;
+
+our $VERSION = '0.2.0';
 
 use POE 0.38;
 use POE::Component::Server::Stomp;
@@ -28,7 +29,6 @@ use POE::Component::MessageQueue::Message;
 use POE::Component::MessageQueue::IDGenerator::UUID;
 use Net::Stomp;
 use Event::Notify;
-use Moose;
 
 use constant SHUTDOWN_SIGNALS => ('TERM', 'HUP', 'INT');
 
@@ -66,8 +66,9 @@ has idgen => (
 has observers    => (is => 'ro');
 has logger_alias => (is => 'ro');
 
-has storage  => (
-	is => 'ro', 
+has storage => (
+	is       => 'ro', 
+	does     => 'POE::Component::MessageQueue::Storage',
 	required => 1,
 );
 
@@ -83,21 +84,34 @@ has clients => (
 	}
 );
 
-before remove_client => sub {
-	my ($self, $id) = @_;
-	my $client = $self->get_client($id) || return;
+has shutdown_count => (metaclass => 'Counter');
 
-	$self->log(notice => "MASTER: Removing client $id");
-	
-	$self->storage->disown_all($id, sub {
-		foreach my $s ($client->all_subscriptions)
+before remove_client => sub {
+	my ($self, @ids) = @_;
+
+	if (my @clients = grep { $_ } map { $self->get_client($_) } @ids)
+	{
+		my $client_str = @clients > 1 
+			? 'clients (' . join(', ', map { $_->id } @clients) . ')'
+			: 'client ' . $clients[0]->id;
+
+		$self->log(notice => "MASTER: Removing $client_str");
+
+		foreach my $c (@clients)
 		{
-			$client->unsubscribe($s->destination);
-			$s->destination->pump();
+			my @destinations = map { $_->destination } $c->all_subscriptions;
+
+			$c->unsubscribe($_) foreach @destinations;
+
+			if ($self->shutdown_count == 0)
+			{
+				$self->storage->disown_all($c->id, 
+					sub { $_->pump() foreach @destinations });
+			}
+
+			$c->shutdown();
 		}
-		# shutdown TCP connection
-		$client->shutdown();
-	});
+	}
 };
 	
 has destinations => (
@@ -189,6 +203,12 @@ sub _handle_frame
 {
 	my $self = shift;
 	my ($kernel, $heap, $frame) = @_[ KERNEL, HEAP, ARG0 ];
+
+	if ($self->shutdown_count)
+	{
+		$kernel->yield('shutdown');
+		return;
+	}
 
 	my $id = $kernel->get_active_session()->ID();
 
@@ -323,6 +343,8 @@ sub route_frame
 			if(my $d = $self->get_destination($destination_name))
 			{
 				$client->unsubscribe($d);
+				$self->storage->disown_destination($client->id, $d->name, 
+					sub { $d->pump() });
 				$self->notify(unsubscribe => {destination => $d, client => $client});
 			}
 		},
@@ -336,7 +358,6 @@ sub route_frame
 
 	if (my $fn = $handlers{$frame->command})
 	{
-		$fn->();
 		# Send receipt on anything but a connect
 		if ($frame->command ne 'CONNECT' && 
 				$frame->headers && 
@@ -347,6 +368,7 @@ sub route_frame
 				headers => {receipt => $receipt},
 			}));
 		}
+		$fn->();
 	}
 	else
 	{
@@ -394,43 +416,45 @@ sub _shutdown
 sub shutdown
 {
 	my $self = shift;
-
-	if ( $self->{shutdown} )
+	$self->inc_shutdown_count;
+	if ($self->shutdown_count > 1) 
 	{
-		$self->{shutdown}++;
-		if ( $self->{shutdown} >= 3 )
+		if ($self->shutdown_count > 2) 
 		{
 			# If we handle three shutdown signals, we'll just die.  This is handy
 			# during debugging, and no one who wants MQ to shutdown gracefully will
 			# throw 3 kills at us.  TODO:  Make sure that's true.
-			my $msg = 
-				"Shutdown called $self->{shutdown} times!  Forcing ungraceful quit.";
+			my $msg = 'Shutdown called ' . $self->shutdown_count 
+				. ' times! Forcing ungraceful quit.';
 			$self->log('emergency', $msg);
 			print STDERR "$msg\n";
 			$poe_kernel->stop();
 		}
-		return;
 	}
-	$self->{shutdown} = 1;
+	else 
+	{
+		# First time we were called, so shut things down.
+		$self->log(alert => 'Initiating message queue shutdown...');
 
-	$self->log('alert', 'Initiating message queue shutdown...');
+		$self->log(alert => 'Shutting down all destinations');
+		$_->shutdown() foreach $self->all_destinations;
 
-	$self->log(alert => 'Shutting down all destinations');
-	$_->shutdown() foreach $self->all_destinations;
+		# stop listening for connections
+		$poe_kernel->post( $self->alias => 'shutdown' );
 
-	# stop listening for connections
-	$poe_kernel->post( $self->alias => 'shutdown' );
+		# shutdown all client connections
+		$self->remove_client( $self->all_client_ids );
 
-	# shutdown all client connections
-	$poe_kernel->post($_ => 'shutdown') foreach ($self->all_client_ids);
-
-	# shutdown the storage
-	$self->storage->storage_shutdown(sub { $self->_shutdown_complete(@_) });
+		# shutdown the storage
+		$self->storage->storage_shutdown( sub { $self->_shutdown_complete(@_) } );
+	}
 }
 
 sub dispatch_message
 {
 	my ($self, $msg, $subscriber) = @_;
+	return if ($self->shutdown_count > 0);
+
 	my $msg_id = $msg->id;
 	my $destination = $self->get_destination($msg->destination);
 
@@ -468,9 +492,8 @@ sub dispatch_message
 			"MASTER: Message $msg_id could not be delivered (no client)");
 		if ($msg->claimed)
 		{
-			$self->storage->disown_all($msg->claimant, sub {
-				$destination->pump();
-			});
+			$self->storage->disown_all($msg->claimant, 
+				sub { $destination->pump() });
 		}
 	}
 }

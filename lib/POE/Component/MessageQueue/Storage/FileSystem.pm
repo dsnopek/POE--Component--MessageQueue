@@ -25,6 +25,8 @@ use POE::Wheel::ReadWrite;
 use IO::File;
 use IO::Dir;
 
+use constant NotFound => 'FILESYSTEM: Message not on disk';
+
 has 'info_storage' => (
 	is       => 'ro',
 	required => 1,	
@@ -40,21 +42,38 @@ foreach my $method qw(get get_all)
 		my $self = shift;
 		my $callback = pop;
 		$self->info_storage->$method(@_, sub {
-			$self->_read_loop($_[0], [], $callback);
+			$self->_read_loop($_[0], [], sub {
+				@_ = ([grep { $_ ne NotFound } @{$_[0]}]);
+				goto $callback;
+			});
 		});
 	});
 }
 
-# These are similar to the above, but for single messages
+# These are similar to the above, but for single messages.  Also, we want to
+# retry if the message info tells us about is not on disk.
 foreach my $method qw(get_oldest claim_and_retrieve) 
 {
 	__PACKAGE__->meta->add_method($method, sub {
 		my $self = shift;
 		my $callback = pop;
-		$self->info_storage->$method(@_, sub {
-			$self->_read_loop([$_[0]], [], sub {
-				@_ = ($_[0]->[0]);
-				goto $callback;
+		my @args = @_;
+		$self->info_storage->$method(@args, sub {
+			my $info_answer = $_[0];
+			goto $callback unless $info_answer;
+
+			$self->_read_loop([$info_answer], [], sub {
+				my $disk_answer = $_[0]->[0];
+
+				if ($disk_answer eq NotFound) 
+				{
+					$self->$method(@args, $callback);
+				}
+				else
+				{
+					@_ = ($disk_answer);
+					goto $callback;
+				}
 			});
 		});
 	});
@@ -267,9 +286,14 @@ sub _read_loop
 		# Don't have the body anymore, so we'll have to read it from disk.
 		$poe_kernel->post($self->session, 
 			_read_message_from_disk => $message->id, sub {
-				if (my $body = $_[0])
+				my $answer = $_[0];
+				if ($answer eq NotFound) 
 				{
-					$message->body($body);
+					push(@$done_reading, $answer);
+				}
+				elsif (defined $answer)
+				{
+					$message->body($answer);
 					push(@$done_reading, $message);
 				}
 				goto $again;
@@ -380,13 +404,9 @@ sub _read_message_from_disk
 		$self->log( 'warning', "Can't find $fn on disk!  Discarding message." );
 
 		# we need to get the message out of the info store
-		$self->info_storage->remove( $id );
+		$self->info_storage->remove($id);
 
-		# TODO: This is the right thing to do in every situation EXCEPT claim_and_retreive,
-		# when we really want to initiate another claim and retrieve cycle, because sending
-		# "undef" means that there are no messages on this destination which will stop the
-		# pump cycle!
-		@_ = (undef);
+		@_ = (NotFound);
 		goto $callback;
 	}
 	

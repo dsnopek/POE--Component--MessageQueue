@@ -70,11 +70,6 @@ sub unsubscribe
 
 	$self->delete_subscription($destination->name);
 	$destination->delete_subscription($self->id);
-
-	if ($destination->is_persistent)
-	{
-		$destination->storage->disown_destination($destination->name, $self->id);
-	}
 }
 
 sub send_frame
@@ -109,7 +104,6 @@ sub connect
 sub shutdown
 {
 	my $self = shift;
-
 	$poe_kernel->post($self->id, "shutdown");
 }
 
