@@ -7,9 +7,9 @@ use POE::Component::MessageQueue::Test::MQ;
 use POE::Component::MessageQueue::Test::EngineMaker;
 
 use File::Path;
-use IO::Dir;
+use IO::Dir qw(DIR_UNLINK);
 use Test::Exception;
-use Test::More qw(no_plan);
+use Test::More tests => 10;
 
 # 1) Start MQ with Filesystem
 # 2) send some messages
@@ -34,10 +34,32 @@ lives_ok {
 	$sender->disconnect;
 } 'messages sent';
 
-ok(stop_mq($pid), 'MQ shut down.');
+ok(stop_mq($pid), 'MQ shut down');
 
-my $dh = IO::Dir->new(DATA_DIR);
-my @files = grep { /msg-.*\.txt/ } (IO::Dir->new(DATA_DIR)->read());
-is(scalar @files, 100, "100 messages stored.");
+my %data_dir;
+tie %data_dir, 'IO::Dir', DATA_DIR, DIR_UNLINK;
+sub find_messages { grep { /msg-.*\.txt/ } (keys %data_dir) }
 
-# Pick up here
+my @files = find_messages();
+is(@files, 100, "100 messages stored");
+# Remove random files
+for (1..20) {
+	my $file = splice(@files, rand(@files), 1);
+	delete $data_dir{$file};
+}
+is(find_messages(), 80, "20 messages removed");
+
+$pid = start_mq('FileSystem');
+ok($pid, "MQ restarted");
+sleep 2;
+
+lives_ok { 
+	my $stomp = stomp_connect();
+	stomp_subscribe($stomp);
+	stomp_receive($stomp) for (1..80);
+	$stomp->disconnect;
+} 'Got 80 messages';
+
+ok(stop_mq($pid), 'MQ shut down');
+
+lives_ok { rmtree(DATA_DIR) } 'Data dir removed';

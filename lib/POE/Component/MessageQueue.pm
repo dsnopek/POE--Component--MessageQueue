@@ -358,7 +358,6 @@ sub route_frame
 
 	if (my $fn = $handlers{$frame->command})
 	{
-		$fn->();
 		# Send receipt on anything but a connect
 		if ($frame->command ne 'CONNECT' && 
 				$frame->headers && 
@@ -369,6 +368,7 @@ sub route_frame
 				headers => {receipt => $receipt},
 			}));
 		}
+		$fn->();
 	}
 	else
 	{

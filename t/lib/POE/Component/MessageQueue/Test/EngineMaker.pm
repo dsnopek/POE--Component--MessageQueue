@@ -3,12 +3,14 @@ use strict;
 use warnings;
 
 use Exporter qw(import);
+use POSIX qw(tmpnam);
 use POE::Component::MessageQueue::Storage::Default;
 our @EXPORT = qw(
 	make_engine engine_names make_db engine_package DATA_DIR LOG_LEVEL
 );
 
-my $data_dir = '/tmp/mq_test';
+my $data_dir = tmpnam();
+
 sub DATA_DIR { 
 	if (my $dir = shift) {
 		$data_dir = $dir;

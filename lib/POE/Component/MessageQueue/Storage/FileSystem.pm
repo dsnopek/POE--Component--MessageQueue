@@ -25,11 +25,7 @@ use POE::Wheel::ReadWrite;
 use IO::File;
 use IO::Dir;
 
-use constant NotFound =>
-	'POE::Component::MessageQueue::Storage::FileSystem::NotFound';
-
-use Exception::Class (NotFound);
-use Exception::Class::TryCatch;
+use constant NotFound => 'FILESYSTEM: Message not on disk';
 
 has 'info_storage' => (
 	is       => 'ro',
@@ -45,37 +41,41 @@ foreach my $method qw(get get_all)
 	__PACKAGE__->meta->add_method($method, sub {
 		my $self = shift;
 		my $callback = pop;
-		try eval {
-			$self->info_storage->$method(@_, sub {
-				$self->_read_loop($_[0], [], $callback);
+		$self->info_storage->$method(@_, sub {
+			$self->_read_loop($_[0], [], sub {
+				@_ = ([grep { $_ ne NotFound } @{$_[0]}]);
+				goto $callback;
 			});
-		};
-		if (catch my $err, [NotFound])
-		{
-			@_ = (undef);
-			goto $callback;
-		}
+		});
 	});
 }
 
-# These are similar to the above, but for single messages
+# These are similar to the above, but for single messages.  Also, we want to
+# retry if the message info tells us about is not on disk.
 foreach my $method qw(get_oldest claim_and_retrieve) 
 {
 	__PACKAGE__->meta->add_method($method, sub {
 		my $self = shift;
 		my $callback = pop;
-		while (1) {
-			try eval { 
-				$self->info_storage->$method(@_, sub {
-					$self->_read_loop([$_[0]], [], sub {
-						@_ = ($_[0]->[0]);
-						goto $callback;
-					});
-				});
-			};
-			next if (catch my $err, [NotFound]);
-			last;
-		}
+		my @args = @_;
+		$self->info_storage->$method(@args, sub {
+			my $info_answer = $_[0];
+			goto $callback unless $info_answer;
+
+			$self->_read_loop([$info_answer], [], sub {
+				my $disk_answer = $_[0]->[0];
+
+				if ($disk_answer eq NotFound) 
+				{
+					$self->$method(@args, $callback);
+				}
+				else
+				{
+					@_ = ($disk_answer);
+					goto $callback;
+				}
+			});
+		});
 	});
 }
 
@@ -286,9 +286,14 @@ sub _read_loop
 		# Don't have the body anymore, so we'll have to read it from disk.
 		$poe_kernel->post($self->session, 
 			_read_message_from_disk => $message->id, sub {
-				if (my $body = $_[0])
+				my $answer = $_[0];
+				if ($answer eq NotFound) 
 				{
-					$message->body($body);
+					push(@$done_reading, $answer);
+				}
+				elsif (defined $answer)
+				{
+					$message->body($answer);
 					push(@$done_reading, $message);
 				}
 				goto $again;
@@ -399,10 +404,10 @@ sub _read_message_from_disk
 		$self->log( 'warning', "Can't find $fn on disk!  Discarding message." );
 
 		# we need to get the message out of the info store
-		$self->info_storage->remove($id, sub {
-			NotFound->throw("$fn not on disk");
-		});
-		return;
+		$self->info_storage->remove($id);
+
+		@_ = (NotFound);
+		goto $callback;
 	}
 	
 	# setup the wheel
