@@ -30,6 +30,7 @@ has throttle_max => (
 );
 
 has sent => (metaclass => 'Counter');
+has throttle_count => (metaclass => 'Counter');
 
 has shutdown_callback => (
 	is        => 'rw',
@@ -54,7 +55,11 @@ sub _backstore_ready
 		if (my $msg = $_[0])
 		{
 			my $id = $msg->id;
-			$self->log(info => "Sending throttled message $id");
+
+			$self->dec_throttle_count;
+			my $tc = $self->throttle_count;
+			$self->log(info => "Sending throttled message $id ($tc left)");
+
 			$self->delete_front($id);
 			$self->front->remove($id, sub {
 				$self->back->store($msg, sub {
@@ -71,10 +76,18 @@ sub _backstore_ready
 	});
 }
 
+before remove => sub {
+	my ($self, $ids) = @_;
+	$ids = [$ids] unless (ref $ids eq 'ARRAY');
+	foreach my $id (@$ids)
+	{
+		$self->dec_throttle_count if $self->in_front($id);
+	}
+};
+
 sub store
 {
 	my ($self, $message, $callback) = @_;
-	my $id = $message->id;
 	if ($self->sent < $self->throttle_max)
 	{
 		$self->inc_sent();
@@ -87,15 +100,19 @@ sub store
 	}
 	else
 	{
-		$self->set_front($id => {persisted => 0});
+		$self->set_front($message->id, {persisted => 0});
 		$self->front->store($message, $callback);
+		$self->inc_throttle_count;
+		my $tc = $self->throttle_count;
+
+		$self->log(debug => "$tc messages throttled");
 	}
 }
 
 sub _shutdown_throttle_check
 {
 	my $self = shift;
-	if ($self->shutting_down && $self->sent == 0)
+	if ($self->shutting_down && $self->throttle_count == 0)
 	{
 		# We have now finished sending things out of throttled, so -WE- are done.
 		# However, we'll still get message_storeds as our backstore finishes, and
