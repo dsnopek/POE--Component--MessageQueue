@@ -26,7 +26,6 @@ has throttle_max => (
 	is       => 'ro',
 	isa      => 'Int',
 	default  => 2,
-	required => 1,
 );
 
 has sent => (metaclass => 'Counter');
