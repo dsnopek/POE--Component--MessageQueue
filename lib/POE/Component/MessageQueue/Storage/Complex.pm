@@ -52,7 +52,8 @@ has timeout => (
 has granularity => (
 	is       => 'ro',
 	isa      => 'Int',
-	required => 1,
+	lazy     => 1,
+	default  => sub { $_[0]->timeout / 2 },
 );
 
 has alias => (
