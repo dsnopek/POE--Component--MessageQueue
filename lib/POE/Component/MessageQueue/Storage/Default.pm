@@ -192,7 +192,7 @@ sub new
 	
 	my $throttled = POE::Component::MessageQueue::Storage::Throttled->new(
 		back         => $fs,
-		throttle_max => $args->{throttle_max},
+		throttle_max => $args->{throttle_max} || 2,
 	);
 
 	# We don't bless anything because we're just returning a Complex...
