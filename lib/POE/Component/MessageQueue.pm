@@ -567,7 +567,9 @@ some predetermined defaults, you can use the included command line script:
     --version    -v         Show the current version.
     --help       -h         Show this usage message
 
-=head1 SUBSCRIBER SYNOPSIS
+=head1 SYNOPSIS
+
+=head2 Subscriber
 
   use Net::Stomp;
   
@@ -594,7 +596,7 @@ some predetermined defaults, you can use the included command line script:
   
   $stomp->disconnect();
 
-=head1 PRODUCER SYNOPSIS
+=head2 Producer
 
   use Net::Stomp;
   
@@ -615,7 +617,7 @@ some predetermined defaults, you can use the included command line script:
   
   $stomp->disconnect();
 
-=head1 SERVER SYNOPSIS
+=head2 Server
 
 If you want to use a different arrangement of storage engines or to embed PoCo::MQ
 inside another application, the following synopsis may be useful to you:
@@ -688,7 +690,7 @@ Message storage can be provided by a number of different backends.
 
 =back
 
-=head1 SPECIAL STOMP HEADERS
+=head2 Special STOMP headers
 
 You can see the main STOMP documentation here: L<http://stomp.codehaus.org/Protocol>
 
@@ -720,7 +722,7 @@ specified, non-persistent messages are discarded when pushed out of the front st
 
 =back
 
-=head1 QUEUES AND TOPICS
+=head2 Queues and Topics
 
 In PoCo::MQ there are two types of I<destinations>: B<queues> and B<topics>
 
@@ -743,6 +745,26 @@ time it was sent.
 
 All destination names start with either "/queue/" or "/topic/" to distinguish
 between queues and topics.
+
+=head2 Tips and Tricks
+
+=over 4
+
+=item B<Logging!  Use it.>
+
+PoCo::MQ uses L<POE::Component::Logger> for logging which is based on
+L<Log::Dispatch>.  By default B<mq.pl> looks for a log file at:
+"/etc/perl_mq/log.conf".  Or you can specify an alternate location with the
+I<--log-conf> command line argument.  
+
+=item B<Using the login/passcode to track clients in the log.>
+
+Currently the login and passcode aren't used by PoCo::MQ for auth, but they
+I<are> written to the log file.  In the log file clients are only identified
+by the client id.  But if you put information identifying the client in the
+login/passcode you can connect that to a client id by finding it in the log.
+
+=back
 
 =head1 STORAGE
 
@@ -918,24 +940,58 @@ any new code merged into the main branch.
 
 =head1 FUTURE
 
-The goal of this module is not to support every possible feature but rather to be
-small, simple, efficient and robust.  So, for the most part expect only incremental
-changes to address those areas.  Other than that, here are some things I would like
-to implement someday in the future:
+The goal of this module is not to support every possible feature but rather to
+be small, simple, efficient and robust.  For the most part expect incremental
+changes to address those areas.
+
+There is one remaining big feature coming soon and that is the ability to run
+PoCo::MQ in a clustered accross multiple servers with some kind of fail-over.
+
+Beyond that we have a TODO list (shown below) which call B<"The Long Road To
+1.0">.  This is a list of things we feel we need to have call the product
+complete.  That means includes management and monitoring tools for sysadmins
+as well as documentation for developers.
 
 =over 4
 
 =item *
 
-Full support for the STOMP protocol.
+B<Full support for STOMP>: Including making sure we are robust to clients
+participating badly in the protocol.
 
 =item *
 
-Some kind of security based on username/password.
+B<Authentication and authorization>: This should be highly pluggable, but
+basically (as far as authorization goes) each user can get read/write/admin
+perms for a queue which are inherited by default to sub-queues (as separated
+by the dot character).
 
 =item *
 
-Optional add on module via L<POE::Component::IKC::Server> that allows to introspect the state of the message queue.
+B<Really solid monitoring>:  It should be possible for an admin to monitor the
+overall state of the queue, ie: (1) how many messages for what queues are in
+the front-store, throttled, back-store, etc, (2) information on connected
+clients, (3) data/message thorough put, (4) daily/weekly/monthly trends, (X)
+etc..
+The rough plan is to use special STOMP frames and "magic" queues/topics to
+access special information or perform admin tasks.  Command line scripts for
+simple things would be included in the main distribute and a full-featured
+web-interface would be provided as a separate module.
+
+
+=item *
+
+B<Management tools>: An admin should be able to "peek" at any message that is
+at any point in the queue as well as delete messages or whole queues.
+
+=item *
+
+B<Log rotation>: At minimum, documentation on how to set it up.
+
+=item *
+
+B<Docs on "using" the MQ>: A full tutorial from start to finish, as well as
+advice on writing good consumers/producers.
 
 =back
 
@@ -943,8 +999,14 @@ Optional add on module via L<POE::Component::IKC::Server> that allows to introsp
 
 I<External modules:>
 
-L<POE>, L<POE::Component::Server::Stomp>, L<Net::Stomp>, L<POE::Component::Logger>, L<DBD::SQLite>,
-L<POE::Component::Generic>, L<POE::Filter::Stomp>
+L<POE>,
+L<POE::Component::Server::Stomp>,
+L<POE::Component::Client::Stomp>,
+L<Net::Stomp>,
+L<POE::Filter::Stomp>,
+L<POE::Component::Logger>,
+L<DBD::SQLite>,
+L<POE::Component::Generic>
 
 I<Storage modules:>
 
