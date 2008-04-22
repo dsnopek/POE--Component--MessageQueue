@@ -714,8 +714,8 @@ to the back store and non-persistent messages will be discarded eventually.
 
 =item B<expire-after>
 
-For non-persistent messages, this header takes a number of seconds that the message
-must be held on to before being discarded.
+For non-persistent messages, you can set this header to the number of seconds this
+message must be kept before being discarded.  This is ignored for persistent messages.
 
 Many storage engines ignore the "expire-after" header, so be sure to check the
 documentation for your storage engine.
