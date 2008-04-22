@@ -345,7 +345,6 @@ sub route_frame
 				$client->unsubscribe($d);
 				$self->storage->disown_destination($client->id, $d->name, 
 					sub { $d->pump() });
-				$self->notify(unsubscribe => {destination => $d, client => $client});
 			}
 		},
 
@@ -388,13 +387,7 @@ sub ack_message
 		$self->delete_owner($message_id);
 		$s->ready(1);
 		my $d = $s->destination;
-		$self->notify(ack => {
-			destination  => $d,
-			client       => $client,
-			message_info => {
-				message_id => $message_id,
-			},
-		});
+		$self->notify(remove => $message_id);
 		$self->storage->remove($message_id, sub {$d->pump()});
 	}
 	else
@@ -471,8 +464,10 @@ sub dispatch_message
 			}
 			else
 			{
+				$self->notify(remove => $msg_id);
 				$self->storage->remove($msg_id);
 			}
+
 			$self->notify(dispatch => {
 				destination => $destination, 
 				message     => $msg, 
