@@ -506,9 +506,124 @@ __END__
 
 =head1 NAME
 
-POE::Component::MessageQueue - A POE message queue that uses STOMP for the communication protocol
+POE::Component::MessageQueue - A POE message queue that uses STOMP for its communication protocol
 
-=head1 SYNOPSIS
+=head1 USAGE
+
+If you are only interested in running with the recommended storage backend and
+some predetermined defaults, you can use the included command line script:
+
+  POE::Component::MessageQueue version 0.2.0
+  Copyright 2007, 2008 David Snopek (http://www.hackyourlife.org)
+  Copyright 2007, 2008 Paul Driver <frodwith@gmail.com>
+  Copyright 2007 Daisuke Maki <daisuke@endeworks.jp>
+  
+  mq.pl [--port|-p <num>]               [--hostname|-h <host>]
+        [--front-store <str>]           [--front-max <size>] 
+        [--granularity <seconds>]       [--nouuids]
+        [--timeout|-i <seconds>]        [--throttle|-T <count>]
+        [--data-dir <path_to_dir>]      [--log-conf <path_to_file>]
+        [--stats-interval|-i <seconds>] [--stats]
+        [--pidfile|-p <path_to_file>]   [--background|-b]
+        [--crash-cmd <path_to_script>]
+        [--debug-shell] [--version|-v]  [--help|-h]
+  
+  SERVER OPTIONS:
+    --port     -p <num>     The port number to listen on (Default: 61613)
+    --hostname -h <host>    The hostname of the interface to listen on 
+                            (Default: localhost)
+  
+  STORAGE OPTIONS:
+    --front-store -f <str>  Specify which in-memory storage engine to use for
+                            the front-store (can be memory or bigmemory).
+    --front-max <size>      How much message body the front-store should cache.
+                            This size is specified in "human-readable" format
+                            as per the -h option of ls, du, etc. (ex. 2.5M)
+    --timeout  -i <secs>    The number of seconds to keep messages in the 
+                            front-store (Default: 4)
+    --granularity <secs>    How often (in seconds) Complex should check for
+                            messages that have passed the timeout.  
+    --[no]uuids             Use (or do not use) UUIDs instead of incrementing
+                            integers for message IDs.  Default: uuids 
+    --throttle -T <count>   The number of messages that can be stored at once 
+                            before throttling (Default: 2)
+    --data-dir <path>       The path to the directory to store data 
+                            (Default: /var/lib/perl_mq)
+    --log-conf <path>       The path to the log configuration file 
+                            (Default: /etc/perl_mq/log.conf
+  
+  STATISTICS OPTIONS:
+    --stats                 If specified the, statistics information will be 
+                            written to $DATA_DIR/stats.yml
+    --stats-interval <secs> Specifies the number of seconds to wait before 
+                            dumping statistics (Default: 10)
+  
+  DAEMON OPTIONS:
+    --background -b         If specified the script will daemonize and run in the
+                            background
+    --pidfile    -p <path>  The path to a file to store the PID of the process
+  
+    --crash-cmd  <path>     The path to a script to call when crashing.
+                            A stacktrace will be printed to the script's STDIN.
+                            (ex. 'mail root@localhost')
+  
+  OTHER OPTIONS:
+    --debug-shell           Run with POE::Component::DebugShell
+    --version    -v         Show the current version.
+    --help       -h         Show this usage message
+
+=head1 SUBSCRIBER SYNOPSIS
+
+  use Net::Stomp;
+  
+  my $stomp = Net::Stomp->new({
+  	hostname => 'localhost',
+  	port     => 61613
+  });
+  
+  # Currently, PoCo::MQ doesn't do any authentication, so you can put
+  # whatever you want as the login and passcode.
+  $stomp->connect({ login => $USERNAME, passcode => $PASSWORD });
+  
+  $stomp->subscribe({
+  	destination => '/queue/my_queue.sub_queue',
+  	ack         => 'client'
+  });
+  
+  while (1)
+  {
+  	my $frame = $stomp->receive_frame;
+  	print $frame->body . "\n";
+  	$stomp->ack({ frame => $frame });
+  }
+  
+  $stomp->disconnect();
+
+=head1 PRODUCER SYNOPSIS
+
+  use Net::Stomp;
+  
+  my $stomp = Net::Stomp->new({
+  	hostname => 'localhost',
+  	port     => 61613
+  });
+  
+  # Currently, PoCo::MQ doesn't do any authentication, so you can put
+  # whatever you want as the login and passcode.
+  $stomp->connect({ login => $USERNAME, passcode => $PASSWORD });
+  
+  $stomp->send({
+  	destination => '/queue/my_queue.sub_queue',
+  	body        => 'I am a message',
+  	persistent  => 'true',
+  });
+  
+  $stomp->disconnect();
+
+=head1 SERVER SYNOPSIS
+
+If you want to use a different arrangement of storage engines or to embed PoCo::MQ
+inside another application, the following synopsis may be useful to you:
 
   use POE;
   use POE::Component::Logger;
@@ -544,64 +659,6 @@ POE::Component::MessageQueue - A POE message queue that uses STOMP for the commu
   POE::Kernel->run();
   exit;
 
-=head1 COMMAND LINE
-
-If you are only interested in running with the recommended storage backend and
-some predetermined defaults, you can use the included command line script.
-
-  POE::Component::MessageQueue version 0.1.8
-  Copyright 2007, 2008 David Snopek (http://www.hackyourlife.org)
-  Copyright 2007, 2008 Paul Driver <frodwith@gmail.com>
-  Copyright 2007 Daisuke Maki <daisuke@endeworks.jp>
-  
-  mq.pl [--port|-p <num>] [--hostname|-h <host>]
-        [--front-store <str>] [--nouuids]
-        [--timeout|-i <seconds>]   [--throttle|-T <count>]
-        [--data-dir <path_to_dir>] [--log-conf <path_to_file>]
-        [--stats] [--stats-interval|-i <seconds>]
-        [--background|-b] [--pidfile|-p <path_to_file>]
-        [--crash-cmd <path_to_script>]
-        [--debug-shell] [--version|-v] [--help|-h]
-  
-  SERVER OPTIONS:
-    --port     -p <num>     The port number to listen on (Default: 61613)
-    --hostname -h <host>    The hostname of the interface to listen on 
-                            (Default: localhost)
-  
-  STORAGE OPTIONS:
-    --front-store -f <str>  Specify which in-memory storage engine to use for
-                            the front-store (can be memory or bigmemory).
-    --timeout  -i <secs>    The number of seconds to keep messages in the 
-                            front-store (Default: 4)
-    --[no]uuids             Use (or do not use) UUIDs instead of incrementing
-                            integers for message IDs.  Default: uuids 
-    --throttle -T <count>   The number of messages that can be stored at once 
-                            before throttling (Default: 2)
-    --data-dir <path>       The path to the directory to store data 
-                            (Default: /var/lib/perl_mq)
-    --log-conf <path>       The path to the log configuration file 
-                            (Default: /etc/perl_mq/log.conf
-  
-  STATISTICS OPTIONS:
-    --stats                 If specified the, statistics information will be 
-                            written to $DATA_DIR/stats.yml
-    --stats-interval <secs> Specifies the number of seconds to wait before 
-                            dumping statistics (Default: 10)
-  
-  DAEMON OPTIONS:
-    --background -b         If specified the script will daemonize and run in the
-                            background
-    --pidfile    -p <path>  The path to a file to store the PID of the process
-  
-    --crash-cmd  <path>     The path to a script to call when crashing.
-                            A stacktrace will be printed to the script's STDIN.
-                            (ex. 'mail root@localhost')
-  
-  OTHER OPTIONS:
-    --debug-shell           Run with POE::Component::DebugShell
-    --version    -v         Show the current version.
-    --help       -h         Show this usage message
-
 =head1 DESCRIPTION
 
 This module implements a message queue [1] on top of L<POE> that communicates
@@ -636,6 +693,62 @@ Message storage can be provided by a number of different backends.
 
 =back
 
+=head1 SPECIAL STOMP HEADERS
+
+You can see the main STOMP documentation here: L<http://stomp.codehaus.org/Protocol>
+
+PoCo::MQ implements a number of non-standard STOMP headers:
+
+=over 4
+
+=item B<persistent>
+
+Set to the string "true" to request that a message be persisted.  Not setting this header
+or setting it to any other value, means that a message is non-persistent.
+
+Many storage engines ignore the "persistent" header, either persisting all messages or 
+no messages, so be sure to check the documentation for your storage engine.
+
+Using the Complex or Default storage engines, persistent messages will always be sent
+to the back store and non-persistent messages will be discarded eventually.
+
+=item B<expire-after>
+
+For non-persistent messages, this header takes a number of seconds that the message
+must be held on to before being discarded.
+
+Many storage engines ignore the "expire-after" header, so be sure to check the
+documentation for your storage engine.
+
+Using the Complex or Default storage engines, this header will be honored.  If it isn't
+specified, non-persistent messages are discarded when pushed out of the front store.
+
+=back
+
+=head1 QUEUES AND TOPICS
+
+In PoCo::MQ there are two types of I<destinations>: B<queues> and B<topics>
+
+=over 4
+
+=item B<queue>
+
+Each message is only delivered to a single subscriber (not counting
+messages that were delivered but not ACK'd).  If there are multiple
+subscribers on a single queue, the messages will be divided amoung them,
+roughly equally.
+
+=item B<topic>
+
+Each message is delivered to every subscriber.  Topics don't support any kind
+of persistence, so to get a message, a subscriber *must* be connected at the
+time it was sent.
+
+=back
+
+All destination names start with either "/queue/" or "/topic/" to distinguish
+between queues and topics.
+
 =head1 STORAGE
 
 When creating an instance of this component you must pass in a storage object
@@ -651,11 +764,15 @@ L<POE::Component::MessageQueue::Storage::Memory> -- The simplest storage engine.
 
 =item *
 
+L<POE::Component::MessageQueue::Storage::BigMemory> -- An alternative memory that is optimized for large numbers of messages.
+
+=item *
+
 L<POE::Component::MessageQueue::Storage::DBI> -- Uses Perl L<DBI> to store messages.  Depending on your database configuration, using directly may not be recommended because the message bodies are stored directly in the database.  Wrapping with L<POE::Component::MessageQueue::Storage::FileSystem> allows you to store the message bodies on disk.  All messages are stored persistently.  (Underneath this is really just L<POE::Component::MessageQueue::Storage::Generic> and L<POE::Component::MessageQueue::Storage::Generic::DBI>)
 
 =item *
 
-L<POE::Component::MessageQueue::Storage::FileSystem> -- Wraps around another storage engine to store the message bodies on the filesystem.  This can be used in conjunction with the DBI storage engine so that message properties are stored in DBI, but the message bodies are stored on disk.  All messages are stored persistently regardless of whether a message has the persistent flag set or not.
+L<POE::Component::MessageQueue::Storage::FileSystem> -- Wraps around another storage engine to store the message bodies on the filesystem.  This can be used in conjunction with the DBI storage engine so that message properties are stored in DBI, but the message bodies are stored on disk.  All messages are stored persistently regardless of whether a message has set the persistent header or not.
 
 =item *
 
@@ -663,19 +780,19 @@ L<POE::Component::MessageQueue::Storage::Generic> -- Uses L<POE::Component::Gene
 
 =item *
 
-L<POE::Component::MessageQueue::Storage::Generic::DBI> -- A synchronous L<DBI>-based storage engine that can be used in side of Generic.  This provides the basis for the L<POE::Component::MessageQueue::Storage::DBI> module.
+L<POE::Component::MessageQueue::Storage::Generic::DBI> -- A synchronous L<DBI>-based storage engine that can be used inside of Generic.  This provides the basis for the L<POE::Component::MessageQueue::Storage::DBI> module.
 
 =item *
 
-L<POE::Component::MessageQueue::Storage::Throttled> -- Wraps around another engine to limit the number of messages sent to be stored at once.  Use of this module is B<highly> recommend!  If the storage engine is unable to store the messages fast enough (ie. with slow disk IO) it can get really backed up and stall messages coming out of the queue, allowing execessive producers to basically monopolise the server, preventing any messages from getting distributed to subscribers.  Also, it will significantly cuts down the number of open FDs when used with L<POE::Component::MessageQueue::Storage::FileSystem>.
+L<POE::Component::MessageQueue::Storage::Throttled> -- Wraps around another engine to limit the number of messages sent to be stored at once.  Use of this module is B<highly> recommend!  If the storage engine is unable to store the messages fast enough (ie. with slow disk IO) it can get really backed up and stall messages coming out of the queue, allowing execessive producers to basically monopolise the server, preventing any messages from getting distributed to subscribers.  Also, it will significantly cuts down the number of open FDs when used with L<POE::Component::MessageQueue::Storage::FileSystem>.  Internally it makes use of L<POE::Component::MessageQueue::Storage::BigMemory> to store the throttled messages.
 
 =item *
 
-L<POE::Component::MessageQueue::Storage::Complex> -- A configurable storage engine that keeps a front-store (something fast) and a back-store (something persistent), allowing you to specify a timeout and an action to be taken when messages in the front-store expire, by default, moving them into the back-store.  It is capable of correctly handling a messages persistent flag.  This optimization allows for the possibility of messages being handled before ever having to be persisted.
+L<POE::Component::MessageQueue::Storage::Complex> -- A configurable storage engine that keeps a front-store (something fast) and a back-store (something persistent), allowing you to specify a timeout and an action to be taken when messages in the front-store expire, by default, moving them into the back-store.  It is capable to correctly handle the persistent and expire-after headers.  This optimization allows for the possibility of messages being handled before ever having to be persisted.
 
 =item *
 
-L<POE::Component::MessageQueue::Storage::Default> -- A combination of the Complex, Memory, FileSystem, DBI and Throttled modules above.  It will keep messages in Memory and move them into FileSystem after a given number of seconds, throttling messages passed into DBI.  The DBI backend is configured to use SQLite.  It is capable of correctly handling a messages persistent flag.  This is the recommended storage engine and should provide the best performance in the most common case (ie. when both providers and consumers are connected to the queue at the same time).
+L<POE::Component::MessageQueue::Storage::Default> -- A combination of the Complex, BigMemory, FileSystem, DBI and Throttled modules above.  It will keep messages in BigMemory and move them into FileSystem after a given number of seconds, throttling messages passed into DBI.  The DBI backend is configured to use SQLite.  It is capable to correctly handle the persistent and expire-after headers.  This is the recommended storage engine and should provide the best performance in the most common case (ie. when both providers and consumers are connected to the queue at the same time).
 
 =back
 
