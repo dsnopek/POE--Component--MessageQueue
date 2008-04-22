@@ -70,6 +70,10 @@ sub unsubscribe
 
 	$self->delete_subscription($destination->name);
 	$destination->delete_subscription($self->id);
+	$destination->notify(unsubscribe => {
+		destination => $destination,
+		client      => $self,
+	});
 }
 
 sub send_frame

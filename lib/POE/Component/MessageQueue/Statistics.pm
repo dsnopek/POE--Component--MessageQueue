@@ -37,6 +37,7 @@ sub new
 			subscriptions => 0,
 			queues        => {},
 		},
+		store_info => {},
 		publishers => [],
 	}, $class;
 
@@ -47,22 +48,13 @@ sub register
 {
 	my ($self, $mq) = @_;
 	$mq->register_event( $_, $self ) 
-		for qw(store dispatch ack recv subscribe unsubscribe);
+		for qw(store dispatch remove recv subscribe unsubscribe);
 }
 
 sub add_publisher {
   my ($self, $pub) = @_; 
   push(@{$self->{publishers}}, $pub);
 }
-
-my %METHODS = (
-	store       => 'notify_store',
-	'recv'      => 'notify_recv',
-	dispatch    => 'notify_dispatch',
-	ack         => 'notify_ack',
-	subscribe   => 'notify_subscribe',
-	unsubscribe => 'notify_unsubscribe',
-);
 
 sub get_queue
 {
@@ -109,22 +101,33 @@ sub shutdown
 sub notify
 {
 	my ($self, $event, $data) = @_;
-
-	my $method = $METHODS{ $event };
-	return unless $method;
-	$self->$method($data);
+	if(my $method = $self->can("notify_$event")) 
+	{
+		$method->($self, $data);
+	}
+	else
+	{
+		die "Tried to notify $event, which has no handler.";
+	}
 }
 
 sub notify_store
 {
-	my ($self, $data) = @_;
+	my ($self, $message) = @_;
+	my $qname = $message->destination;
 
-	# Global
-	my $h = $self->{statistics};
-	$h->{total_stored}++;
+	return unless $qname =~ m(/queue/(.*));
+	$qname = $1;
 
-	# Per-queue
-	my $stats = $self->get_destination($data);
+	$self->{store_info}->{$message->id} = {
+		qname     => $qname,
+		timestamp => time(),
+	};
+
+	my $global = $self->{statistics};
+	$global->{total_stored}++;
+
+	my $stats = $self->get_queue($qname);
 	$stats->{stored}++;
 	$stats->{total_stored}++;
 	$stats->{last_stored} = scalar localtime();
@@ -163,71 +166,32 @@ sub notify_recv
 	);
 }
 
-sub message_handled
-{
-	my ($self, $data) = @_;
-
-	my $info = $data->{message} || $data->{message_info};
-
-	# Global
-	my $h = $self->{statistics};
-	$h->{total_sent}++;
-
-	# Per-queue
-	my $stats = $self->get_destination($data);
-
-	$stats->{sent}++;
-	$stats->{total_sent}++;
-	$stats->{last_sent} = scalar localtime();
-
-	# Topics don't count. :)
-	$stats->{stored}-- 
-		unless $data->{destination}->isa('POE::Component::MessageQueue::Topic');
-
-	# We check if timestamp is set, because it might not be, in the specific
-	# case where the database was upgraded from pre-0.1.6.
-	# Topics don't get stored, so this doesn't make sense for them.
-	if ( $info->{timestamp} && 
-			 $data->{destination}->isa('POE::Component::MessageQueue::Queue'))
-	{
-		# recalc the average
-		$stats->{avg_secs_stored} = reaverage(
-			$stats->{total_stored},
-			$stats->{avg_secs_stored},
-			(time() - $info->{timestamp}),
-		);
-	}
-}
-
 sub notify_dispatch
 {
 	my ($self, $data) = @_;
-	my $d = $data->{destination};
 
-	if ($d->isa('POE::Component::MessageQueue::Topic'))
-	{
-		$self->message_handled($data);
-		return;
-	}
+	my $global = $self->{statistics};
+	$global->{total_sent}++;
 
-	my $subscriber = $data->{client}->get_subscription($d->name);
-
-	if ($subscriber->ack_type eq 'auto') 
-	{
-		$self->message_handled($data);
-	}
+	my $stats = $self->get_destination($data);
+	$stats->{total_sent}++;
+	$stats->{sent}++;
+	$stats->{last_sent} = scalar localtime();
 }
 
-sub notify_ack {
-	my ($self, $data) = @_;
+sub notify_remove {
+	my ($self, $id) = @_;
+	use YAML;
 
-	my $d = $data->{destination};
-	my $client = $data->{client};
-	my $subscriber = $client->subscriptions->{$d->name};
-
-	if ($subscriber->ack_type eq 'client') 
+	if (my $store_info = delete $self->{store_info}->{$id})
 	{
-		$self->message_handled($data);
+		my $stats = $self->get_queue($store_info->{qname});
+		$stats->{stored}--;
+		$stats->{avg_secs_stored} = reaverage(
+			$stats->{total_stored},
+			$stats->{avg_secs_stored},
+			(time() - $store_info->{timestamp})
+		);
 	}
 }
 

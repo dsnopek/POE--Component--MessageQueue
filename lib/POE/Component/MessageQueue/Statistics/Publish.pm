@@ -54,9 +54,9 @@ sub spawn
 				my ($kernel, $heap) = @_[KERNEL, HEAP];
 				my $alarm = $heap->{publish_alarm};
 				$kernel->alarm_remove($alarm) if $alarm;
+				$self->publish();	
 				# Cut off circular references. 
-				$self->{statistics} = undef;
-				$self->{session} = undef;
+				delete @{$self}{qw(statistics session)};
 			},
 		}
 	);

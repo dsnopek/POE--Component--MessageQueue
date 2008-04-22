@@ -136,7 +136,7 @@ sub send
 	}
 
 	$self->storage->store($message, sub {
-		$self->notify(store => { destination => $self, message => $message });
+		$self->notify(store => $message);
 		$self->pump();
 	});
 }
