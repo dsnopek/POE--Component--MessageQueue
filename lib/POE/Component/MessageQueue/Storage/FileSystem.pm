@@ -494,35 +494,36 @@ sub _write_flushed_event
 	$self->_unlink_file($id) if ($info->{delete_me});
 }
 
-sub _log_state
-{
-	my ($self, $kernel) = @_[ OBJECT, KERNEL ];
-
-	require Data::Dumper;
-
-	my $wheel_count = scalar keys %{$self->file_wheels};
-	$self->log('debug', "Currently there are $wheel_count wheels in action.");
-
-	my $wheel_to_message_map = Dumper($self->wheel_to_message_map);
-	$wheel_to_message_map =~ s/\n//g;
-	$wheel_to_message_map =~ s/\s+/ /g;
-	$self->log('debug', "wheel_to_message_map: $wheel_to_message_map");
-
-	while ( my ($key, $value) = each %{$self->file_wheels} )
-	{
-		my %tmp = ( %$value );
-		$tmp{write_wheel} = "$tmp{write_wheel}" if exists $tmp{write_wheel};
-		$tmp{read_wheel}  = "$tmp{read_wheel}"  if exists $tmp{read_wheel};
-
-		my $wheel = Dumper(\%tmp);
-		$wheel =~ s/\n//g;
-		$wheel =~ s/\s+/ /g;
-		
-		$self->log('debug', "wheel ($key): $wheel");
-	}
-
-	$kernel->delay_set('_log_state', 5);
-}
+# TODO: Update to the modern era.
+#sub _log_state
+#{
+#	my ($self, $kernel) = @_[ OBJECT, KERNEL ];
+#
+#	require Data::Dumper;
+#
+#	my $wheel_count = scalar keys %{$self->file_wheels};
+#	$self->log('debug', "Currently there are $wheel_count wheels in action.");
+#
+#	my $wheel_to_message_map = Data::Dumper::Dumper($self->wheel_to_message_map);
+#	$wheel_to_message_map =~ s/\n//g;
+#	$wheel_to_message_map =~ s/\s+/ /g;
+#	$self->log('debug', "wheel_to_message_map: $wheel_to_message_map");
+#
+#	while ( my ($key, $value) = each %{$self->file_wheels} )
+#	{
+#		my %tmp = ( %$value );
+#		$tmp{write_wheel} = "$tmp{write_wheel}" if exists $tmp{write_wheel};
+#		$tmp{read_wheel}  = "$tmp{read_wheel}"  if exists $tmp{read_wheel};
+#
+#		my $wheel = Data::Dumper::Dumper(\%tmp);
+#		$wheel =~ s/\n//g;
+#		$wheel =~ s/\s+/ /g;
+#		
+#		$self->log('debug', "wheel ($key): $wheel");
+#	}
+#
+#	$kernel->delay_set('_log_state', 5);
+#}
 
 1;
 
