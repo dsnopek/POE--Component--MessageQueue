@@ -910,7 +910,7 @@ upgrade-0.1.7.sql -- Apply if you are upgrading from version 0.1.6 or older.
 
 =item *
 
-ugrade-0.1.8.sql -- Apply if your are upgrading from version 0.1.7 or after applying
+upgrade-0.1.8.sql -- Apply if your are upgrading from version 0.1.7 or after applying
 the above update script.
 
 =back
