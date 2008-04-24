@@ -32,7 +32,7 @@ requires 'YAML';
 requires 'Heap';
 requires 'Heap::Fibonacci';
 requires 'Moose';
-requires 'MooseX::AttributeHelpers';
+requires 'MooseX::AttributeHelpers' => 0.08;
 requires 'MooseX::MultiInitArg';
 
 recommends 'YAML::Syck';

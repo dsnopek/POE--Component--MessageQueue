@@ -498,7 +498,7 @@ sub _log_state
 {
 	my ($self, $kernel) = @_[ OBJECT, KERNEL ];
 
-	use Data::Dumper;
+	require Data::Dumper;
 
 	my $wheel_count = scalar keys %{$self->file_wheels};
 	$self->log('debug', "Currently there are $wheel_count wheels in action.");
