@@ -356,9 +356,9 @@ __END__
 =head1 NAME
 
 POE::Component::MessageQueue::Storage::Complex -- A configurable storage
-engine that keeps a front-store (something fast) and a back-store 
-(something persistent), moving messages from the front-store into the back
-store after a configurable timeout period.
+engine that keeps a front-store (something fast) and a back-store (something
+persistent), only storing messages in the back-store after a configurable
+timeout period.
 
 =head1 SYNOPSIS
 
