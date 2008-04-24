@@ -1,8 +1,7 @@
 bin/mq.pl
 CHANGES
-examples/mq_complex.pl
 examples/mq_dbi.pl
-examples/mq_easydbi.pl
+examples/mq_default.pl
 examples/mq_filesystem.pl
 examples/mq_generic_dbi.pl
 examples/mq_memory.pl
@@ -66,3 +65,8 @@ t/03_queue.t
 t/04_message.t
 t/05_storage_api.t
 t/06_complex.t
+t/07_send_disconnect_send.t
+t/08_removed_file.t
+t/lib/POE/Component/MessageQueue/Test/EngineMaker.pm
+t/lib/POE/Component/MessageQueue/Test/MQ.pm
+t/lib/POE/Component/MessageQueue/Test/Stomp.pm
