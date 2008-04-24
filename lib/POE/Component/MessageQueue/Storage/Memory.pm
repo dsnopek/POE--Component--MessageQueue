@@ -211,16 +211,31 @@ A storage engine that keeps all the messages in memory.  Provides no persistence
 what-so-ever.
 
 For an alternative in-memory storage engine optimized for a large number of 
-messages, please see L<POE::Component::MessageQueue::Storage::Memoray>.
+messages, please see L<POE::Component::MessageQueue::Storage::BigMemory>.
 
-I wouldn't suggest using this as your main storage engine because if messages aren't
-removed by consumers, it will continue to consume more memory until it explodes.  Check-out
-L<POE::Component::MessageQueue::Storage::Complex> which uses this module internally to keep
-messages in memory for a period of time before moving them into persistent storage.
+I wouldn't suggest using this as your main storage engine because if messages
+aren't removed by consumers, it will continue to consume more memory until it
+explodes.  Check-out L<POE::Component::MessageQueue::Storage::Complex> which
+can use  this module internally to keep messages in memory for a period of
+time before moving them into persistent storage.
 
 =head1 CONSTRUCTOR PARAMETERS
 
 None to speak of!
+
+=head1 SUPPORTED STOMP HEADERS
+
+=over 4
+
+=item B<persistent>
+
+I<Ignored>.  Nothing is persistent in this store.
+
+=item B<expire-after>
+
+I<Ignored>.  All messages are kept until handled.
+
+=back
 
 =head1 SEE ALSO
 

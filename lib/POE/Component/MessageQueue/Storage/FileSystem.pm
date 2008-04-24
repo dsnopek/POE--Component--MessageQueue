@@ -563,14 +563,16 @@ POE::Component::MessageQueue::Storage::FileSystem -- A storage engine that keeps
 
 =head1 DESCRIPTION
 
-A storage engine that wraps around another storage engine in order to store the message bodies on the file system.  The other message properties are stored with the wrapped storage engine.
+A storage engine that wraps around another storage engine in order to store
+the message bodies on the file system.  The other message properties are
+stored with the wrapped storage engine.
 
 While I would argue that using this module is less efficient than using
-L<POE::Component::MessageQueue::Storage::Complex>, using it directly would make sense if
-persistance was your primary concern.  All messages stored via this backend will be
-persistent regardless of whether they have the persistent flag set or not.  Every message
-is stored, even if it is handled right away and will be removed immediately after
-having been stored.
+L<POE::Component::MessageQueue::Storage::Complex>, using it directly would
+make sense if persistance was your primary concern.  All messages stored via
+this backend will be persistent regardless of whether they have the persistent
+header set to true or not.  Every message is stored, even if it is handled
+right away and will be removed immediately after having been stored.
 
 =head1 CONSTRUCTOR PARAMETERS
 
@@ -583,6 +585,22 @@ The storage engine used to store message properties.
 =item data_dir => SCALAR
 
 The directory to store the files containing the message body's.
+
+=back
+
+=head1 SUPPORTED STOMP HEADERS
+
+Be sure to check also the storage engine you are wrapping!
+
+=over 4
+
+=item B<persistent>
+
+I<Ignored>.  All message bodies are always persisted.
+
+=item B<expire-after>
+
+I<Ignored>.  All message bodies are kept until handled.
 
 =back
 

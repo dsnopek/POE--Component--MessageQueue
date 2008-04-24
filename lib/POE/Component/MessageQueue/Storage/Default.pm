@@ -200,7 +200,7 @@ sub new
 		timeout     => $args->{timeout}     || 4,	
 		granularity => $args->{granularity} || 2,
 		front_max   => $args->{front_max}   || 64 * 1024 * 1024,
-		front       => $args->{front}       ||
+		front       => $args->{front}       || $args->{front_store} ||
 			POE::Component::MessageQueue::Storage::BigMemory->new(),
 		back        => $throttled,
 	);
@@ -230,7 +230,7 @@ POE::Component::MessageQueue::Storage::Default -- The default storage engine (ba
       throttle_max => 2,
 
       # Alternative memory store available!
-      #front_store => POE::Component::MessageQueue::Storage::BigMemory->new(),
+      #front => POE::Component::MessageQueue::Storage::BigMemory->new(),
     })
   });
 
@@ -240,8 +240,8 @@ POE::Component::MessageQueue::Storage::Default -- The default storage engine (ba
 =head1 DESCRIPTION
 
 This storage engine combines all the other provided engines.  It uses
-L<POE::Component::MessageQueue::Storage::Memory> as the "front-end storage" and 
-L<POE::Component::MessageQueue::Storage::FileSystem> as the "back-end storage"
+L<POE::Component::MessageQueue::Storage::BigMemory> as the front store and 
+L<POE::Component::MessageQueue::Storage::FileSystem> as the back store
 for L<POE::Componenet::MessageQueue::Storage::Complex> and provides some other
 sensible and recommended defaults, though you can override them in most cases. 
 Message are initially put into the front-end storage and will be moved into the 
@@ -262,6 +262,16 @@ persist those messages with it set.
 
 =over 2
 
+=item timeout => SCALAR
+
+The number of seconds after a message enters the front-store before it
+expires.  After this time, if the message hasn't been removed, it will be
+moved into the backstore.
+
+=item granularity => SCALAR
+
+The number of seconds to wait between checks for timeout expiration.
+
 =item data_dir => SCALAR
 
 The directory to store the SQLite database file and the message bodies.
@@ -272,17 +282,22 @@ The max number of messages that can be sent to the DBI store at once.
 This value is passed directly to the underlying 
 L<POE::Component::MessageQueue::Storage::Throttled>.
 
-=item front_store => SCALAR
+=item front_max => SCALAR
+
+The maximum number of bytes to allow the front store to grow to.  If the front
+store grows to big, old messages will be "pushed off" to make room for new
+messages.
+
+=item front => SCALAR
 
 An optional reference to a storage engine to use as the front store instead of
-Storage::Memory.  If you anticipate a high number of messages making their way
-into the front store (five thousand or more), or are experiences high loads and
-longer-than-anticpated waits for messages to make it out of the front store, 
-consider overriding the front store to
-L<POE::Component::MessageQueue::Storage::BigMemory>, which uses a different
-data structure that is optimized for large message loads.
+L<POE::Component::MessageQueue::Storage::BigMemory>.
 
 =back
+
+=head1 SUPPORTED STOMP HEADERS
+
+Same as L<POE::Component::MessageQueue::Storage::Complex>.
 
 =head1 SEE ALSO
 

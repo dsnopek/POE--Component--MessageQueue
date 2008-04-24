@@ -63,7 +63,7 @@ POE::Component::MessageQueue::Storage::DBI -- A storage engine that uses L<DBI>
 =head1 DESCRIPTION
 
 A storage engine that uses L<DBI>.  All messages stored with this backend are
-persistent.
+persisted.
 
 Performance is increased greatly by wrapping this engine in 
 L<POE::Component::MessageQueue::Storage::Throttled> at the expense of being slower

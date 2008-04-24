@@ -574,8 +574,8 @@ some predetermined defaults, you can use the included command line script:
   use Net::Stomp;
   
   my $stomp = Net::Stomp->new({
-  	hostname => 'localhost',
-  	port     => 61613
+    hostname => 'localhost',
+    port     => 61613
   });
   
   # Currently, PoCo::MQ doesn't do any authentication, so you can put
@@ -583,15 +583,15 @@ some predetermined defaults, you can use the included command line script:
   $stomp->connect({ login => $USERNAME, passcode => $PASSWORD });
   
   $stomp->subscribe({
-  	destination => '/queue/my_queue.sub_queue',
-  	ack         => 'client'
+    destination => '/queue/my_queue.sub_queue',
+    ack         => 'client'
   });
   
   while (1)
   {
-  	my $frame = $stomp->receive_frame;
-  	print $frame->body . "\n";
-  	$stomp->ack({ frame => $frame });
+    my $frame = $stomp->receive_frame;
+    print $frame->body . "\n";
+    $stomp->ack({ frame => $frame });
   }
   
   $stomp->disconnect();
@@ -601,8 +601,8 @@ some predetermined defaults, you can use the included command line script:
   use Net::Stomp;
   
   my $stomp = Net::Stomp->new({
-  	hostname => 'localhost',
-  	port     => 61613
+    hostname => 'localhost',
+    port     => 61613
   });
   
   # Currently, PoCo::MQ doesn't do any authentication, so you can put
@@ -610,9 +610,9 @@ some predetermined defaults, you can use the included command line script:
   $stomp->connect({ login => $USERNAME, passcode => $PASSWORD });
   
   $stomp->send({
-  	destination => '/queue/my_queue.sub_queue',
-  	body        => 'I am a message',
-  	persistent  => 'true',
+    destination => '/queue/my_queue.sub_queue',
+    body        => 'I am a message',
+    persistent  => 'true',
   });
   
   $stomp->disconnect();
@@ -738,7 +738,7 @@ roughly equally.
 =item B<topic>
 
 Each message is delivered to every subscriber.  Topics don't support any kind
-of persistence, so to get a message, a subscriber *must* be connected at the
+of persistence, so to get a message, a subscriber I<must> be connected at the
 time it was sent.
 
 =back
@@ -781,11 +781,11 @@ L<POE::Component::MessageQueue::Storage::Memory> -- The simplest storage engine.
 
 =item *
 
-L<POE::Component::MessageQueue::Storage::BigMemory> -- An alternative memory that is optimized for large numbers of messages.
+L<POE::Component::MessageQueue::Storage::BigMemory> -- An alternative memory storage engine that is optimized for large numbers of messages.
 
 =item *
 
-L<POE::Component::MessageQueue::Storage::DBI> -- Uses Perl L<DBI> to store messages.  Depending on your database configuration, using directly may not be recommended because the message bodies are stored directly in the database.  Wrapping with L<POE::Component::MessageQueue::Storage::FileSystem> allows you to store the message bodies on disk.  All messages are stored persistently.  (Underneath this is really just L<POE::Component::MessageQueue::Storage::Generic> and L<POE::Component::MessageQueue::Storage::Generic::DBI>)
+L<POE::Component::MessageQueue::Storage::DBI> -- Uses Perl L<DBI> to store messages.  Depending on your database configuration, using directly may not be recommended because the message bodies are stored in the database.  Wrapping with L<POE::Component::MessageQueue::Storage::FileSystem> allows you to store the message bodies on disk.  All messages are stored persistently.  (Underneath this is really just L<POE::Component::MessageQueue::Storage::Generic> and L<POE::Component::MessageQueue::Storage::Generic::DBI>)
 
 =item *
 
@@ -801,11 +801,11 @@ L<POE::Component::MessageQueue::Storage::Generic::DBI> -- A synchronous L<DBI>-b
 
 =item *
 
-L<POE::Component::MessageQueue::Storage::Throttled> -- Wraps around another engine to limit the number of messages sent to be stored at once.  Use of this module is B<highly> recommend!  If the storage engine is unable to store the messages fast enough (ie. with slow disk IO) it can get really backed up and stall messages coming out of the queue, allowing execessive producers to basically monopolise the server, preventing any messages from getting distributed to subscribers.  Also, it will significantly cuts down the number of open FDs when used with L<POE::Component::MessageQueue::Storage::FileSystem>.  Internally it makes use of L<POE::Component::MessageQueue::Storage::BigMemory> to store the throttled messages.
+L<POE::Component::MessageQueue::Storage::Throttled> -- Wraps around another engine to limit the number of messages sent to be stored at once.  Use of this module is B<highly> recommended!  If the storage engine is unable to store the messages fast enough (ie. with slow disk IO) it can get really backed up and stall messages coming out of the queue, allowing execessive producers to basically monopolize the server, preventing any messages from getting distributed to subscribers.  Also, it will significantly cuts down the number of open FDs when used with L<POE::Component::MessageQueue::Storage::FileSystem>.  Internally it makes use of L<POE::Component::MessageQueue::Storage::BigMemory> to store the throttled messages.
 
 =item *
 
-L<POE::Component::MessageQueue::Storage::Complex> -- A configurable storage engine that keeps a front-store (something fast) and a back-store (something persistent), allowing you to specify a timeout and an action to be taken when messages in the front-store expire, by default, moving them into the back-store.  It is capable to correctly handle the persistent and expire-after headers.  This optimization allows for the possibility of messages being handled before ever having to be persisted.
+L<POE::Component::MessageQueue::Storage::Complex> -- A configurable storage engine that keeps a front-store (something fast) and a back-store (something persistent), allowing you to specify a timeout and an action to be taken when messages in the front-store expire, by default, moving them into the back-store.  This optimization allows for the possibility of messages being handled before ever having to be persisted.  Complex is capable to correctly handle the persistent and expire-after headers.
 
 =item *
 
@@ -945,18 +945,18 @@ be small, simple, efficient and robust.  For the most part expect incremental
 changes to address those areas.
 
 There is one remaining big feature coming soon and that is the ability to run
-PoCo::MQ in a clustered accross multiple servers with some kind of fail-over.
+PoCo::MQ clustered accross multiple servers with some kind of fail-over.
 
-Beyond that we have a TODO list (shown below) which call B<"The Long Road To
-1.0">.  This is a list of things we feel we need to have call the product
-complete.  That means includes management and monitoring tools for sysadmins
+Beyond that we have a TODO list (shown below) called B<"The Long Road To
+1.0">.  This is a list of things we feel we need to have inorder to call the
+product complete.  That includes management and monitoring tools for sysadmins
 as well as documentation for developers.
 
 =over 4
 
 =item *
 
-B<Full support for STOMP>: Including making sure we are robust to clients
+B<Full support for STOMP>: Includes making sure we are robust to clients
 participating badly in the protocol.
 
 =item *
@@ -968,21 +968,16 @@ by the dot character).
 
 =item *
 
-B<Really solid monitoring>:  It should be possible for an admin to monitor the
+B<Monitoring/management tools>:  It should be possible for an admin to monitor the
 overall state of the queue, ie: (1) how many messages for what queues are in
 the front-store, throttled, back-store, etc, (2) information on connected
 clients, (3) data/message thorough put, (4) daily/weekly/monthly trends, (X)
-etc..
+etc..  They should also be able to "peek" at any message at any point as well
+as delete messages or whole queues.
 The rough plan is to use special STOMP frames and "magic" queues/topics to
 access special information or perform admin tasks.  Command line scripts for
-simple things would be included in the main distribute and a full-featured
+simple things would be included in the main distribution and a full-featured
 web-interface would be provided as a separate module.
-
-
-=item *
-
-B<Management tools>: An admin should be able to "peek" at any message that is
-at any point in the queue as well as delete messages or whole queues.
 
 =item *
 
@@ -990,8 +985,9 @@ B<Log rotation>: At minimum, documentation on how to set it up.
 
 =item *
 
-B<Docs on "using" the MQ>: A full tutorial from start to finish, as well as
-advice on writing good consumers/producers.
+B<Docs on "using" the MQ>: A full tutorial from start to finish, advice on
+writing good consumers/producers and solid docs on authoring custom storage
+engines.
 
 =back
 
@@ -1017,6 +1013,7 @@ L<POE::Component::MessageQueue::Storage::DBI>,
 L<POE::Component::MessageQueue::Storage::FileSystem>,
 L<POE::Component::MessageQueue::Storage::Generic>,
 L<POE::Component::MessageQueue::Storage::Generic::DBI>,
+L<POE::Component::MessageQueue::Storage::Double>,
 L<POE::Component::MessageQueue::Storage::Throttled>,
 L<POE::Component::MessageQueue::Storage::Complex>,
 L<POE::Component::MessageQueue::Storage::Default>
@@ -1026,6 +1023,12 @@ I<Statistics modules:>
 L<POE::Component::MessageQueue::Statistics>,
 L<POE::Component::MessageQueue::Statistics::Publish>,
 L<POE::Component::MessageQueue::Statistics::Publish::YAML>
+
+I<ID generatior modules:>
+
+L<POE::Component::MessageQueue::IDGenerator>,
+L<POE::Component::MessageQueue::IDGenerator::SimpleInt>,
+L<POE::Component::MessageQueue::IDGenerator::UUID>
 
 =head1 BUGS
 
