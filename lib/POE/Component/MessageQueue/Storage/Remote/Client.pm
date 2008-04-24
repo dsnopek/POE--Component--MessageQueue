@@ -20,6 +20,7 @@ use Moose;
 use Data::UUID;
 use POE;
 use POE::Component::Client::TCP;
+use POE::Component::MessageQueue::Storage;
 
 has servers => (
 	is       => 'ro',
@@ -44,16 +45,16 @@ sub add_server_method
 {
 	my ($class, $method) = @_;
 	$class->meta->add_method($method, sub {
-		$poe_kernel->post($_[0]->session_id, remote_call => { 
+		my $self = shift;
+		$poe_kernel->post($self->session_id, remote_call => { 
 			method => $method, 
 			args   => [@_],
 		});
 	});
 }
 
-my %methods = %{
-	POE::Component::MessageQueue::Storage->meta->get_required_method_map
-};
+my %methods = map {$_ => 1} POE::Component::MessageQueue::Storage->meta->
+	get_required_method_list;
 
 delete $methods{storage_shutdown};
 
@@ -71,13 +72,12 @@ with qw(POE::Component::MessageQueue::Storage);
 sub BUILD
 {
 	my ($self, $args) = @_;
-	my ($host, $port) = ($self->host, $self->port);
 
-	my @servers = $self->hosts;
+	my $servers = $self->servers;
 	my $si = 1;
 	my $total_fail = 0;
 	my $retry = sub {
-		if ($si >= @servers) 
+		if ($si >= @$servers) 
 		{
 			if (++$total_fail > 2)
 			{
@@ -87,25 +87,28 @@ sub BUILD
 			}
 			$si = 0;
 		}
-		my $info = $servers[$si++];
-		$poe_kernel->delay(connect => 2 => $info->{addr} => $info->{port});
+		my $info = $servers->[$si++];
+		$poe_kernel->delay(connect => 2 => $info->{host} => $info->{port});
 	};
 
+	my ($host, $port) = @{$servers->[0]}{'host', 'port'};
+
 	$self->session_id(POE::Component::Client::TCP->new(
-		RemoteAddress  => $servers[0]->{addr},
-		RemotePort     => $servers[0]->{port},
+		RemoteAddress  => $host,
+		RemotePort     => $port,
 		ConnectTimeout => 3,
 		Filter         => POE::Filter::Reference->new("YAML"),
 		ObjectStates   => [ $self => ['remote_call'] ],
 
 		Connected      => sub {
 			my $heap = $_[HEAP];
-			$heap->{server}->put($_) foreach (values %{ $heap->{calls} });
+			$heap->{server}->put($_) 
+				foreach map { $_->{request} } (values %{ $heap->{calls} });
 			$total_fail = 0;
 		},
 
 		ConnectError   => sub {
-			$self->log(error => "Could not connect to $host:$port");
+			$self->log(error => "Could not connect to $host:$port ($total_fail)");
 			goto $retry;
 		},
 
@@ -144,7 +147,7 @@ sub remote_call
 		$call->{callback} = $last;
 		$args->[-1] = $id;
 	}
-	
+
 	$heap->{server}->put($request) if $heap->{connected};
 }
 
