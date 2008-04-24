@@ -46,13 +46,14 @@ sub BUILD
 
 	$self->session_id(POE::Component::Server::TCP->new(
 		Port         => $self->port,
-		ClientFilter => POE::Filter::Reference->new("YAML"),
+		ClientFilter => POE::Filter::Reference->new,
 
 		ClientInput  => sub {
 			my ($heap, $request) = @_[HEAP, ARG0];
 			my ($method, $args) = @{$request}{'method', 'args'};
 			my $callback_id = pop(@$args);
 			my $storage = $self->storage;
+
 			if (my $method_ref = $storage->can($method))
 			{
 				$method_ref->($storage, @$args, sub {

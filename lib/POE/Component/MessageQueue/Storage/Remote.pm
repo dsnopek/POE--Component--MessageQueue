@@ -15,7 +15,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-package POE::Component::MessageQueue::Storage::Remote::Client;
+package POE::Component::MessageQueue::Storage::Remote;
 use Moose;
 use Data::UUID;
 use POE;
@@ -97,7 +97,7 @@ sub BUILD
 		RemoteAddress  => $host,
 		RemotePort     => $port,
 		ConnectTimeout => 3,
-		Filter         => POE::Filter::Reference->new("YAML"),
+		Filter         => POE::Filter::Reference->new,
 		ObjectStates   => [ $self => ['remote_call'] ],
 
 		Connected      => sub {
@@ -112,7 +112,9 @@ sub BUILD
 			goto $retry;
 		},
 
-		Disconnected   => $retry,
+		Disconnected   => sub {
+			goto $retry unless $_[HEAP]->{shutdown};
+		},
 
 		ServerInput    => sub {
 			my ($heap, $request) = @_[HEAP, ARG0];
