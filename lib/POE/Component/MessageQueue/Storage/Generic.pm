@@ -45,7 +45,7 @@ foreach my $method (@proxy_methods)
 # Have to do with after we add those methods, or the role will fail.
 with qw(POE::Component::MessageQueue::Storage);
 
-has 'alias' => (
+has alias => (
 	is       => 'ro',
 	isa      => 'Str',
 	default  => 'MQ-Storage-Generic',
@@ -53,22 +53,33 @@ has 'alias' => (
 );
 
 # This is the place for PoCo::Generic to post events back to.
-has 'session' => (
+has session => (
 	is       => 'rw',
 	isa      => 'POE::Session',
 );
 
-has 'generic' => (
+has generic => (
 	is       => 'rw',
 	isa      => 'POE::Component::Generic',
+);
+
+has package => (
+	is       => 'ro',
+	isa      => 'Str',
+	required => 1,
+);
+
+has options => (
+	is      => 'rw',
+	isa     => 'ArrayRef',
+	default => sub { [] },
 );
 
 # Because PoCo::Generic needs the constructor options passed to it in this
 # funny way, we have to set up generic in BUILD.
 sub BUILD 
 {
-	my ($self, $args) = @_;
-	my $package = $self->package_name; 
+	my $self = $_[0];
 
 	$self->session(POE::Session->create(
 		object_states => [
@@ -77,15 +88,15 @@ sub BUILD
 	));
 
 	$self->generic(POE::Component::Generic->spawn(
-		package => $package, 
-		object_options => [%$args],
-		packages => {
-			$package => {
+		package        => $self->package, 
+		object_options => $self->options,
+		packages       => {
+			$self->package, {
 				callbacks => [@proxy_methods, qw(storage_shutdown)],
 				postbacks => [qw(set_log_function)],
 			},
 		},
-		error => {
+		error          => {
 			session => $self->alias,
 			event   => '_error'
 		},
@@ -102,11 +113,6 @@ sub BUILD
 	$self->generic->ignore_signals({}, 
 		POE::Component::MessageQueue->SHUTDOWN_SIGNALS);
 };
-
-sub package_name
-{
-	die "Abstract.";
-}
 
 sub _start
 {
@@ -202,12 +208,12 @@ POE::Component::MessageQueue::Storage::Generic -- Wraps storage engines that are
   POE::Component::MessageQueue->new({
     storage => POE::Component::MessageQueue::Storage::Generic->new({
       package => 'POE::Component::MessageQueue::Storage::DBI',
-      options => [{
+      options => [
         dsn      => $DB_DSN,
         username => $DB_USERNAME,
         password => $DB_PASSWORD,
         options  => $DB_OPTIONS
-      }],
+      ],
     })
   });
 
@@ -222,14 +228,17 @@ Using this module is by far the easiest way to write custom storage engines beca
 
 There is only one package currently provided designed to work with this module: L<POE::Component::MessageQueue::Storage::Generic::DBI>.
 
-=head1 METHODS
+=head1 ATTRIBUTES
 
 =over 2
 
 =item package_name
 
-Classes implenting this role are required to provide a "package_name" method
-that returns the name of the package to wrap.
+The name of the package to wrap.  Required.
+
+=item options
+
+An arrayref of the options to be passed to the supplied package's constructor.
 
 =back
 
