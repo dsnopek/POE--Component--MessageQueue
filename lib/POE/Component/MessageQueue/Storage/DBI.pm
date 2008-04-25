@@ -20,10 +20,14 @@ use Moose;
 
 extends qw(POE::Component::MessageQueue::Storage::Generic);
 
-has 'package_name' => (
-	is      => 'ro',
+has '+package' => ( 
 	default => 'POE::Component::MessageQueue::Storage::Generic::DBI',
 );
+
+around new => sub {
+	my ($original, $class, @args) = @_;
+	$original->($class, @args, options => \@args);
+};
 
 1;
 
