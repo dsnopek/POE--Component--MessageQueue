@@ -182,7 +182,7 @@ It is suggested to keep the throttle_max very low.  In an ideal situation, the u
 
 =over 2
 
-=item back => L<POE::Component::MessageQueue::Storage>
+=item storage => L<POE::Component::MessageQueue::Storage>
 
 The storage engine to wrap.
 
@@ -192,10 +192,15 @@ The max number of messages that can be sent to the DBI store at one time.
 
 =back
 
+=head1 SUPPORTED STOMP HEADERS
+
+Ignored.  Passed through to the wrapped storage engine.
+
 =head1 SEE ALSO
 
 L<POE::Component::MessageQueue>,
-L<POE::Component::MessageQueue::Storage>
+L<POE::Component::MessageQueue::Storage>,
+L<POE::Component::MessageQueue::Storage::Double>
 
 I<Other storage engines:>
 

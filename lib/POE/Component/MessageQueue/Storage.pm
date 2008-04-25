@@ -218,12 +218,15 @@ callback.
 =head1 SEE ALSO
 
 L<POE::Component::MessageQueue>,
+L<POE::Component::MessageQueue::Storage::BigMemory>,
 L<POE::Component::MessageQueue::Storage::Memory>,
 L<POE::Component::MessageQueue::Storage::DBI>,
 L<POE::Component::MessageQueue::Storage::FileSystem>,
 L<POE::Component::MessageQueue::Storage::Generic>,
 L<POE::Component::MessageQueue::Storage::Generic::DBI>,
+L<POE::Component::MessageQueue::Storage::Double>,
 L<POE::Component::MessageQueue::Storage::Throttled>,
-L<POE::Component::MessageQueue::Storage::Complex>
+L<POE::Component::MessageQueue::Storage::Complex>,
+L<POE::Component::MessageQueue::Storage::Default>
 
 =cut

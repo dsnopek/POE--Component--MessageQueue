@@ -356,10 +356,9 @@ __END__
 =head1 NAME
 
 POE::Component::MessageQueue::Storage::Complex -- A configurable storage
-engine that keeps a front-store (something fast) and a back-store 
-(something persistent), allowing you to specify a timeout and an action to be 
-taken when messages in the front-store expire.  If a different behavior is
-desired after timeout expiration, subclass and override "expire_messages".
+engine that keeps a front-store (something fast) and a back-store (something
+persistent), only storing messages in the back-store after a configurable
+timeout period.
 
 =head1 SYNOPSIS
 
@@ -372,7 +371,9 @@ desired after timeout expiration, subclass and override "expire_messages".
     storage => POE::Component::MessageQueue::Storage::Complex->new({
       timeout      => 4,
       granularity  => 2,
-      throttle_max => 2,
+
+      # Only allow the front store to grow to 64Mb
+      front_max => 64 * 1024 * 1024,
 
       front => POE::Component::MessageQueue::Storage::Memory->new(),
       # Or, an alternative memory store is available!
@@ -384,14 +385,7 @@ desired after timeout expiration, subclass and override "expire_messages".
         # Examples include:
         #storage => POE::Component::MessageQueue::Storage::DBI->new({ ... });
         #storage => POE::Component::MessageQueue::Storage::FileSystem->new({ ... });
-      }),
-
-      # Optional: Action to perform on after timeout.  By default moves all
-      # persistent messages into the backstore.
-      expire_messages => sub {
-        my $arrayref_of_message_ids = shift;
-        do_something($arrayref_of_message_ids);
-      },
+      })
     })
   });
 
@@ -402,9 +396,23 @@ desired after timeout expiration, subclass and override "expire_messages".
 
 The idea of having a front store (something quick) and a back store (something
 persistent) is common and recommended, so this class exists as a helper to
-implementing that pattern.  It wraps any front and back store that you
-specify, a timeout that you specify, and moves messages from front to back
-when the timeout expires.
+implementing that pattern.
+
+The front store acts as a cache who's max size is specified by front_max.
+All messages that come in are added to the front store.  Messages are only
+removed after having been successfully delivered or when pushed out of the
+cache by newer messages.
+
+Persistent messages that are not removed after the number of seconds specified
+by timeout are added to the back store (but not removed from the front store).
+This optimization allows for the possibility that messages will be handled
+before having been persisted, reducing the load on the back store.
+
+Non-persistent messages will be discarded when eventually pushed off the front
+store, unless the I<expire-after> header is specified, in which case they may
+be stored on the back store inorder to keep around them long enough.
+Non-persistent messages on the back store which are passed their expiration
+date will be periodically cleaned up.
 
 =head1 CONSTRUCTOR PARAMETERS
 
@@ -420,25 +428,16 @@ moved into the backstore.
 
 The number of seconds to wait between checks for timeout expiration.
 
+=item front_max => SCALAR
+
+The maximum number of bytes to allow the front store to grow to.  If the front
+store grows to big, old messages will be "pushed off" to make room for new
+messages.
+
 =item front => SCALAR
 
-Takes a reference to a storage engine to use as the front store.
-
-Currently, only the following storage engines are capable to be front stores:
-
-=over 2
-
-=item *
-
-L<POE::Component::MessageQueue::Storage::Memory>
-
-=item *
-
-L<POE::Component::MessageQueue::Storage::BigMemory>
-
-=back
-
-Expect this to change in future versions.
+An optional reference to a storage engine to use as the front store instead of
+L<POE::Component::MessageQueue::Storage::BigMemory>.
 
 =item back => SCALAR
 
@@ -450,16 +449,27 @@ documentation.
 
 =back
 
+=head1 SUPPORTED STOMP HEADERS
+
+=over 4
+
+=item B<persistent>
+
+I<Fully supported>.
+
+=item B<expire-after>
+
+I<Fully Supported>.
+
+=back
+
 =head1 SEE ALSO
 
 L<POE::Component::MessageQueue::Storage::Complex::Default> - The most common case.  Based on this storage engine.
 
-I<External references:>
-
 L<POE::Component::MessageQueue>,
 L<POE::Component::MessageQueue::Storage>,
-L<DBI>,
-L<DBD::SQLite>
+L<POE::Component::MessageQueue::Storage::Double>
 
 I<Other storage engines:>
 
