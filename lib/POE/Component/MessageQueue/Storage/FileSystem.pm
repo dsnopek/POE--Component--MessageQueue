@@ -133,13 +133,10 @@ sub BUILD
 			$self => [qw(
 				_start                   _stop                 _shutdown
 				_read_message_from_disk  _read_input           _read_error  
-				_write_message_to_disk   _write_flushed_event  _log_state
+				_write_message_to_disk   _write_flushed_event
 			)]
 		],
 	));
-
-	# Uncomment the following line to log some intense debuging information.
-	#$poe_kernel->post($self->session, '_log_state');
 }
 
 sub _start
@@ -494,36 +491,6 @@ sub _write_flushed_event
 	$self->_unlink_file($id) if ($info->{delete_me});
 }
 
-sub _log_state
-{
-	my ($self, $kernel) = @_[ OBJECT, KERNEL ];
-
-	use Data::Dumper;
-
-	my $wheel_count = scalar keys %{$self->file_wheels};
-	$self->log('debug', "Currently there are $wheel_count wheels in action.");
-
-	my $wheel_to_message_map = Dumper($self->wheel_to_message_map);
-	$wheel_to_message_map =~ s/\n//g;
-	$wheel_to_message_map =~ s/\s+/ /g;
-	$self->log('debug', "wheel_to_message_map: $wheel_to_message_map");
-
-	while ( my ($key, $value) = each %{$self->file_wheels} )
-	{
-		my %tmp = ( %$value );
-		$tmp{write_wheel} = "$tmp{write_wheel}" if exists $tmp{write_wheel};
-		$tmp{read_wheel}  = "$tmp{read_wheel}"  if exists $tmp{read_wheel};
-
-		my $wheel = Dumper(\%tmp);
-		$wheel =~ s/\n//g;
-		$wheel =~ s/\s+/ /g;
-		
-		$self->log('debug', "wheel ($key): $wheel");
-	}
-
-	$kernel->delay_set('_log_state', 5);
-}
-
 1;
 
 __END__
@@ -563,14 +530,16 @@ POE::Component::MessageQueue::Storage::FileSystem -- A storage engine that keeps
 
 =head1 DESCRIPTION
 
-A storage engine that wraps around another storage engine in order to store the message bodies on the file system.  The other message properties are stored with the wrapped storage engine.
+A storage engine that wraps around another storage engine in order to store
+the message bodies on the file system.  The other message properties are
+stored with the wrapped storage engine.
 
 While I would argue that using this module is less efficient than using
-L<POE::Component::MessageQueue::Storage::Complex>, using it directly would make sense if
-persistance was your primary concern.  All messages stored via this backend will be
-persistent regardless of whether they have the persistent flag set or not.  Every message
-is stored, even if it is handled right away and will be removed immediately after
-having been stored.
+L<POE::Component::MessageQueue::Storage::Complex>, using it directly would
+make sense if persistance was your primary concern.  All messages stored via
+this backend will be persistent regardless of whether they have the persistent
+header set to true or not.  Every message is stored, even if it is handled
+right away and will be removed immediately after having been stored.
 
 =head1 CONSTRUCTOR PARAMETERS
 
@@ -583,6 +552,22 @@ The storage engine used to store message properties.
 =item data_dir => SCALAR
 
 The directory to store the files containing the message body's.
+
+=back
+
+=head1 SUPPORTED STOMP HEADERS
+
+Be sure to check also the storage engine you are wrapping!
+
+=over 4
+
+=item B<persistent>
+
+I<Ignored>.  All message bodies are always persisted.
+
+=item B<expire-after>
+
+I<Ignored>.  All message bodies are kept until handled.
 
 =back
 

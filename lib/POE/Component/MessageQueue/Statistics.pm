@@ -20,8 +20,6 @@ package POE::Component::MessageQueue::Statistics;
 use strict;
 use warnings;
 
-use Data::Dumper;
-
 sub new
 {
 	my $class = shift;

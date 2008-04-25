@@ -367,6 +367,20 @@ it does best: index and look-up information quickly.
 
 =back
 
+=head1 SUPPORTED STOMP HEADERS
+
+=over 4
+
+=item B<persistent>
+
+I<Ignored>.  All messages are persisted.
+
+=item B<expire-after>
+
+I<Ignored>.  All messages are kept until handled.
+
+=back
+
 =head1 FOOTNOTES
 
 =over 4
@@ -380,16 +394,20 @@ that is the only way to use this module.
 
 =head1 SEE ALSO
 
-L<DBI>,
-L<POE::Component::Generic>,
 L<POE::Component::MessageQueue>,
 L<POE::Component::MessageQueue::Storage>,
+L<DBI>
+
+I<Other storage engines:>
+
 L<POE::Component::MessageQueue::Storage::Memory>,
-L<POE::Component::MessageQueue::Storage::FileSystem>,
+L<POE::Component::MessageQueue::Storage::BigMemory>,
 L<POE::Component::MessageQueue::Storage::DBI>,
+L<POE::Component::MessageQueue::Storage::FileSystem>,
 L<POE::Component::MessageQueue::Storage::Generic>,
 L<POE::Component::MessageQueue::Storage::Throttled>,
-L<POE::Component::MessageQueue::Storage::Complex>
+L<POE::Component::MessageQueue::Storage::Complex>,
+L<POE::Component::MessageQueue::Storage::Default>
 
 =cut
 
