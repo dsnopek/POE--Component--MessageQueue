@@ -29,6 +29,7 @@ requires 'IO::File';
 requires 'Carp';
 requires 'Best';
 requires 'YAML';
+requires 'Data::UUID';
 requires 'Heap';
 requires 'Heap::Fibonacci';
 requires 'Moose';
