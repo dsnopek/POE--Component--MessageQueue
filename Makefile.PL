@@ -31,6 +31,7 @@ requires 'Best';
 requires 'YAML';
 requires 'Heap';
 requires 'Heap::Fibonacci';
+requires 'Data::UUID';
 requires 'Moose';
 requires 'MooseX::AttributeHelpers' => 0.08;
 requires 'MooseX::MultiInitArg';
