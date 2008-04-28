@@ -33,4 +33,4 @@ foreach my $i (1..2) {
 	} "Received:   $i";
 }
 
-ok(stop_mq($pid), 'MQ shut down.');
+ok(stop_fork($pid), 'MQ shut down.');

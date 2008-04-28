@@ -34,7 +34,7 @@ lives_ok {
 	$sender->disconnect;
 } 'messages sent';
 
-ok(stop_mq($pid), 'MQ shut down');
+ok(stop_fork($pid), 'MQ shut down');
 
 my %data_dir;
 tie %data_dir, 'IO::Dir', DATA_DIR, DIR_UNLINK;

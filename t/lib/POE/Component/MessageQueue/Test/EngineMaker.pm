@@ -57,6 +57,11 @@ my %engines = (
 			back        => make_engine('Throttled'),
 		)}
 	},
+	Remote     => {
+		args    => sub {(
+			servers => [{host => 'localhost', port => 9321}],
+		)},
+	},
 	BigMemory => {},
 	Memory    => {},
 );
