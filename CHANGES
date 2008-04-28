@@ -1,4 +1,9 @@
 
+== 0.2.1 -- 4/28/2008 ==
+
+ * Unbroke the interface to Storage::Generic.
+ * Added missing dependancy to Data::UUID.
+
 == 0.2.0 -- 4/24/2008 ==
 
  * Massive refactor:
