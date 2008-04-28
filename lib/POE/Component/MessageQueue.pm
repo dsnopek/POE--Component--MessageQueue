@@ -1024,7 +1024,7 @@ L<POE::Component::MessageQueue::Statistics>,
 L<POE::Component::MessageQueue::Statistics::Publish>,
 L<POE::Component::MessageQueue::Statistics::Publish::YAML>
 
-I<ID generatior modules:>
+I<ID generator modules:>
 
 L<POE::Component::MessageQueue::IDGenerator>,
 L<POE::Component::MessageQueue::IDGenerator::SimpleInt>,
