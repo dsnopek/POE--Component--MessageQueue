@@ -86,6 +86,12 @@ has clients => (
 
 has shutdown_count => (metaclass => 'Counter');
 
+has message_class => (
+  is      => 'ro',
+  isa     => 'ClassName',
+  default => 'POE::Component::MessageQueue::Message',
+);
+
 before remove_client => sub {
 	my ($self, @ids) = @_;
 
@@ -285,8 +291,7 @@ sub route_frame
 
 		SEND => sub {
 			$frame->headers->{'message-id'} ||= $self->generate_id();
-			my $message = 
-				POE::Component::MessageQueue::Message->from_stomp_frame($frame);
+			my $message = $self->message_class->from_stomp_frame($frame);
 
 			$self->log(notice => 
 				sprintf('RECV (%s): SEND message %s (%i bytes) to %s (%s)',
