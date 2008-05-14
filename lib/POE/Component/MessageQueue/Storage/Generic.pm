@@ -35,7 +35,7 @@ foreach my $method (@proxy_methods)
 		my ($self, @args) = @_;
 		$self->generic->yield(
 			$method, 
-			{session => $self->session->ID, event => '_general_handler'},
+			{session => $self->alias, event => '_general_handler'},
 			@args,
 		);		
 		return;
@@ -50,12 +50,6 @@ has alias => (
 	isa      => 'Str',
 	default  => 'MQ-Storage-Generic',
 	required => 1,
-);
-
-# This is the place for PoCo::Generic to post events back to.
-has session => (
-	is       => 'rw',
-	isa      => 'POE::Session',
 );
 
 has generic => (
@@ -81,11 +75,11 @@ sub BUILD
 {
 	my $self = $_[0];
 
-	$self->session(POE::Session->create(
+	POE::Session->create(
 		object_states => [
 			$self => [qw(_general_handler _log_proxy _error _start _shutdown)],
 		],
-	));
+	);
 
 	$self->generic(POE::Component::Generic->spawn(
 		package        => $self->package, 
@@ -138,7 +132,7 @@ sub storage_shutdown
 	# up its resources, and we can stop it for reals (as well as stop our own
 	# session).  
 	$self->generic->yield('storage_shutdown', {}, sub {
-		$poe_kernel->post($self->session, '_shutdown', $complete);
+		$poe_kernel->post($self->alias, '_shutdown', $complete);
 	});
 
 	return;

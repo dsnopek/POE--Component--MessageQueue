@@ -8,6 +8,7 @@ our @EXPORT = qw(start_mq stop_fork);
 
 sub start_mq {
 	my %options = @_;
+	my $storage = delete $options{storage} || 'BigMemory';
 	start_fork(sub {
 		use POE;
 		use POE::Component::MessageQueue;

@@ -284,24 +284,14 @@ sub route_frame
 		},
 
 		SEND => sub {
-			my $persistent  = $frame->headers->{persistent} eq 'true' ? 1 : 0;
+			$frame->headers->{'message-id'} ||= $self->generate_id();
+			my $message = 
+				POE::Component::MessageQueue::Message->from_stomp_frame($frame);
 
-			$self->log(notice =>
-				sprintf ("RECV (%s): SEND message (%i bytes) to %s (persistent: %i)",
-					$cid, length $frame->body, $destination_name, $persistent));
-
-			my $message = POE::Component::MessageQueue::Message->new(
-				id          => $self->generate_id(),
-				destination => $destination_name,
-				persistent  => $persistent,
-				body        => $frame->body,
-			);
-
-			unless ($persistent)
-			{
-				my $after = $frame->headers->{'expire-after'};
-				$message->expire_at(time() + $after) if $after;
-			}
+			$self->log(notice => 
+				sprintf('RECV (%s): SEND message %s (%i bytes) to %s (%s)',
+					$cid, $message->id, $message->size, $message->destination,
+					$message->persistent ? 'persistent' : 'not persistent'));
 
 			if(my $d = $self->get_destination ($destination_name) ||
 			           $self->make_destination($destination_name))
