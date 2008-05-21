@@ -53,8 +53,8 @@ sub add_server_method
 	});
 }
 
-my %methods = map {$_ => 1} POE::Component::MessageQueue::Storage->meta->
-	get_required_method_list;
+my %methods = map {$_ => 1} 
+  POE::Component::MessageQueue::Storage->meta->get_required_method_list;
 
 delete $methods{storage_shutdown};
 
@@ -154,3 +154,40 @@ sub remote_call
 }
 
 1;
+
+__END__
+
+=pod
+
+=head1 NAME
+
+POE::Component::MessageQueue::Storage::Remote -- Access a remote storage
+engine via a TCP socket
+
+=head1 DESCRIPTION
+
+With this module, you can talk to a storage engine running under
+L<POE::Component::MessageQueue::Storage::Remote::Server> transparently.  You
+can treat this like a normal local store once it's set up, and it can
+optionally failover to other stores.
+
+=head1 CONSTRUCTOR PARAMETERS
+
+=over 2
+
+=item servers
+
+An arrayref of hashrefs of the form C<< {host => 'hostname, port => port} >>.
+Remote will try these servers in a round robin fashion whenever it fails to
+connect or gets disconnected.  Passing in just one server is an effective way
+to say "keep connecting to this server until it's up and reconnect to it if
+you get disconnected."
+
+=back
+
+=head1 SEE ALSO
+
+L<POE::Component::MessageQueue::Storage::Remote::Server>
+
+=cut
+

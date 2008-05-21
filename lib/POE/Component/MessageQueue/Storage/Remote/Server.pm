@@ -70,3 +70,37 @@ sub BUILD
 }
 
 1;
+
+=pod
+
+=head1 NAME
+
+POE::Component::MessageQueue::Storage::Remote::Server -- Expose a storage
+engine as a service over a TCP socket
+
+=head1 DESCRIPTION
+
+This module wraps any storage engine and exposes it as a service over a TCP
+socket.  It handles multiple clients.  It takes requests in the form of a
+Storable hashref of the form C<< { 'method_name' => [arg1, arg2, etc] } >>.
+
+=head1 CONSTRUCTOR PARAMETERS
+
+=over 2
+
+=item port
+
+The port number to listen on.
+
+=item storage
+
+A L<POE::Component::MessageQUeue::Storage> engine to wrap.
+
+=back
+
+=head1 SEE ALSO
+
+L<POE::Component::MessageQueue::Storage::Remote>
+
+=cut
+
