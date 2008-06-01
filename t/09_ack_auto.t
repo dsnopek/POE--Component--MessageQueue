@@ -8,8 +8,9 @@ use POE::Component::MessageQueue::Test::EngineMaker;
 
 use File::Path;
 use IO::Dir qw(DIR_UNLINK);
+use Exception::Class::TryCatch;
 use Test::Exception;
-use Test::More tests => 37;
+use Test::More tests => 38;
 
 # Our testing agenda:
 #
@@ -17,7 +18,7 @@ use Test::More tests => 37;
 # 2) Subscribe two consumers on the same queue
 # 3) Send 30 messages
 # 4) Check that both got exactly 15
-# 5) Disconnect and reconnect a few times
+# 5) Disconnect and reconnect
 # 6) Reverify that no new messages were received.
 
 lives_ok { 
@@ -83,6 +84,9 @@ ok(consumer_receive($clients[1], even), 'second consumer got even messages');
 ok(consumer_receive($clients[0], odd),  'first consumer got odd messages');
 
 $_->disconnect() for (@clients);
+
+# reconnect and verify that there are no messages
+is(setup_consumer()->can_read({ timeout => 10 }), 0, 'no messages remain');
 
 ok(stop_mq($pid), 'MQ shut down');
 
