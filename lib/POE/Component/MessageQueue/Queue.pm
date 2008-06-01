@@ -140,7 +140,7 @@ sub set_last_robin
 	# increment one so that we are pointing at the next robin
 	$index++;
 
-	if ($index > scalar @{$self->ordered_subscriptions})
+	if ($index >= scalar @{$self->ordered_subscriptions})
 	{
 		$index = 0;
 	}
@@ -155,7 +155,20 @@ sub _subloop
 	my $s; while ($s = shift(@$subs)) { last if $s->ready };
 	if($s && $s->client)
 	{
-		$s->ready(0);
+		# NOTE: Paul says we shouldn't make this check here, but the key to this
+		# problem is that all the messages are received in a clump of POE events
+		# and claim_and_retreive won't callback until after the entire clump is
+		# dealt with.
+		#
+		# Anyway, I think this makes sense because we don't ever want to make 
+		# an ack => 'auto' client wait, and since fairness is ensured by the 
+		# round_robin_subscriptions thinger..  Anyway I'll run it by Paul again
+		# later.
+		if ( $s->ack_type eq 'client' )
+		{
+			$s->ready(0);
+		}
+
 		$self->storage->claim_and_retrieve($self->name, $s->client->id, sub {
 			if (my $msg = $_[0])
 			{
@@ -205,6 +218,12 @@ sub send
 {
 	my ($self, $message) = @_;
 	return if $self->shutting_down;
+
+	# DEBUG:
+	#my @subs = $self->round_robin_subscriptions();
+	#my @ids = map { { 'client_id' => $_->client->id, ready => $_->ready, ack_type => $_->ack_type} } @subs;
+	#use Data::Dumper;
+	#print STDERR Dumper \@ids;
 
 	# If we already have a ready subscriber, we'll claim and dispatch before we
 	# store to give the subscriber a headstart on processing.

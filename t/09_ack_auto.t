@@ -9,7 +9,7 @@ use POE::Component::MessageQueue::Test::EngineMaker;
 use File::Path;
 use IO::Dir qw(DIR_UNLINK);
 use Test::Exception;
-use Test::More tests => 40;
+use Test::More tests => 37;
 
 # Our testing agenda:
 #
@@ -65,15 +65,14 @@ sub consumer_receive
 
 	while (scalar @ids > 0)
 	{
+		#my $can_read;
+		#ok ($can_read = $consumer->can_read({ timeout => 5 }), 'can read');
+		#last if (not $can_read);
+
 		my $frame = $consumer->receive_frame();
-		print STDERR "frame: ".$frame->body."\n";
 		is ($frame->body, $ids[0], 'correct message order');
 		
 		shift @ids;
-
-		my $can_read;
-		ok ($can_read = $consumer->can_read({ timeout => 5 }), 'can read');
-		last if (not $can_read);
 	}
 
 	# returns true value if we got all the messages we expected
