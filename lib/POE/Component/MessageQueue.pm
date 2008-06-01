@@ -464,8 +464,9 @@ sub dispatch_message
 			}
 			else
 			{
+				$subscriber->ready(1);
 				$self->notify(remove => $msg_id);
-				$self->storage->remove($msg_id);
+				$self->storage->remove($msg_id, sub { $destination->pump(); });
 			}
 
 			$self->notify(dispatch => {
