@@ -164,6 +164,7 @@ sub _subloop
 		# an ack => 'auto' client wait, and since fairness is ensured by the 
 		# round_robin_subscriptions thinger..  Anyway I'll run it by Paul again
 		# later.
+		#
 		if ( $s->ack_type eq 'client' )
 		{
 			$s->ready(0);
@@ -227,6 +228,7 @@ sub send
 
 	# If we already have a ready subscriber, we'll claim and dispatch before we
 	# store to give the subscriber a headstart on processing.
+	my $store = 1;
 	foreach my $s ($self->round_robin_subscriptions)
 	{
 		if ($s->ready)
@@ -237,14 +239,23 @@ sub send
 			$self->log(info => 
 				'QUEUE: Message '.$message->id." claimed by $cid during send");
 			$self->dispatch_message($message, $s);
+
+			# if the ack type is auto, we don't need to store this at all.
+			if ($s->ack_type eq 'auto')
+			{
+				$store = 0;
+			}
 			last;
 		}
 	}
 
-	$self->storage->store($message, sub {
-		$self->notify(store => $message);
-		$self->pump();
-	});
+	if ( $store )
+	{
+		$self->storage->store($message, sub {
+			$self->notify(store => $message);
+			$self->pump();
+		});
+	}
 }
 
 1;
