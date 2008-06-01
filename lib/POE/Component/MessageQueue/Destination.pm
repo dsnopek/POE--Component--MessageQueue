@@ -34,6 +34,7 @@ has subscriptions => (
 		'get'    => 'get_subscription',
 		'delete' => 'delete_subscription',
 		'values' => 'all_subscriptions',
+		'exists' => 'has_subscription',
 	},
 );
 
