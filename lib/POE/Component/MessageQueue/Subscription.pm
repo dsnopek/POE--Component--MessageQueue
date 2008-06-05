@@ -46,7 +46,9 @@ has ready => (
 around ready => sub {
   my $original = shift;
   my $self = shift;
-  $original->($self, @_) if (@_ || $self->client_ack);
+
+  return $original->($self, @_) if (@_ || $self->client_ack);
+
   return 1;
 };
 

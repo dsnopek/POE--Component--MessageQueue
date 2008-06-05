@@ -46,42 +46,32 @@ my @clients = ( setup_consumer, setup_consumer );
 # send our 30 messages
 lives_ok {
 	my $producer = stomp_connect();
-	foreach my $index (1..30)
+	foreach (1..30)
 	{
 		$producer->send({
 			persistent  => 'true',
 			destination => '/queue/test',
-			body        => "$index"
+			body        => 'ehouer',
 		});
 	}
 	$producer->disconnect();
 } 'messages sent';
 
-sub even { grep { $_ % 2 == 0 } (1..30) }
-sub odd  { grep { $_ % 2 != 0 } (1..30) }
-
 sub consumer_receive
 {
 	my ($consumer, @ids) = @_;
-
-	while (scalar @ids > 0)
+	my $count;
+	for(1..15) 
 	{
-		#my $can_read;
-		#ok ($can_read = $consumer->can_read({ timeout => 5 }), 'can read');
-		#last if (not $can_read);
-
 		my $frame = $consumer->receive_frame();
-		is ($frame->body, $ids[0], 'correct message order');
-		
-		shift @ids;
+		is($frame->body, 'ehouer', 'valid message');
+		$count++;
 	}
-
-	# returns true value if we got all the messages we expected
-	return scalar @ids == 0;
+	is($count, 15, '15 messages received');
 }
 
-ok(consumer_receive($clients[1], even), 'second consumer got even messages');
-ok(consumer_receive($clients[0], odd),  'first consumer got odd messages');
+consumer_receive($clients[0]);
+consumer_receive($clients[1]);
 
 $_->disconnect() for (@clients);
 

@@ -135,6 +135,7 @@ sub _pump_state
 {
 	my $self = $_[OBJECT];
 	return if $self->shutting_down;
+
 	if (my $s = $self->next_ready)
 	{
 		$s->ready(0);
@@ -143,7 +144,7 @@ sub _pump_state
 			if (my $msg = $_[0])
 			{
 				$self->dispatch_message($msg, $s);
-				$poe_kernel->post($self->name,' _pump_state');
+				$poe_kernel->post($self->name, '_pump_state');
 			}
 			else
 			{
@@ -195,7 +196,6 @@ sub send
 		my $cid = $s->client->id;
 		if ($s->client_ack) 
 		{
-      $s->ready(0);
 		  $message->claim($cid);
 		  $self->log(info => "QUEUE: Message $mid claimed by $cid during send");
 			$self->storage->store($message);
