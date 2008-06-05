@@ -23,56 +23,74 @@ use Moose;
 
 with qw(POE::Component::MessageQueue::Destination);
 
-use constant flag => (is => 'rw', default => 0);
-has pumping => flag;
-has pump_pending => flag;
-has shutting_down => flag;
+sub flag { has $_[0] => (is => 'rw', default => 0) }
+flag 'pumping';
+flag 'pump_pending';
+flag 'shutting_down';
 
-has ordered_subscriptions => (
-	metaclass => 'Collection::Array',
-	is => 'ro',
-	isa => 'ArrayRef[POE::Component::MessageQueue::Subscription]',
-	default => sub { [] },
-	provides => {
-		'push'   => 'add_ordered_subscription',
-		'delete' => 'delete_ordered_subscription'
-	},
-);
+sub stash {
+	my $n = $_[0];
+	has $n => (
+		metaclass => 'Collection::Hash',
+		is        => 'rw',
+		isa       => 'HashRef',
+    default   => sub { {} },
+		provides  => {
+			'set'    => "set_$n",
+			'delete' => "del_$n",
+			'keys'   => "${n}_keys",
+		}
+	);
+}
 
-has next_robin_index => (
-	is  => 'rw',
-	isa => 'Int',
-	default => 0,
-);
+stash 'waiting';
+stash 'serviced';
 
-before set_subscription => sub
+sub next_subscriber 
 {
-	my ($self, $id, $sub) = @_;
-
-	if (not $self->has_subscription($id))
+	my $self = $_[0];
+	if (my @keys = $self->waiting_keys) 
 	{
-		$self->add_ordered_subscription($sub);
-	}
-};
-
-after delete_subscription => sub
-{
-	my ($self, $id) = @_;
-
-	my $index = 0;
-	foreach my $sub ( @{$self->ordered_subscriptions} )
-	{
-		last if ( $sub->client->id == $id )
-	}
-
-	if ($index < scalar @{$self->ordered_subscriptions})
-	{
-		$self->delete_ordered_subscription($index);
-		if ($index < $self->next_robin_index)
+		my $id = pop(@keys);
+		my $s = $self->del_waiting($id);
+		if($s->client)
 		{
-			$self->next_robin_index($self->next_robin_index - 1);
+		  $self->set_serviced($id, $s);
+			return $s;
+		}
+		else
+		{
+			$self->delete_subscription($id);
+			return $self->next_subscriber;
 		}
 	}
+	else 
+	{
+		my $serviced = $self->serviced;
+		$self->serviced($self->waiting);
+		$self->waiting($serviced);
+		return (keys %$serviced) && $self->next_subscriber;
+	}
+}
+
+sub next_ready
+{
+  my $self = $_[0];
+	my ($s, %seen);
+
+	while ($s = $self->next_subscriber and !exists $seen{$s})
+	{
+		return $s if $s->ready;
+		$seen{$s} = 1;
+	}
+	return;
+}
+
+after set_subscription => __PACKAGE__->can('set_waiting');
+after delete_subscription => sub {
+	my ($self, @args) = @_;
+	$self->del_waiting(@args);
+	$self->del_serviced(@args);
 };
 
 __PACKAGE__->meta->make_immutable();
@@ -81,7 +99,7 @@ sub BUILD
 {
 	my ($self, $args) = @_;
 	POE::Session->create(
-		object_states => [ $self => [qw(_start _shutdown _subloop)]],
+		object_states => [ $self => [qw(_start _shutdown _pump_state)]],
 	);
 }
 
@@ -106,76 +124,26 @@ sub _shutdown
 # This is the pumping philosophy:  When we receive a pump request, we will
 # give everyone a chance to claim a message.  If any pumps are asked for while
 # this is happening, we will remember and do another pump when this one is
-# finished (just one).
+# finished (just one).  
+
+# This means we're serializing claim and retrieve requests.  More work needs
+# to be done to determine whether this is good or necessary.
 
 sub is_persistent { return 1 }
 
-sub round_robin_subscriptions
+sub _pump_state
 {
-	my ($self) = @_;
-
-	my $next_index = $self->next_robin_index;
-	my @subs = $self->all_subscriptions;
-
-	if ($next_index == 0)
-	{
-		return @subs;
-	}
-	
-	return ( @subs[$next_index .. $#subs], 
-	         @subs[0           .. ($next_index - 1)] );
-}
-
-sub set_last_robin
-{
-	my ($self, $robin) = @_;
-
-	my $index = 0;
-	foreach my $sub ( @{$self->ordered_subscriptions} )
-	{
-		last if ($sub == $robin);
-		$index++;
-	}
-
-	# increment one so that we are pointing at the next robin
-	$index++;
-
-	if ($index >= scalar @{$self->ordered_subscriptions})
-	{
-		$index = 0;
-	}
-
-	$self->next_robin_index($index);
-}
-
-sub _subloop
-{
-	my ($self, $subs) = @_[OBJECT, ARG0];
+	my $self = $_[OBJECT];
 	return if $self->shutting_down;
-	my $s; while ($s = shift(@$subs)) { last if $s->ready };
-	if($s && $s->client)
+	if (my $s = $self->next_ready)
 	{
-		# NOTE: Paul says we shouldn't make this check here, but the key to this
-		# problem is that all the messages are received in a clump of POE events
-		# and claim_and_retreive won't callback until after the entire clump is
-		# dealt with.
-		#
-		# Anyway, I think this makes sense because we don't ever want to make 
-		# an ack => 'auto' client wait, and since fairness is ensured by the 
-		# round_robin_subscriptions thinger..  Anyway I'll run it by Paul again
-		# later.
-		#
-		if ( $s->ack_type eq 'client' )
-		{
-			$s->ready(0);
-		}
+		$s->ready(0);
 
 		$self->storage->claim_and_retrieve($self->name, $s->client->id, sub {
 			if (my $msg = $_[0])
 			{
-				$self->set_last_robin($s);
 				$self->dispatch_message($msg, $s);
-				$poe_kernel->post($self->name, _subloop => $subs);
+				$poe_kernel->post($self->name,' _pump_state');
 			}
 			else
 			{
@@ -208,10 +176,9 @@ sub pump
 	{
 		$self->log(debug => ' -- PUMP QUEUE: '.$self->name.' -- ');
 		$self->notify('pump');
-		my @subs = $self->round_robin_subscriptions;
 		$self->pump_pending(0);
 		$self->pumping(1);
-		$poe_kernel->call($self->name, '_subloop', \@subs);
+		$poe_kernel->call($self->name, '_pump_state');
 	}
 }
 
@@ -220,36 +187,27 @@ sub send
 	my ($self, $message) = @_;
 	return if $self->shutting_down;
 
-	# DEBUG:
-	#my @subs = $self->round_robin_subscriptions();
-	#my @ids = map { { 'client_id' => $_->client->id, ready => $_->ready, ack_type => $_->ack_type} } @subs;
-	#use Data::Dumper;
-	#print STDERR Dumper \@ids;
-
-	# If we already have a ready subscriber, we'll claim and dispatch before we
+	# If we already have a ready subscriber, we'll dispatch before we
 	# store to give the subscriber a headstart on processing.
-	my $store = 1;
-	foreach my $s ($self->round_robin_subscriptions)
+	if (my $s = $self->next_ready)
 	{
-		if ($s->ready)
+		my $mid = $message->id;
+		my $cid = $s->client->id;
+		if ($s->client_ack) 
 		{
-			$self->set_last_robin($s);
-			my $cid = $s->client->id;
-			$message->claim($cid);
-			$self->log(info => 
-				'QUEUE: Message '.$message->id." claimed by $cid during send");
-			$self->dispatch_message($message, $s);
-
-			# if the ack type is auto, we don't need to store this at all.
-			if ($s->ack_type eq 'auto')
-			{
-				$store = 0;
-			}
-			last;
+      $s->ready(0);
+		  $message->claim($cid);
+		  $self->log(info => "QUEUE: Message $mid claimed by $cid during send");
+			$self->storage->store($message);
+			$self->notify(store => $message);
 		}
+		else
+		{
+			$self->log(info => "QUEUE: Message $mid not stored, sent to $cid");
+		}
+		$self->dispatch_message($message, $s);
 	}
-
-	if ( $store )
+	else
 	{
 		$self->storage->store($message, sub {
 			$self->notify(store => $message);

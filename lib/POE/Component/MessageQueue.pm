@@ -320,7 +320,7 @@ sub route_frame
 		},
 
 		SUBSCRIBE => sub {
-			my $ack_type = $frame->headers->{ack} || 'auto';
+			my $ack_type = $frame->headers->{ack};
 
 			$self->log('notice',
 				"RECV ($cid): SUBSCRIBE $destination_name (ack: $ack_type)");
@@ -328,7 +328,7 @@ sub route_frame
 			if(my $d = $self->get_destination ($destination_name) ||
 			           $self->make_destination($destination_name))
 			{
-				$client->subscribe($d, $ack_type);
+				$client->subscribe($d, $ack_type && $ack_type eq 'client');
 				$self->notify(subscribe => {destination => $d, client => $client});
 				$d->pump();
 			}
@@ -457,16 +457,15 @@ sub dispatch_message
 		if ($client->send_frame($msg->create_stomp_frame()))
 		{
 			$self->log(info => "Dispatching message $msg_id to client $client_id");
-			if ($subscriber->ack_type eq 'client')
+			if ($subscriber->client_ack)
 			{
 				$subscriber->ready(0);
 				$self->set_owner($msg_id => $subscriber);
 			}
 			else
 			{
-				$subscriber->ready(1);
 				$self->notify(remove => $msg_id);
-				$self->storage->remove($msg_id, sub { $destination->pump(); });
+				$self->storage->remove($msg_id);
 			}
 
 			$self->notify(dispatch => {
