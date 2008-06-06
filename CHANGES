@@ -1,4 +1,8 @@
 
+== 0.2.2 -- 6/6/2008 ==
+
+ * Fix for a regression in 0.2.x with regard to ack => 'auto'.
+
 == 0.2.1 -- 4/28/2008 ==
 
  * Unbroke the interface to Storage::Generic.

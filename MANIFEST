@@ -67,6 +67,7 @@ t/05_storage_api.t
 t/06_complex.t
 t/07_send_disconnect_send.t
 t/08_removed_file.t
+t/09_ack_auto.t
 t/lib/POE/Component/MessageQueue/Test/EngineMaker.pm
 t/lib/POE/Component/MessageQueue/Test/MQ.pm
 t/lib/POE/Component/MessageQueue/Test/Stomp.pm
