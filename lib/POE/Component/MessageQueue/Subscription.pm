@@ -44,12 +44,12 @@ has ready => (
 
 # Ready will always return true if client_ack is false.
 around ready => sub {
-  my $original = shift;
-  my $self = shift;
+	my $original = shift;
+	my $self = shift;
 
-  return $original->($self, @_) if (@_ || $self->client_ack);
+	return $original->($self, @_) if (@_ || $self->client_ack);
 
-  return 1;
+	return 1;
 };
 
 __PACKAGE__->meta->make_immutable();

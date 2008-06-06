@@ -196,8 +196,8 @@ sub send
 		my $cid = $s->client->id;
 		if ($s->client_ack) 
 		{
-		  $message->claim($cid);
-		  $self->log(info => "QUEUE: Message $mid claimed by $cid during send");
+			$message->claim($cid);
+			$self->log(info => "QUEUE: Message $mid claimed by $cid during send");
 			$self->storage->store($message);
 			$self->notify(store => $message);
 		}
