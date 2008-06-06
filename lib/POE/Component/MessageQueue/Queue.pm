@@ -23,10 +23,75 @@ use Moose;
 
 with qw(POE::Component::MessageQueue::Destination);
 
-use constant flag => (is => 'rw', default => 0);
-has pumping => flag;
-has pump_pending => flag;
-has shutting_down => flag;
+sub flag { has $_[0] => (is => 'rw', default => 0) }
+flag 'pumping';
+flag 'pump_pending';
+flag 'shutting_down';
+
+sub stash {
+	my $n = $_[0];
+	has $n => (
+		metaclass => 'Collection::Hash',
+		is        => 'rw',
+		isa       => 'HashRef',
+    default   => sub { {} },
+		provides  => {
+			'set'    => "set_$n",
+			'delete' => "del_$n",
+			'keys'   => "${n}_keys",
+		}
+	);
+}
+
+stash 'waiting';
+stash 'serviced';
+
+sub next_subscriber 
+{
+	my $self = $_[0];
+	if (my @keys = $self->waiting_keys) 
+	{
+		my $id = pop(@keys);
+		my $s = $self->del_waiting($id);
+		if($s->client)
+		{
+		  $self->set_serviced($id, $s);
+			return $s;
+		}
+		else
+		{
+			$self->delete_subscription($id);
+			return $self->next_subscriber;
+		}
+	}
+	else 
+	{
+		my $serviced = $self->serviced;
+		$self->serviced($self->waiting);
+		$self->waiting($serviced);
+		return (keys %$serviced) && $self->next_subscriber;
+	}
+}
+
+sub next_ready
+{
+  my $self = $_[0];
+	my ($s, %seen);
+
+	while ($s = $self->next_subscriber and !exists $seen{$s})
+	{
+		return $s if $s->ready;
+		$seen{$s} = 1;
+	}
+	return;
+}
+
+after set_subscription => __PACKAGE__->can('set_waiting');
+after delete_subscription => sub {
+	my ($self, @args) = @_;
+	$self->del_waiting(@args);
+	$self->del_serviced(@args);
+};
 
 __PACKAGE__->meta->make_immutable();
 
@@ -34,7 +99,7 @@ sub BUILD
 {
 	my ($self, $args) = @_;
 	POE::Session->create(
-		object_states => [ $self => [qw(_start _shutdown _subloop)]],
+		object_states => [ $self => [qw(_start _shutdown _pump_state)]],
 	);
 }
 
@@ -59,23 +124,27 @@ sub _shutdown
 # This is the pumping philosophy:  When we receive a pump request, we will
 # give everyone a chance to claim a message.  If any pumps are asked for while
 # this is happening, we will remember and do another pump when this one is
-# finished (just one).
+# finished (just one).  
+
+# This means we're serializing claim and retrieve requests.  More work needs
+# to be done to determine whether this is good or necessary.
 
 sub is_persistent { return 1 }
 
-sub _subloop
+sub _pump_state
 {
-	my ($self, $subs) = @_[OBJECT, ARG0];
+	my $self = $_[OBJECT];
 	return if $self->shutting_down;
-	my $s; while ($s = shift(@$subs)) { last if $s->ready };
-	if($s && $s->client)
+
+	if (my $s = $self->next_ready)
 	{
 		$s->ready(0);
+
 		$self->storage->claim_and_retrieve($self->name, $s->client->id, sub {
 			if (my $msg = $_[0])
 			{
 				$self->dispatch_message($msg, $s);
-				$poe_kernel->post($self->name, _subloop => $subs);
+				$poe_kernel->post($self->name, '_pump_state');
 			}
 			else
 			{
@@ -108,10 +177,9 @@ sub pump
 	{
 		$self->log(debug => ' -- PUMP QUEUE: '.$self->name.' -- ');
 		$self->notify('pump');
-		my @subs = $self->all_subscriptions;
 		$self->pump_pending(0);
 		$self->pumping(1);
-		$poe_kernel->call($self->name, '_subloop', \@subs);
+		$poe_kernel->call($self->name, '_pump_state');
 	}
 }
 
@@ -120,25 +188,32 @@ sub send
 	my ($self, $message) = @_;
 	return if $self->shutting_down;
 
-	# If we already have a ready subscriber, we'll claim and dispatch before we
+	# If we already have a ready subscriber, we'll dispatch before we
 	# store to give the subscriber a headstart on processing.
-	foreach my $s ($self->all_subscriptions)
+	if (my $s = $self->next_ready)
 	{
-		if ($s->ready)
+		my $mid = $message->id;
+		my $cid = $s->client->id;
+		if ($s->client_ack) 
 		{
-			my $cid = $s->client->id;
-			$message->claim($cid);
-			$self->log(info => 
-				'QUEUE: Message '.$message->id." claimed by $cid during send");
-			$self->dispatch_message($message, $s);
-			last;
+		  $message->claim($cid);
+		  $self->log(info => "QUEUE: Message $mid claimed by $cid during send");
+			$self->storage->store($message);
+			$self->notify(store => $message);
 		}
+		else
+		{
+			$self->log(info => "QUEUE: Message $mid not stored, sent to $cid");
+		}
+		$self->dispatch_message($message, $s);
 	}
-
-	$self->storage->store($message, sub {
-		$self->notify(store => $message);
-		$self->pump();
-	});
+	else
+	{
+		$self->storage->store($message, sub {
+			$self->notify(store => $message);
+			$self->pump();
+		});
+	}
 }
 
 1;

@@ -18,7 +18,7 @@
 package POE::Component::MessageQueue::Subscription;
 use Moose;
 
-has 'client' => (
+has client => (
 	is       => 'ro',
 	isa      => 'POE::Component::MessageQueue::Client',
 	weak_ref => 1,
@@ -32,15 +32,25 @@ has destination => (
 	required => 1,
 );
 
-has 'ack_type' => (
+has client_ack => (
 	is       => 'ro',
-	required => 1,
+	default  => 0,
 );
 
-has 'ready' => (
+has ready => (
 	is      => 'rw',
 	default => 1,
 );
+
+# Ready will always return true if client_ack is false.
+around ready => sub {
+  my $original = shift;
+  my $self = shift;
+
+  return $original->($self, @_) if (@_ || $self->client_ack);
+
+  return 1;
+};
 
 __PACKAGE__->meta->make_immutable();
 

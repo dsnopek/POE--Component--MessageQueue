@@ -26,10 +26,10 @@ has parent => (
 
 has subscriptions => (
 	metaclass => 'Collection::Hash',
-	is => 'ro',
-	isa => 'HashRef[POE::Component::MessageQueue::Subscription]',
-	default => sub { {} },
-	provides => {
+	is        => 'rw',
+	isa       => 'HashRef[POE::Component::MessageQueue::Subscription]',
+	default   => sub { {} },
+	provides  => {
 		'set'    => 'set_subscription',
 		'get'    => 'get_subscription',
 		'delete' => 'delete_subscription',
