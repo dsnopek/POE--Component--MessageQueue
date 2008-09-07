@@ -21,6 +21,7 @@ my $hostname = undef;
 my $timeout  = 4;
 my $granularity;
 my $throttle_max = 2;
+my $pump_frequency;
 my $background = 0;
 my $debug_shell = 0;
 my $pidfile;
@@ -41,6 +42,7 @@ GetOptions(
 	"front-store|f=s"  => \$front_store,
 	"front-max=s"      => \$front_max,
 	"throttle|T=i"     => \$throttle_max,
+	"pump-freq|Q=i"    => \$pump_frequency,
 	"data-dir=s"       => \$DATA_DIR,
 	"log-conf=s"       => \$CONF_LOG,
 	"stats!"           => \$statistics,
@@ -92,6 +94,7 @@ $0 [--port|-p <num>]               [--hostname|-h <host>]
 $X [--front-store <str>]           [--front-max <size>] 
 $X [--granularity <seconds>]       [--nouuids]
 $X [--timeout|-i <seconds>]        [--throttle|-T <count>]
+$X [--auto-pump-freq|-Q <seconds>]
 $X [--data-dir <path_to_dir>]      [--log-conf <path_to_file>]
 $X [--stats-interval|-i <seconds>] [--stats]
 $X [--pidfile|-p <path_to_file>]   [--background|-b]
@@ -109,8 +112,11 @@ STORAGE OPTIONS:
   --front-max <size>      How much message body the front-store should cache.
                           This size is specified in "human-readable" format
                           as per the -h option of ls, du, etc. (ex. 2.5M)
-  --timeout  -i <secs>    The number of seconds to keep messages in the 
+  --timeout -i <secs>     The number of seconds to keep messages in the 
                           front-store (Default: 4)
+  --pump-freq -Q <secs>   How often (in seconds) to automatically pump each
+                          queue.  Set to zero to disable this timer entirely
+                          (Default: 0)
   --granularity <secs>    How often (in seconds) Complex should check for
                           messages that have passed the timeout.  
   --[no]uuids             Use (or do not use) UUIDs instead of incrementing
@@ -245,6 +251,7 @@ my %args = (
 		granularity  => $granularity,
 	),
 
+	pump_frequency => $pump_frequency,
 	idgen => $idgen,
 	logger_alias => $logger_alias,
 );

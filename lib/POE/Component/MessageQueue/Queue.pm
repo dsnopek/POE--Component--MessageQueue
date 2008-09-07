@@ -99,7 +99,7 @@ sub BUILD
 {
 	my ($self, $args) = @_;
 	POE::Session->create(
-		object_states => [ $self => [qw(_start _shutdown _pump_state)]],
+		object_states => [ $self => [qw(_start _shutdown _pump_state _pump_timer)]],
 	);
 }
 
@@ -107,6 +107,9 @@ sub _start
 {
 	my ($self, $kernel) = @_[OBJECT, KERNEL];
 	$kernel->alias_set($self->name);
+
+	$kernel->delay(_pump_timer => $self->parent->pump_frequency)
+		if ($self->parent->pump_frequency);
 }
 
 sub shutdown { 
@@ -119,6 +122,7 @@ sub _shutdown
 {
 	my ($self, $kernel) = @_[OBJECT, KERNEL];
 	$kernel->alias_remove($self->name);
+	$kernel->alarm_remove_all();
 }
 
 # This is the pumping philosophy:  When we receive a pump request, we will
@@ -166,10 +170,23 @@ sub _done_pumping
 	$self->pump() if $self->pump_pending;
 }
 
+sub _pump_timer
+{
+	my ($self, $kernel) = @_[OBJECT, KERNEL];
+	return if $self->shutting_down;
+
+	# pump (the 1 means that we won't set pump_pending if
+	# we are already in a pumping state).
+	$self->pump(1);
+
+	$kernel->delay(_pump_timer => $self->parent->pump_frequency);
+}
+
 sub pump
 {
-	my $self = $_[0];
-	if($self->pumping)
+	my ($self, $skip_pending) = @_;
+
+	if($self->pumping and not $skip_pending)
 	{
 		$self->pump_pending(1);
 	}

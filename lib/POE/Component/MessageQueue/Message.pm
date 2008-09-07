@@ -98,6 +98,22 @@ sub clone
 	return $self->meta->clone_object($self);
 }
 
+sub from_stomp_frame
+{
+	my ($id, $frame) = @_;
+	my $msg = __PACKAGE__->new(
+		id          => $frame->headers->{'message-id'},
+		destination => $frame->headers->{destination},
+		persistent  => $frame->headers->{persistent} eq 'true',
+		body        => $frame->body,
+	);
+	if (!$msg->persistent and my $after = $frame->headers->{'expire-after'})
+	{
+		$msg->expire_at(time + $after);
+	}
+	return $msg;
+}
+
 sub create_stomp_frame
 {
 	my $self = shift;
