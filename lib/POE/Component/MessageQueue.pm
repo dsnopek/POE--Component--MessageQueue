@@ -92,6 +92,12 @@ has message_class => (
 	default => 'POE::Component::MessageQueue::Message',
 );
 
+has pump_frequency => (
+	is      => 'ro',
+	isa     => 'Maybe[Num]',
+	default => 0,
+);
+
 before remove_client => sub {
 	my ($self, @ids) = @_;
 
