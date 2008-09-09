@@ -852,8 +852,19 @@ to AF_INET.
 
 =item logger_alias => SCALAR
 
-Opitionally set the alias of the POE::Component::Logger object that you want the message
+Optionally set the alias of the POE::Component::Logger object that you want the message
 queue to log to.  If no value is given, log information is simply printed to STDERR.
+
+=item pump_frequency => SCALAR
+
+Optionally set how often (in seconds) to automatically pump each queue.  If zero or
+no value is given, then this timer is disabled entirely.
+
+When disabled, each queue is only pumped when its contents change, meaning 
+when a message is added or removed from the queue.  Normally, this is enough.  However,
+if your storage engine holds back messages for any reason (ie. to delay their 
+delivery) it will be necessary to enable this, so that the held back messages will
+ultimately be delivered.
 
 =item observers => ARRAYREF
 
