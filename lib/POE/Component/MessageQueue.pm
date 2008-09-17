@@ -945,7 +945,7 @@ out!
 Development is coordinated via Bazaar (See L<http://bazaar-vcs.org>).  The main
 Bazaar branch can be found here:
 
-L<http://code.hackyourlife.org/bzr/dsnopek/perl_mq>
+L<http://code.hackyourlife.org/bzr/dsnopek/perl_mq/devel.mainline>
 
 We prefer that contributions come in the form of a published Bazaar branch with the
 changes.  This helps facilitate the back-and-forth in the review process to get
