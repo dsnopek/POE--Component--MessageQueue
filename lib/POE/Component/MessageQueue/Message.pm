@@ -55,6 +55,7 @@ has 'deliver_at' => (
 	is        => 'rw',
 	isa       => 'Num',
 	predicate => 'has_delay',
+	clearer   => 'clear_delay',
 );
 
 has claimant => (
@@ -106,8 +107,8 @@ sub clone
 
 sub from_stomp_frame
 {
-	my ($id, $frame) = @_;
-	my $msg = __PACKAGE__->new(
+	my ($class, $frame) = @_;
+	my $msg = $class->new(
 		id          => $frame->headers->{'message-id'},
 		destination => $frame->headers->{destination},
 		persistent  => $frame->headers->{persistent} eq 'true',

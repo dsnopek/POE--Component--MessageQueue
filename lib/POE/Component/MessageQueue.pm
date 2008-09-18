@@ -299,6 +299,13 @@ sub route_frame
 			$frame->headers->{'message-id'} ||= $self->generate_id();
 			my $message = $self->message_class->from_stomp_frame($frame);
 
+			if ($message->has_delay() and not $self->pump_frequency)
+			{
+				$message->clear_delay();
+
+				$self->log(warning => "MASTER: Received a message with deliver-after header, but there is no pump-frequency enabled.  Ignoring header and delivering with no delay.");
+			}
+
 			$self->log(notice => 
 				sprintf('RECV (%s): SEND message %s (%i bytes) to %s (persistent: %i)',
 					$cid, $message->id, $message->size, $message->destination,
