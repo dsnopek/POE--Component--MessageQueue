@@ -29,7 +29,7 @@ POE::Component::MessageQueue->new({
 	port     => $port,
 	hostname => $hostname,
 
-	storage => POE::Component::MessageQueue::Storage::Memory->new()
+	storage => POE::Component::MessageQueue::Storage::Memory->new(),
 });
 
 POE::Kernel->run();

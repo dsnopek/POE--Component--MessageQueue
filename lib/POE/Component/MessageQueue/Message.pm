@@ -51,6 +51,12 @@ has expire_at => (
 	predicate => 'has_expiration',
 );
 
+has 'deliver_at' => (
+	is        => 'rw',
+	isa       => 'Num',
+	predicate => 'has_delay',
+);
+
 has claimant => (
 	is        => 'rw',
 	isa       => 'Maybe[Int]',
@@ -110,6 +116,10 @@ sub from_stomp_frame
 	if (!$msg->persistent and my $after = $frame->headers->{'expire-after'})
 	{
 		$msg->expire_at(time + $after);
+	}
+	if (my $after = $frame->headers->{'deliver-after'})
+	{
+		$msg->deliver_at(time + $after);
 	}
 	return $msg;
 }

@@ -12,25 +12,27 @@ my $PASSWORD     = 'manager';
 
 sub throw_a_monkey
 {
-	my $stomp = shift;
+	my ($stomp, $headers) = @_;
 	my $data  = "monkey";
 
 	$stomp->send({
 		destination => "/queue/monkey_bin",
 		body        => $data,
 		persistent  => 'true',
+		%$headers
 	});
 }
 
 sub throw_an_image
 {
-	my $stomp = shift;
+	my ($stomp, $headers) = @_;
 	my $data  = rand_image(width => 640, height => 480);
 
 	$stomp->send({
 		destination => "/queue/monkey_bin",
 		body        => encode_base64( $data ),
 		persistent  => 'true',
+		%$headers
 	});
 }
 
@@ -44,6 +46,7 @@ sub main
 	my $fork  = 0;
 	my $disconnect = 0;
 	my $delay      = 0;
+	my $deliver_after;
 
 	GetOptions(
 		"port|p=i"     => \$port,
@@ -53,8 +56,17 @@ sub main
 		"fork|f=i"     => \$fork,
 		"image|i"      => \$image,
 		"disconnect"   => \$disconnect,
-		"delay|d=i"    => \$delay
+		"delay|d=i"    => \$delay,
+
+		"deliver-after|a=i" => \$deliver_after,
 	);
+
+	my $headers = {};
+
+	if ( $deliver_after )
+	{
+		$headers->{'deliver-after'} = $deliver_after;
+	}
 
 	while ( $fork-- > 1 )
 	{
@@ -77,11 +89,11 @@ sub main
 	{
 		if ( $image )
 		{
-			throw_an_image($stomp);
+			throw_an_image($stomp, $headers);
 		}
 		else
 		{
-			throw_a_monkey($stomp);
+			throw_a_monkey($stomp, $headers);
 		}
 
 		if ( $disconnect )
