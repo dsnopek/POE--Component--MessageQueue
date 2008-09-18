@@ -855,6 +855,13 @@ to AF_INET.
 Optionally set the alias of the POE::Component::Logger object that you want the message
 queue to log to.  If no value is given, log information is simply printed to STDERR.
 
+=item message_class => SCALAR
+
+Optionally set the package name to use for the Message object.  This should be a child
+class of POE::Component::MessageQueue::Message or atleast follow the same interface.
+
+This allows you to add new message headers which the MQ can recognize.
+
 =item pump_frequency => SCALAR
 
 Optionally set how often (in seconds) to automatically pump each queue.  If zero or
