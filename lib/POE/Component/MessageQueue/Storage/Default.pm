@@ -20,7 +20,7 @@ CREATE TABLE meta
 );
 EOF
 
-use constant MESSAGES_SCHEMA => <<'EOF';
+use constant MESSAGES_SCHEMA_018 => <<'EOF';
 CREATE TABLE messages
 (
 	message_id  varchar(255) primary key,
@@ -32,12 +32,41 @@ CREATE TABLE messages
 	size        int
 );
 
-CREATE INDEX id_index          ON messages ( message_id(8) );
+EOF
+
+use constant MESSAGES_SCHEMA => <<'EOF';
+CREATE TABLE messages
+(
+	message_id  varchar(255) primary key,
+	destination varchar(255) not null,
+	persistent  char(1) default 'Y' not null,
+	in_use_by   int,
+	body        text,
+	timestamp   int,
+	size        int,
+	deliver_at  int
+);
+
+CREATE INDEX id_index          ON messages ( message_id );
 CREATE INDEX timestamp_index   ON messages ( timestamp );
 CREATE INDEX destination_index ON messages ( destination );
 CREATE INDEX in_use_by_index   ON messages ( in_use_by );
+CREATE INDEX deliver_at        ON messages ( deliver_at );
 
 EOF
+
+sub _do_schema
+{
+	my ($dbh, $schema) = @_;
+	foreach my $stmt ( split(";", $schema) )
+	{
+		# strip leading/trailing whitespace
+		$stmt =~ s/^\s*//;
+		$stmt =~ s/\s*$//;
+
+		$dbh->do($stmt) if ($stmt);
+	}
+}
 
 # Hopefully, this will make adding new changes that break db compatability a
 # little easier.  Change the database schema above, then add a check for your
@@ -45,7 +74,7 @@ EOF
 sub _upgrade
 {
 	my $dbh = shift;
-	my @versions = ('0.1.7', '0.1.8');
+	my @versions = ('0.1.7', '0.1.8', '0.2.3');
 
 	# Funny lexical scoping rules require this to be an anonymous sub or weird
 	# things will happen with $dbh
@@ -70,6 +99,7 @@ sub _upgrade
 			return (!$@);
 		},
 		'0.1.8' => sub { $meta_version->('0.1.8') },
+		'0.2.3' => sub { $meta_version->('0.2.3') },
 	);
 
 	my %repairs = (
@@ -79,7 +109,7 @@ sub _upgrade
 		},
 		'0.1.8' => sub {
 			# 0.1.8 adds a meta table for version info
-			$dbh->do( META_SCHEMA );
+			_do_schema($dbh, META_SCHEMA);
 			$dbh->do(q{INSERT INTO meta (key, value) VALUES ('version', '0.1.8')});
 
 			# SQLite doesn't have a syntax for modifying column types on primary
@@ -87,7 +117,7 @@ sub _upgrade
 
 			# Rename old table and create new one
 			$dbh->do('ALTER TABLE messages RENAME TO old_messages');
-			$dbh->do( MESSAGES_SCHEMA );
+			_do_schema($dbh, MESSAGES_SCHEMA_018);
 
 			# Dump old table into new table
 			my $columns = q{
@@ -103,6 +133,31 @@ sub _upgrade
 			# Delete old table
 			$dbh->do('DROP TABLE old_messages');
 		},
+		'0.2.3' => sub {
+			# we add the deliver_at column
+			$dbh->do("ALTER TABLE messages ADD COLUMN deliver_at INT");
+			$dbh->do("CREATE INDEX deliver_at_index ON messages ( deliver_at )");
+
+			# updated the version
+			$dbh->do("UPDATE meta SET value = '0.2.3' where key = 'version'");
+
+			# databases created with 0.1.8 or later, didn't correctly add the indexes
+			# to the table (because it feeds MESSAGE_SCHEMA as a single statement to
+			# $db->do() rather than breaking it up);
+			my $indices = {
+				id_index          => "message_id",
+				timestamp_index   => "timestamp",
+				destination_index => "destination",
+				in_use_by_index   => "in_use_by"
+			};
+			while (my ($name, $column) = each %$indices)
+			{
+				eval
+				{
+					$dbh->do("CREATE INDEX $name ON messages ( $column )");
+				};
+			}
+		}
 	);
 
 	my $do_repairs = 0;
@@ -126,7 +181,7 @@ sub _upgrade
 			if ($@)
 			{
 				$dbh->rollback();
-				die "encountered errors: $!: rolling back.\n";
+				die "encountered errors: $@: rolling back.\n";
 			}
 		}
 	}
@@ -154,9 +209,9 @@ sub _make_db
 	}
 	else
 	{
-		$dbh->do( MESSAGES_SCHEMA );
-		$dbh->do( META_SCHEMA );
-		$dbh->do(q{INSERT INTO meta (key, value) VALUES ('version', '0.1.8')});
+		_do_schema($dbh, MESSAGES_SCHEMA);
+		_do_schema($dbh, META_SCHEMA);
+		$dbh->do(q{INSERT INTO meta (key, value) VALUES ('version', '0.2.3')});
 	}
 	$dbh->disconnect();
 }
