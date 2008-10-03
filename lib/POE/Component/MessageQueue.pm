@@ -920,7 +920,12 @@ upgrade-0.1.7.sql -- Apply if you are upgrading from version 0.1.6 or older.
 =item *
 
 upgrade-0.1.8.sql -- Apply if your are upgrading from version 0.1.7 or after applying
-the above update script.
+the above upgrade script.  This one has a SQLite specific version: upgrade-0.1.8-sqlite.sql).
+
+=item *
+
+upgrade-0.2.3.sql -- Apply if you are upgrading from version 0.2.2 or older or after
+applying the above upgrade script.
 
 =back
 
