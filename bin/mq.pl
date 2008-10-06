@@ -54,7 +54,7 @@ GetOptions(
 	"crash-cmd=s"      => \$crash_cmd,
 	"version|v"        => \$show_version,
 	"help|h"           => \$show_usage,
-);
+) or usage(1);
 
 # byte kilo mega giga tera peta exa zetta yotta
 my @size_units = qw(b k m g t p e z y);
@@ -88,6 +88,7 @@ sub version
 
 sub usage
 {
+	my $exit_level = shift;
 	my $X = ' ' x (length $0);
     print <<"ENDUSAGE";
 $0 [--port|-p <num>]               [--hostname|-h <host>]
@@ -149,6 +150,8 @@ OTHER OPTIONS:
   --help       -h         Show this usage message
 
 ENDUSAGE
+	
+	exit($exit_level) if (defined $exit_level);
 }
 
 if ( $show_version )
@@ -161,8 +164,7 @@ if ( $show_usage )
 {
 	version;
 	print "\n";
-	usage;
-	exit 0;
+	usage(0);
 }
 
 if ( not -d $DATA_DIR )

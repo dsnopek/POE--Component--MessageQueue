@@ -50,19 +50,24 @@ CREATE TABLE messages
 	in_use_by   int,
 	body        text,
 	timestamp   int,
-	size        int
+	size        int,
+	deliver_at  int
 );
 
 -- Improves performance some bit:
-CREATE INDEX id_index          ON messages ( message_id(8) );
+CREATE INDEX id_index          ON messages ( message_id );
 CREATE INDEX timestamp_index   ON messages ( timestamp );
 CREATE INDEX destination_index ON messages ( destination );
 CREATE INDEX in_use_by_index   ON messages ( in_use_by );
+CREATE INDEX deliver_at        ON messages ( deliver_at );
 EOF
 
 	# create initial database
 	my $dbh = DBI->connect($DB_DSN, '', '');
-	$dbh->do( $DB_CREATE );
+	foreach my $stmt ( split(";", $DB_CREATE) )
+	{
+		$dbh->do($stmt);
+	}
 	$dbh->disconnect();
 }
 mkdir $DATA_DIR unless ( -d $DATA_DIR );
