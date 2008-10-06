@@ -18,7 +18,7 @@
 package POE::Component::MessageQueue;
 use Moose;
 
-our $VERSION = '0.2.2';
+our $VERSION = '0.2.3';
 
 use POE 0.38;
 use POE::Component::Server::Stomp;
@@ -859,8 +859,26 @@ to AF_INET.
 
 =item logger_alias => SCALAR
 
-Opitionally set the alias of the POE::Component::Logger object that you want the message
+Optionally set the alias of the POE::Component::Logger object that you want the message
 queue to log to.  If no value is given, log information is simply printed to STDERR.
+
+=item message_class => SCALAR
+
+Optionally set the package name to use for the Message object.  This should be a child
+class of POE::Component::MessageQueue::Message or atleast follow the same interface.
+
+This allows you to add new message headers which the MQ can recognize.
+
+=item pump_frequency => SCALAR
+
+Optionally set how often (in seconds) to automatically pump each queue.  If zero or
+no value is given, then this timer is disabled entirely.
+
+When disabled, each queue is only pumped when its contents change, meaning 
+when a message is added or removed from the queue.  Normally, this is enough.  However,
+if your storage engine holds back messages for any reason (ie. to delay their 
+delivery) it will be necessary to enable this, so that the held back messages will
+ultimately be delivered.
 
 =item observers => ARRAYREF
 
@@ -946,7 +964,7 @@ out!
 Development is coordinated via Bazaar (See L<http://bazaar-vcs.org>).  The main
 Bazaar branch can be found here:
 
-L<http://code.hackyourlife.org/bzr/dsnopek/perl_mq>
+L<http://code.hackyourlife.org/bzr/dsnopek/perl_mq/devel.mainline>
 
 We prefer that contributions come in the form of a published Bazaar branch with the
 changes.  This helps facilitate the back-and-forth in the review process to get
