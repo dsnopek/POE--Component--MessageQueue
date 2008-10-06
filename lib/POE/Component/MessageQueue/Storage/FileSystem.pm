@@ -569,6 +569,10 @@ I<Ignored>.  All message bodies are always persisted.
 
 I<Ignored>.  All message bodies are kept until handled.
 
+=item B<deliver-after>
+
+I<Fully Supported>.
+
 =back
 
 =head1 SEE ALSO

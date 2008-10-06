@@ -364,6 +364,10 @@ I<Ignored>.  Nothing is persistent in this store.
 
 I<Ignored>.  All messages are kept until handled.
 
+=item B<deliver-after>
+
+I<Fully Supported>.
+
 =back
 
 =head1 SEE ALSO
