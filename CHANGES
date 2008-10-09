@@ -1,4 +1,10 @@
 
+== 0.2.3 -- 10/9/2008 ==
+
+ * Added the 'message_class' argument to allow extending the message object.
+ * Added the 'pump_frequency' argument to enable an automatic pump timer (also --pump-freq to mq.pl).
+ * Added support for the 'deliver-after' header to delay message delivery (db schema changes!).
+
 == 0.2.2 -- 6/6/2008 ==
 
  * Fix for a regression in 0.2.x with regard to ack => 'auto'.
