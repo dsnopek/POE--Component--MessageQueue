@@ -1,6 +1,6 @@
 use strict;
 use warnings;
-use Test::More tests => 100;
+use Test::More tests => 106;
 use File::Path;
 use POE;
 use POE::Session;
@@ -113,6 +113,49 @@ sub destination_tests {
 	});
 }
 
+sub delay_tests {
+	my ($storage, $name, $done) = @_;
+	
+	my $time = time();
+	my $delay = 2;
+	my $destination = '/queue/delay';
+	my $client_id = 9876;
+
+	my $message = POE::Component::MessageQueue::Message->new(
+		id          => ++$next_id,
+		timestamp   => $time,
+		destination => '/queue/delay',
+		persistent  => 1,
+		deliver_at  => $time + $delay,
+		body        => "I am the body of $next_id.\n".  
+		               "I was created at $time.\n". 
+		               "I am being sent to $destination.\n",
+	);
+
+	my $claim;
+	$claim = sub {
+		my ($cb) = shift;
+		$storage->claim_and_retrieve($destination, $client_id, sub {
+			my ($message) = @_;
+			goto $cb if (defined $message);
+
+			sleep 1;
+
+			# and repeat..
+			@_ = ($cb);
+			goto $claim;
+		});
+	};
+
+	$storage->store($message->clone, sub {
+		$claim->(sub {
+			my $received = time();
+			ok($received >= ($time + $delay), "$name: message delayed $delay seconds");
+			goto $done;
+		});
+	});
+}
+
 sub api_test {
 	my ($storage, $name, $done) = @_;
 
@@ -204,7 +247,9 @@ sub api_test {
 	];
 	my @dclone = @destinations;
 	destination_tests(\@dclone, $storage, $name, sub {
-		run_in_order($ordered_tests, $done);
+		run_in_order($ordered_tests, sub {
+			delay_tests($storage, $name, $done);
+		});
 	});
 }
 
