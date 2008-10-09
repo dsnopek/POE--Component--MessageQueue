@@ -82,9 +82,10 @@ sub claim_and_retrieve
 	my ($self, $destination, $client_id, $callback) = @_;
 	my $oldest;
 	my $aref = $self->messages->{$destination} || [];
+	my $current_time = time();
 	foreach my $msg (@$aref)
 	{
-		unless ($msg->claimed || 
+		unless ($msg->claimed || ($msg->has_delay and $current_time < $msg->deliver_at) ||
 		        ($oldest && $oldest->timestamp < $msg->timestamp))
 		{
 			$oldest = $msg;
@@ -234,6 +235,10 @@ I<Ignored>.  Nothing is persistent in this store.
 =item B<expire-after>
 
 I<Ignored>.  All messages are kept until handled.
+
+=item B<deliver-after>
+
+I<Fully Supported>.
 
 =back
 

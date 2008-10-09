@@ -207,7 +207,7 @@ sub send
 
 	# If we already have a ready subscriber, we'll dispatch before we
 	# store to give the subscriber a headstart on processing.
-	if (my $s = $self->next_ready)
+	if (not $message->has_delay and my $s = $self->next_ready)
 	{
 		my $mid = $message->id;
 		my $cid = $s->client->id;

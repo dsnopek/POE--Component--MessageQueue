@@ -108,6 +108,7 @@ sub _make_message {
 		claimant    => 'in_use_by',
 		size        => 'size',
 		timestamp   => 'timestamp',
+		deliver_at  => 'deliver_at',
 	);
 	my %args;
 	foreach my $field (keys %map) 
@@ -131,17 +132,20 @@ sub store
 			INSERT INTO messages (
 				message_id, destination, body, 
 				persistent, in_use_by,  
-				timestamp,  size
+				timestamp,  size,
+				deliver_at
 			) VALUES (
 				?, ?, ?, 
 				?, ?, 
-				?, ?
+				?, ?,
+				?
 			)
 		});
 		$sth->execute(
 			$m->id,         $m->destination, $m->body, 
 			$m->persistent, $m->claimant, 
 			$m->timestamp,  $m->size,
+			$m->deliver_at
 		);
 	});
 
@@ -194,8 +198,10 @@ sub get_oldest
 sub claim_and_retrieve
 {
 	my ($self, $destination, $client_id, $callback) = @_;
+	my $time = time();
 	$self->_get_one(claim_and_retrieve => qq{
-		WHERE destination = '$destination' AND in_use_by IS NULL
+		WHERE destination = '$destination' AND in_use_by IS NULL AND
+		      deliver_at IS NULL OR deliver_at < $time
 		ORDER BY timestamp ASC LIMIT 1
 	}, sub {
 		if(my $message = $_[0])
@@ -378,6 +384,10 @@ I<Ignored>.  All messages are persisted.
 =item B<expire-after>
 
 I<Ignored>.  All messages are kept until handled.
+
+=item B<deliver-after>
+
+I<Fully Supported>.
 
 =back
 

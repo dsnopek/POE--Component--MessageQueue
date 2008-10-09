@@ -1,7 +1,7 @@
 
 use POE;
 use POE::Component::MessageQueue;
-use POE::Component::MessageQueue::Storage::Memory;
+use POE::Component::MessageQueue::Storage::BigMemory;
 use POE::Component::MessageQueue::Logger;
 use Getopt::Long;
 use Carp;
@@ -29,7 +29,8 @@ POE::Component::MessageQueue->new({
 	port     => $port,
 	hostname => $hostname,
 
-	storage => POE::Component::MessageQueue::Storage::Memory->new(),
+	storage => POE::Component::MessageQueue::Storage::BigMemory->new(),
+	pump_frequency => 1
 });
 
 POE::Kernel->run();

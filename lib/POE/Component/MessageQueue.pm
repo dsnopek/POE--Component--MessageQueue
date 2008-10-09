@@ -299,6 +299,13 @@ sub route_frame
 			$frame->headers->{'message-id'} ||= $self->generate_id();
 			my $message = $self->message_class->from_stomp_frame($frame);
 
+			if ($message->has_delay() and not $self->pump_frequency)
+			{
+				$message->clear_delay();
+
+				$self->log(warning => "MASTER: Received a message with deliver-after header, but there is no pump-frequency enabled.  Ignoring header and delivering with no delay.");
+			}
+
 			$self->log(notice => 
 				sprintf('RECV (%s): SEND message %s (%i bytes) to %s (persistent: %i)',
 					$cid, $message->id, $message->size, $message->destination,
@@ -510,7 +517,7 @@ POE::Component::MessageQueue - A POE message queue that uses STOMP for its commu
 If you are only interested in running with the recommended storage backend and
 some predetermined defaults, you can use the included command line script:
 
-  POE::Component::MessageQueue version 0.2.0
+  POE::Component::MessageQueue version 0.2.3
   Copyright 2007, 2008 David Snopek (http://www.hackyourlife.org)
   Copyright 2007, 2008 Paul Driver <frodwith@gmail.com>
   Copyright 2007 Daisuke Maki <daisuke@endeworks.jp>
@@ -519,6 +526,7 @@ some predetermined defaults, you can use the included command line script:
         [--front-store <str>]           [--front-max <size>] 
         [--granularity <seconds>]       [--nouuids]
         [--timeout|-i <seconds>]        [--throttle|-T <count>]
+        [--pump-freq|-Q <seconds>]
         [--data-dir <path_to_dir>]      [--log-conf <path_to_file>]
         [--stats-interval|-i <seconds>] [--stats]
         [--pidfile|-p <path_to_file>]   [--background|-b]
@@ -536,8 +544,11 @@ some predetermined defaults, you can use the included command line script:
     --front-max <size>      How much message body the front-store should cache.
                             This size is specified in "human-readable" format
                             as per the -h option of ls, du, etc. (ex. 2.5M)
-    --timeout  -i <secs>    The number of seconds to keep messages in the 
+    --timeout -i <secs>     The number of seconds to keep messages in the 
                             front-store (Default: 4)
+    --pump-freq -Q <secs>   How often (in seconds) to automatically pump each
+                            queue.  Set to zero to disable this timer entirely
+                            (Default: 0)
     --granularity <secs>    How often (in seconds) Complex should check for
                             messages that have passed the timeout.  
     --[no]uuids             Use (or do not use) UUIDs instead of incrementing
@@ -722,6 +733,16 @@ documentation for your storage engine.
 Using the Complex or Default storage engines, this header will be honored.  If it isn't
 specified, non-persistent messages are discarded when pushed out of the front store.
 
+=item B<deliver-after>
+
+For both persistent or non-persistent messages, you can set this header to the number of
+seconds this message should be held before being delivered.  In other words, this allows
+you to delay delivery of a message for an arbitrary number of seconds.
+
+All the storage engines in the standard distribution support this header.  B<But it will not
+work without a pump frequency enabled!>  If using mq.pl, enable with --pump-freq or if creating
+a L<POE::Component::MessageQueue> object directly, pass pump_frequency as an argument to new().
+
 =back
 
 =head2 Queues and Topics
@@ -873,6 +894,8 @@ if your storage engine holds back messages for any reason (ie. to delay their
 delivery) it will be necessary to enable this, so that the held back messages will
 ultimately be delivered.
 
+I<You must enable this for the message queue to honor the deliver-after header!>
+
 =item observers => ARRAYREF
 
 Optionally pass in a number of objects that will receive information about events inside
@@ -931,7 +954,12 @@ upgrade-0.1.7.sql -- Apply if you are upgrading from version 0.1.6 or older.
 =item *
 
 upgrade-0.1.8.sql -- Apply if your are upgrading from version 0.1.7 or after applying
-the above update script.
+the above upgrade script.  This one has a SQLite specific version: upgrade-0.1.8-sqlite.sql).
+
+=item *
+
+upgrade-0.2.3.sql -- Apply if you are upgrading from version 0.2.2 or older or after
+applying the above upgrade script.
 
 =back
 
