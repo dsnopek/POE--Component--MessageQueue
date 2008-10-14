@@ -217,7 +217,17 @@ sub claim_and_retrieve
 		}
 		else
 		{
-			$self->back->claim_and_retrieve($destination, $client_id, $callback);
+			#$self->back->claim_and_retrieve($destination, $client_id, $callback);
+			$self->back->claim_and_retrieve($destination, $client_id, sub {
+				my $msg = $_[0];
+				goto $callback
+					if (not defined $msg or not $self->in_front($msg->id));
+
+				$self->front->claim($msg->id, $client_id, sub {
+					@_ = ($msg);
+					goto $callback;
+				});
+			});
 		}
 	});
 }
