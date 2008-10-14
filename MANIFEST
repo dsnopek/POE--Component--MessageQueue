@@ -1,5 +1,6 @@
 bin/mq.pl
 CHANGES
+examples/mq_big_memory.pl
 examples/mq_dbi.pl
 examples/mq_default.pl
 examples/mq_filesystem.pl
@@ -58,7 +59,9 @@ RELEASING
 schema/mysql.sql
 schema/sqlite.sql
 schema/upgrade-0.1.7.sql
+schema/upgrade-0.1.8-sqlite.sql
 schema/upgrade-0.1.8.sql
+schema/upgrade-0.2.3.sql
 t/01_load.t
 t/02_client.t
 t/03_queue.t
