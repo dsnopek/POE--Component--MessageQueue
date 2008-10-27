@@ -373,7 +373,7 @@ sub route_frame
 		{
 			$client->send_frame(Net::Stomp::Frame->new({
 				command => 'RECEIPT',
-				headers => {receipt => $receipt},
+				headers => {'receipt-id' => $receipt},
 			}));
 		}
 		$fn->();
