@@ -40,7 +40,7 @@ sub receipt_request {
 
 	die "Expected reciept\n" . Dump($receipt) 
 		unless ($receipt->command eq 'RECEIPT' 
-		&& $receipt->headers->{receipt} eq $nonce);
+		&& $receipt->headers->{'receipt-id'} eq $nonce);
 }
 
 sub stomp_send {
