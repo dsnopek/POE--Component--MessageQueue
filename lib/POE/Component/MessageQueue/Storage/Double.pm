@@ -217,7 +217,6 @@ sub claim_and_retrieve
 		}
 		else
 		{
-			#$self->back->claim_and_retrieve($destination, $client_id, $callback);
 			$self->back->claim_and_retrieve($destination, $client_id, sub {
 				my $msg = $_[0];
 				goto $callback
