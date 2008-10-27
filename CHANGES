@@ -1,4 +1,9 @@
 
+== 0.2.4 -- 10/27/2008 ==
+
+ * Fix for bug where delayed messages could be delivered more than once to different subscribers.
+ * Changed 'receipt' header on RECEIPT frames to 'receipt-id' to match the STOMP spec.
+
 == 0.2.3 -- 10/9/2008 ==
 
  * Added the 'message_class' argument to allow extending the message object.
