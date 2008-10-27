@@ -201,7 +201,7 @@ sub claim_and_retrieve
 	my $time = time();
 	$self->_get_one(claim_and_retrieve => qq{
 		WHERE destination = '$destination' AND in_use_by IS NULL AND
-		      deliver_at IS NULL OR deliver_at < $time
+		      (deliver_at IS NULL OR deliver_at < $time)
 		ORDER BY timestamp ASC LIMIT 1
 	}, sub {
 		if(my $message = $_[0])
