@@ -1,4 +1,8 @@
 
+== 0.2.5 -- 12/18/2008 ==
+
+ * Fixed dependancies in Makefile.PL per rt# 41786 (Thanks Sebastien Aperghis-Tramoni!)
+
 == 0.2.4 -- 10/27/2008 ==
 
  * Fix for bug where delayed messages could be delivered more than once to different subscribers.
