@@ -912,7 +912,7 @@ L<POE::Component::MessageQueue::Statistics>.  Please see its documentation for m
 
 =item [1]
 
-L<http://en.wikipedia.org/Message_Queue> -- General information about message queues
+L<http://en.wikipedia.org/wiki/Message_Queue> -- General information about message queues
 
 =item [2]
 
