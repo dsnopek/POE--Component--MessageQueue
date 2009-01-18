@@ -1,5 +1,5 @@
 #
-# Copyright 2007, 2008 David Snopek <dsnopek@gmail.com>
+# Copyright 2007, 2008, 2009 David Snopek <dsnopek@gmail.com>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -518,7 +518,7 @@ If you are only interested in running with the recommended storage backend and
 some predetermined defaults, you can use the included command line script:
 
   POE::Component::MessageQueue version 0.2.3
-  Copyright 2007, 2008 David Snopek (http://www.hackyourlife.org)
+  Copyright 2007, 2008, 2009 David Snopek (http://www.hackyourlife.org)
   Copyright 2007, 2008 Paul Driver <frodwith@gmail.com>
   Copyright 2007 Daisuke Maki <daisuke@endeworks.jp>
   
@@ -1088,7 +1088,7 @@ thousands of large messages daily and we experience very few issues.
 
 =head1 AUTHORS
 
-Copyright 2007, 2008 David Snopek (L<http://www.hackyourlife.org>)
+Copyright 2007, 2008, 2009 David Snopek (L<http://www.hackyourlife.org>)
 
 Copyright 2007, 2008 Paul Driver <frodwith@gmail.com>
 
