@@ -391,7 +391,7 @@ sub ack_message
 	my $client_id = $client->id;
 
 	my $s = $self->get_owner($message_id);
-	if ($s && $s->client->id eq $client_id)
+	if ($s && $s->client && $s->client->id eq $client_id)
 	{
 		$self->delete_owner($message_id);
 		$s->ready(1);
