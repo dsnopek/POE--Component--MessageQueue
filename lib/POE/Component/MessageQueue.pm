@@ -639,6 +639,7 @@ inside another application, the following synopsis may be useful to you:
   use POE::Component::Logger;
   use POE::Component::MessageQueue;
   use POE::Component::MessageQueue::Storage::Default;
+  use Socket; # For AF_INET
   use strict;
 
   my $DATA_DIR = '/tmp/perl_mq';
