@@ -42,6 +42,7 @@ sub setup_consumer
 }
 
 my @clients = ( setup_consumer, setup_consumer );
+sleep 1;
 
 # send our 30 messages
 lives_ok {
