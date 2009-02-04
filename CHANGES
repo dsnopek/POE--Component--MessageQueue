@@ -4,6 +4,8 @@
  * Possible fix for a bug where PoCo::MQ crashes because a message is being ACK'd by a client
    that isn't the one the message was originally sent to and the original client is now
    disconnected.
+ * Fixed a bug (since 0.2.0) where unsubscribing from a queue wouldn't correctly disown a
+   subscribers owned messages (Thanks Jason McManus!)
  * Small fixes and additions to documentation and unit tests.
 
 == 0.2.5 -- 12/18/2008 ==
