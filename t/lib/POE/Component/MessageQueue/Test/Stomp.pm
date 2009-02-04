@@ -34,14 +34,14 @@ sub stomp_connect {
 
 	$stomp->connect({
 		login    => 'foo', 
-		password => 'bar'
+		passcode => 'bar'
 	});
 
 	return $stomp;
 }
 
 sub make_nonce { 
-	my @chars = ['a'..'z', 'A'..'Z'];
+	my @chars = ('a'..'z', 'A'..'Z');
 	return join('', map { $chars[rand @chars] } (1..20));
 }
 
@@ -65,9 +65,9 @@ sub stomp_send {
 		command => 'SEND',
 		headers => {
 			destination => '/queue/test',
-			body        => 'arglebargle',
 			persistent  => 'true',
 		},
+		body        => 'arglebargle',
 	);
 }
 

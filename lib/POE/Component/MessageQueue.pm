@@ -352,7 +352,7 @@ sub route_frame
 			if(my $d = $self->get_destination($destination_name))
 			{
 				$client->unsubscribe($d);
-				$self->storage->disown_destination($client->id, $d->name, 
+				$self->storage->disown_destination($d->name, $client->id, 
 					sub { $d->pump() });
 			}
 		},
