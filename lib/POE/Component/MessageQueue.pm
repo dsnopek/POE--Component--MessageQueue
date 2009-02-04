@@ -18,7 +18,7 @@
 package POE::Component::MessageQueue;
 use Moose;
 
-our $VERSION = '0.2.5';
+our $VERSION = '0.2.6';
 
 use POE 0.38;
 use POE::Component::Server::Stomp;
@@ -517,7 +517,7 @@ POE::Component::MessageQueue - A POE message queue that uses STOMP for its commu
 If you are only interested in running with the recommended storage backend and
 some predetermined defaults, you can use the included command line script:
 
-  POE::Component::MessageQueue version 0.2.3
+  POE::Component::MessageQueue version 0.2.6
   Copyright 2007, 2008, 2009 David Snopek (http://www.hackyourlife.org)
   Copyright 2007, 2008 Paul Driver <frodwith@gmail.com>
   Copyright 2007 Daisuke Maki <daisuke@endeworks.jp>
@@ -1037,6 +1037,16 @@ B<Log rotation>: At minimum, documentation on how to set it up.
 B<Docs on "using" the MQ>: A full tutorial from start to finish, advice on
 writing good consumers/producers and solid docs on authoring custom storage
 engines.
+
+=back
+
+=head1 APPLICATIONS USING PoCo::MQ
+
+=over 4
+
+=item L<http://chessvegas.com>
+
+Chess gaming site ChessVegas.
 
 =back
 

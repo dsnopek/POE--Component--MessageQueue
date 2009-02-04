@@ -1,4 +1,11 @@
 
+== 0.2.6 -- 02/04/2009 ==
+
+ * Possible fix for a bug where PoCo::MQ crashes because a message is being ACK'd by a client
+   that isn't the one the message was originally sent to and the original client is now
+   disconnected.
+ * Small fixes and additions to documentation and unit tests.
+
 == 0.2.5 -- 12/18/2008 ==
 
  * Fixed dependancies in Makefile.PL per rt# 41786 (Thanks Sebastien Aperghis-Tramoni!)
