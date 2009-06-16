@@ -24,7 +24,7 @@ use MooseX::MultiInitArg;
 # simple no-arg completion callback.  No reason to write them all!
 foreach my $method qw(empty disown_destination disown_all)
 {
-	__PACKAGE__->meta->alias_method($method, sub {
+	__PACKAGE__->meta->add_method($method, sub {
 		my $self = shift;
 		my $last = pop;
 		if(ref $last eq 'CODE')
