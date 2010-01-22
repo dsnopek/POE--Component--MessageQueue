@@ -25,7 +25,7 @@ sub start_mq {
 	my $pid      = fork;
 	my $storage  = shift || 'Memory';
 	return $pid if $pid;
-
+	
 	use POE;
 	use POE::Component::MessageQueue;
 	use POE::Component::MessageQueue::Logger;
@@ -43,6 +43,7 @@ sub start_mq {
 
 	POE::Component::MessageQueue->new(%defaults);
 
+	$poe_kernel->has_forked();
 	$poe_kernel->run();
 	exit 0;
 }
