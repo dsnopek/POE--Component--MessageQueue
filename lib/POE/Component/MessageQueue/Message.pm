@@ -88,8 +88,11 @@ __PACKAGE__->meta->make_immutable();
 sub equals
 {
 	my ($self, $other) = @_;
-	foreach my $ameta (values %{__PACKAGE__->meta->get_attribute_map})
+	# This is a dirty hack, rewriting to use get_attribute_list would be preferred
+	#foreach my $ameta (values %{__PACKAGE__->meta->_attribute_map})
+	foreach my $name (__PACKAGE__->meta->get_attribute_list())
 	{
+		my $ameta = __PACKAGE__->meta->get_attribute($name);
 		my $reader = $ameta->get_read_method;
 		my ($one, $two) = ($self->$reader, $other->$reader);
 		next if (!defined $one) && (!defined $two);
