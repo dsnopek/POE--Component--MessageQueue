@@ -1,4 +1,8 @@
 
+== 0.2.7 -- 01/23/2010 ==
+
+ * Fixes to get PoCo::MQ working with latest Moose and POE (Thanks to SQUEEK!)
+
 == 0.2.6 -- 02/04/2009 ==
 
  * Possible fix for a bug where PoCo::MQ crashes because a message is being ACK'd by a client
