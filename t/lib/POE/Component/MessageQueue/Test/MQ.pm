@@ -32,6 +32,9 @@ sub start_mq {
 	use POE::Component::MessageQueue::Storage::Memory;
 	use POE::Component::MessageQueue::Test::EngineMaker;
 
+	# required for scripts which call start_mq() more than once.
+	$poe_kernel->stop();
+
 	my %defaults = (
 		port    => 8099,
 		storage => make_engine($storage),
@@ -43,7 +46,6 @@ sub start_mq {
 
 	POE::Component::MessageQueue->new(%defaults);
 
-	$poe_kernel->has_forked();
 	$poe_kernel->run();
 	exit 0;
 }
