@@ -1,4 +1,8 @@
 
+== 0.2.9 -- 04/??/2010 ==
+
+ * A fix to bug #49666 which affected the order of messages (Thanks Naveed Massjouni!)
+
 == 0.2.8 -- 01/26/2010 ==
 
  * A better fix for new POE which doesn't crash the tests on some users systems.

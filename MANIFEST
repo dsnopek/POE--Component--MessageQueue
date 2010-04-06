@@ -62,6 +62,7 @@ schema/upgrade-0.1.7.sql
 schema/upgrade-0.1.8-sqlite.sql
 schema/upgrade-0.1.8.sql
 schema/upgrade-0.2.3.sql
+schema/upgrade-0.2.9-mysql.sql
 t/01_load.t
 t/02_client.t
 t/03_queue.t

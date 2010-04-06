@@ -18,7 +18,7 @@
 package POE::Component::MessageQueue;
 use Moose;
 
-our $VERSION = '0.2.8';
+our $VERSION = '0.2.9';
 
 use POE 0.38;
 use POE::Component::Server::Stomp;
@@ -927,7 +927,7 @@ L<http://www.activemq.org/> -- ActiveMQ is a popular Java-based message queue
 
 =head1 UPGRADING FROM OLDER VERSIONS
 
-If you used any of the following storage engines with PoCo::MQ 0.1.7 or older:
+If you used any of the following storage engines with PoCo::MQ 0.2.9 or older:
 
 =over 4
 
@@ -961,6 +961,11 @@ the above upgrade script.  This one has a SQLite specific version: upgrade-0.1.8
 
 upgrade-0.2.3.sql -- Apply if you are upgrading from version 0.2.2 or older or after
 applying the above upgrade script.
+
+=item *
+
+upgrade-0.2.9-mysql.sql -- Doesn't apply to SQLite users!  Apply if you are upgrading from version
+0.2.8 or older or after applying the above upgrade script.
 
 =back
 
