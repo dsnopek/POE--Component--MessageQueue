@@ -19,9 +19,6 @@ package POE::Component::MessageQueue::Message;
 use Moose;
 use Net::Stomp::Frame;
 
-# Use Time::HiRes's time() if available for more accurate ordering. 
-BEGIN {eval q(use Time::HiRes qw(time))}
-
 has id => (
 	is       => 'ro',
 	isa      => 'Str',
@@ -77,10 +74,18 @@ has 'size' => (
 	}
 );
 
+my $order = 0;
+my $last_time = 0;
+
 has 'timestamp' => (
 	is      => 'ro',
 	isa     => 'Num',
-	default => sub { time() },
+	default => sub {
+			my $time = time;
+			$order = 0 if $time != $last_time;
+			$last_time = $time;
+			return "$time." . sprintf('%05d', $order++);
+	},
 );
 
 __PACKAGE__->meta->make_immutable();
