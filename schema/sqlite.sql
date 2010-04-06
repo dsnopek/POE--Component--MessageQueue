@@ -13,7 +13,7 @@ CREATE TABLE messages
 	persistent  char(1) default 'Y' not null,
 	in_use_by   int,
 	body        text,
-	timestamp   int,
+	timestamp   decimal(15,5),
 	size        int,
 	deliver_at  int
 );

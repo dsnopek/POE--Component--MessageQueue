@@ -59,7 +59,7 @@ CREATE TABLE messages
 	persistent  char(1) default 'Y' not null,
 	in_use_by   int,
 	body        text,
-	timestamp   int,
+	timestamp   decimal(15,5),
 	size        int,
 	deliver_at  int
 );
@@ -91,7 +91,7 @@ sub _do_schema
 sub _upgrade
 {
 	my $dbh = shift;
-	my @versions = ('0.1.7', '0.1.8', '0.2.3');
+	my @versions = ('0.1.7', '0.1.8', '0.2.3', '0.2.9');
 
 	# Funny lexical scoping rules require this to be an anonymous sub or weird
 	# things will happen with $dbh
@@ -117,6 +117,7 @@ sub _upgrade
 		},
 		'0.1.8' => sub { $meta_version->('0.1.8') },
 		'0.2.3' => sub { $meta_version->('0.2.3') },
+		'0.2.9' => sub { $meta_version->('0.2.9') },
 	);
 
 	my %repairs = (
@@ -174,7 +175,15 @@ sub _upgrade
 					$dbh->do("CREATE INDEX $name ON messages ( $column )");
 				};
 			}
-		}
+		},
+		'0.2.9' => sub {
+			# NOTE: Here we *would* change timestamp from INT to DECIMAL(15,5) but
+			# not only is that not possible via SQLite3's ALTER statement, but it makes
+			# no difference what so ever in SQLite3.
+				
+			# update the version
+			$dbh->do("UPDATE meta SET value = '0.2.9' where key = 'version'");
+		},
 	);
 
 	my $do_repairs = 0;
