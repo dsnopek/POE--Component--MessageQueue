@@ -1,3 +1,20 @@
+#
+# Copyright 2007, 2008 Paul Driver <frodwith@gmail.com>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+
 package POE::Component::MessageQueue::Test::Stomp;
 use strict;
 use warnings;
@@ -17,14 +34,14 @@ sub stomp_connect {
 
 	$stomp->connect({
 		login    => 'foo', 
-		password => 'bar'
+		passcode => 'bar'
 	});
 
 	return $stomp;
 }
 
 sub make_nonce { 
-	my @chars = ['a'..'z', 'A'..'Z'];
+	my @chars = ('a'..'z', 'A'..'Z');
 	return join('', map { $chars[rand @chars] } (1..20));
 }
 
@@ -40,7 +57,7 @@ sub receipt_request {
 
 	die "Expected reciept\n" . Dump($receipt) 
 		unless ($receipt->command eq 'RECEIPT' 
-		&& $receipt->headers->{receipt} eq $nonce);
+		&& $receipt->headers->{'receipt-id'} eq $nonce);
 }
 
 sub stomp_send {
@@ -48,9 +65,9 @@ sub stomp_send {
 		command => 'SEND',
 		headers => {
 			destination => '/queue/test',
-			body        => 'arglebargle',
 			persistent  => 'true',
 		},
+		body        => 'arglebargle',
 	);
 }
 

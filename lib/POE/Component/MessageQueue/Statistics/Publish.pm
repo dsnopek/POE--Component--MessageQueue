@@ -77,10 +77,10 @@ sub publish
 
 	if (! $ref) { # simple string. a filename
 		$self->publish_file( $output );
-	} elsif ($ref eq 'GLOB' || $output->can('print')) {
-		$self->publish_handle( $output );
 	} elsif ($ref eq 'CODE') {
 		$self->publish_code( $output );
+	} elsif ($ref eq 'GLOB' || $output->can('print')) {
+		$self->publish_handle( $output );
 	} else {
 		# don't know what it is. subclasses may detect that we were
 		# unable to determine the output type by checking for flase

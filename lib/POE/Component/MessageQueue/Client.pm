@@ -1,5 +1,5 @@
 
-# Copyright 2007, 2008 David Snopek <dsnopek@gmail.com>
+# Copyright 2007, 2008, 2009 David Snopek <dsnopek@gmail.com>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -51,12 +51,12 @@ __PACKAGE__->meta->make_immutable();
 
 sub subscribe
 {
-	my ($self, $destination, $ack_type) = @_;
+	my ($self, $destination, $client_ack) = @_;
 
 	my $subscription = POE::Component::MessageQueue::Subscription->new(
 		destination => $destination,
 		client      => $self,
-		ack_type    => $ack_type,	
+		client_ack  => $client_ack,
 	);
 
 	$self->set_subscription($destination->name => $subscription);

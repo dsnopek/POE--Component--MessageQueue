@@ -1,5 +1,5 @@
 #
-# Copyright 2007, 2008 David Snopek <dsnopek@gmail.com>
+# Copyright 2007, 2008, 2009 David Snopek <dsnopek@gmail.com>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -458,6 +458,10 @@ documentation.
 I<Fully supported>.
 
 =item B<expire-after>
+
+I<Fully Supported>.
+
+=item B<deliver-after>
 
 I<Fully Supported>.
 

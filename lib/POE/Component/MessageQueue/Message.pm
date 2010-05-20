@@ -1,5 +1,5 @@
 #
-# Copyright 2007, 2008 David Snopek <dsnopek@gmail.com>
+# Copyright 2007, 2008, 2009 David Snopek <dsnopek@gmail.com>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -18,9 +18,6 @@
 package POE::Component::MessageQueue::Message;
 use Moose;
 use Net::Stomp::Frame;
-
-# Use Time::HiRes's time() if available for more accurate ordering. 
-BEGIN {eval q(use Time::HiRes qw(time))}
 
 has id => (
 	is       => 'ro',
@@ -51,6 +48,13 @@ has expire_at => (
 	predicate => 'has_expiration',
 );
 
+has 'deliver_at' => (
+	is        => 'rw',
+	isa       => 'Num',
+	predicate => 'has_delay',
+	clearer   => 'clear_delay',
+);
+
 has claimant => (
 	is        => 'rw',
 	isa       => 'Maybe[Int]',
@@ -70,10 +74,18 @@ has 'size' => (
 	}
 );
 
+my $order = 0;
+my $last_time = 0;
+
 has 'timestamp' => (
 	is      => 'ro',
 	isa     => 'Num',
-	default => sub { time() },
+	default => sub {
+			my $time = time;
+			$order = 0 if $time != $last_time;
+			$last_time = $time;
+			return "$time." . sprintf('%05d', $order++);
+	},
 );
 
 __PACKAGE__->meta->make_immutable();
@@ -81,8 +93,11 @@ __PACKAGE__->meta->make_immutable();
 sub equals
 {
 	my ($self, $other) = @_;
-	foreach my $ameta (values %{__PACKAGE__->meta->get_attribute_map})
+	# This is a dirty hack, rewriting to use get_attribute_list would be preferred
+	#foreach my $ameta (values %{__PACKAGE__->meta->_attribute_map})
+	foreach my $name (__PACKAGE__->meta->get_attribute_list())
 	{
+		my $ameta = __PACKAGE__->meta->get_attribute($name);
 		my $reader = $ameta->get_read_method;
 		my ($one, $two) = ($self->$reader, $other->$reader);
 		next if (!defined $one) && (!defined $two);
@@ -100,8 +115,8 @@ sub clone
 
 sub from_stomp_frame
 {
-	my ($id, $frame) = @_;
-	my $msg = __PACKAGE__->new(
+	my ($class, $frame) = @_;
+	my $msg = $class->new(
 		id          => $frame->headers->{'message-id'},
 		destination => $frame->headers->{destination},
 		persistent  => $frame->headers->{persistent} eq 'true',
@@ -110,6 +125,10 @@ sub from_stomp_frame
 	if (!$msg->persistent and my $after = $frame->headers->{'expire-after'})
 	{
 		$msg->expire_at(time + $after);
+	}
+	if (my $after = $frame->headers->{'deliver-after'})
+	{
+		$msg->deliver_at(time + $after);
 	}
 	return $msg;
 }

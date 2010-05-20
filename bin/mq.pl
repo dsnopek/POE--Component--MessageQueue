@@ -21,6 +21,7 @@ my $hostname = undef;
 my $timeout  = 4;
 my $granularity;
 my $throttle_max = 2;
+my $pump_frequency;
 my $background = 0;
 my $debug_shell = 0;
 my $pidfile;
@@ -41,6 +42,7 @@ GetOptions(
 	"front-store|f=s"  => \$front_store,
 	"front-max=s"      => \$front_max,
 	"throttle|T=i"     => \$throttle_max,
+	"pump-freq|Q=i"    => \$pump_frequency,
 	"data-dir=s"       => \$DATA_DIR,
 	"log-conf=s"       => \$CONF_LOG,
 	"stats!"           => \$statistics,
@@ -52,7 +54,7 @@ GetOptions(
 	"crash-cmd=s"      => \$crash_cmd,
 	"version|v"        => \$show_version,
 	"help|h"           => \$show_usage,
-);
+) or usage(1);
 
 # byte kilo mega giga tera peta exa zetta yotta
 my @size_units = qw(b k m g t p e z y);
@@ -79,19 +81,21 @@ sub parse_size
 sub version
 {
 	print "POE::Component::MessageQueue version $POE::Component::MessageQueue::VERSION\n";
-	print "Copyright 2007, 2008 David Snopek (http://www.hackyourlife.org)\n";
+	print "Copyright 2007, 2008, 2009 David Snopek (http://www.hackyourlife.org)\n";
 	print "Copyright 2007, 2008 Paul Driver <frodwith\@gmail.com>\n";
 	print "Copyright 2007 Daisuke Maki <daisuke\@endeworks.jp>\n";
 }
 
 sub usage
 {
+	my $exit_level = shift;
 	my $X = ' ' x (length $0);
     print <<"ENDUSAGE";
 $0 [--port|-p <num>]               [--hostname|-h <host>]
 $X [--front-store <str>]           [--front-max <size>] 
 $X [--granularity <seconds>]       [--nouuids]
 $X [--timeout|-i <seconds>]        [--throttle|-T <count>]
+$X [--pump-freq|-Q <seconds>]
 $X [--data-dir <path_to_dir>]      [--log-conf <path_to_file>]
 $X [--stats-interval|-i <seconds>] [--stats]
 $X [--pidfile|-p <path_to_file>]   [--background|-b]
@@ -109,8 +113,11 @@ STORAGE OPTIONS:
   --front-max <size>      How much message body the front-store should cache.
                           This size is specified in "human-readable" format
                           as per the -h option of ls, du, etc. (ex. 2.5M)
-  --timeout  -i <secs>    The number of seconds to keep messages in the 
+  --timeout -i <secs>     The number of seconds to keep messages in the 
                           front-store (Default: 4)
+  --pump-freq -Q <secs>   How often (in seconds) to automatically pump each
+                          queue.  Set to zero to disable this timer entirely
+                          (Default: 0)
   --granularity <secs>    How often (in seconds) Complex should check for
                           messages that have passed the timeout.  
   --[no]uuids             Use (or do not use) UUIDs instead of incrementing
@@ -143,6 +150,8 @@ OTHER OPTIONS:
   --help       -h         Show this usage message
 
 ENDUSAGE
+	
+	exit($exit_level) if (defined $exit_level);
 }
 
 if ( $show_version )
@@ -155,8 +164,7 @@ if ( $show_usage )
 {
 	version;
 	print "\n";
-	usage;
-	exit 0;
+	usage(0);
 }
 
 if ( not -d $DATA_DIR )
@@ -245,6 +253,7 @@ my %args = (
 		granularity  => $granularity,
 	),
 
+	pump_frequency => $pump_frequency,
 	idgen => $idgen,
 	logger_alias => $logger_alias,
 );

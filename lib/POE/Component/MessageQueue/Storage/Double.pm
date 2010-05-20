@@ -24,7 +24,7 @@ use MooseX::MultiInitArg;
 # simple no-arg completion callback.  No reason to write them all!
 foreach my $method qw(empty disown_destination disown_all)
 {
-	__PACKAGE__->meta->alias_method($method, sub {
+	__PACKAGE__->meta->add_method($method, sub {
 		my $self = shift;
 		my $last = pop;
 		if(ref $last eq 'CODE')
@@ -217,7 +217,16 @@ sub claim_and_retrieve
 		}
 		else
 		{
-			$self->back->claim_and_retrieve($destination, $client_id, $callback);
+			$self->back->claim_and_retrieve($destination, $client_id, sub {
+				my $msg = $_[0];
+				goto $callback
+					if (not defined $msg or not $self->in_front($msg->id));
+
+				$self->front->claim($msg->id, $client_id, sub {
+					@_ = ($msg);
+					goto $callback;
+				});
+			});
 		}
 	});
 }
