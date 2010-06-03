@@ -11,7 +11,7 @@ CREATE TABLE messages
 (
 	message_id  varchar(255) primary key,
 	destination varchar(255) not null,
-	persistent  enum('Y', 'N') default 'Y' not null,
+	persistent  enum('1', '0') default '0' not null,
 	in_use_by   int,
 	body        text,
 	timestamp   int,

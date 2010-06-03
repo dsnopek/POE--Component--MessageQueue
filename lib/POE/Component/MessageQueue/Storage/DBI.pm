@@ -25,7 +25,13 @@ has '+package' => (
 );
 
 around new => sub {
-	my ($original, $class, @args) = @_;
+	my ($original, $class) = (shift, shift);
+	my @args;
+	if (ref($_[0]) eq 'HASH') {
+		@args = %{$_[0]};
+	} else {
+		@args = @_;
+	}
 	$original->($class, @args, options => \@args);
 };
 
