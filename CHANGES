@@ -1,7 +1,9 @@
 
-== 0.2.9 -- 04/??/2010 ==
+== 0.2.9 -- 06/??/2010 ==
 
  * A fix to bug #49666 which affected the order of messages (Thanks Naveed Massjouni!)
+ * Fixed a regression in Storage::DBI->new( ... ) - Can now pass a HASH ref
+ * Fixed schemas for MySQL
 
 == 0.2.8 -- 01/26/2010 ==
 
