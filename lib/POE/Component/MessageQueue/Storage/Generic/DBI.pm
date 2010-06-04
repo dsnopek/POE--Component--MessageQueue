@@ -70,6 +70,8 @@ sub BUILD
 
 	# This actually makes DBH connect, and makes sure there's no claims left
 	# over from the last time we shut down MQ.
+	# TODO: Whoa!!  This can be dangerous for clusters!  Bringing a new MQ up will 
+	# clear the claims..  Figure something out..
 	$self->dbh->do( "UPDATE messages SET in_use_by = NULL" );
 }
 
