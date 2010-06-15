@@ -49,6 +49,12 @@ has 'options' => (
 	required => 1,
 );
 
+has 'mq_id' => (
+	is       => 'ro',
+	isa      => 'Str',
+	default  => undef,
+);
+
 has 'dbh' => (
 	is => 'ro',
 	isa => 'Object',
@@ -59,6 +65,20 @@ has 'dbh' => (
 	},
 );
 
+# NOT async!
+sub _clear_claims {
+	my ($self) = @_;
+	
+	# Clear all this servers claims
+	my $sql = "UPDATE messages SET in_use_by = NULL";
+	my $mq_id = $self->mq_id;
+	if (defined $mq_id) {
+		$sql .= " WHERE in_use_by LIKE '$mq_id:%'";
+	}
+
+	$self->dbh->do($sql);
+}
+
 sub BUILD 
 {
 	my ($self, $args) = @_;
@@ -68,11 +88,8 @@ sub BUILD
 	$self->options->{'PrintError'} = 0;
 	$self->options->{'RaiseError'} = 0;
 
-	# This actually makes DBH connect, and makes sure there's no claims left
-	# over from the last time we shut down MQ.
-	# TODO: Whoa!!  This can be dangerous for clusters!  Bringing a new MQ up will 
-	# clear the claims..  Figure something out..
-	$self->dbh->do( "UPDATE messages SET in_use_by = NULL" );
+	# This actually makes DBH connect
+	$self->_clear_claims();
 }
 
 sub _wrap
@@ -101,7 +118,7 @@ sub _wrap_ids
 }
 
 sub _make_message { 
-	my $h = $_[0];
+	my ($self, $h) = @_;
 	my %map = (
 		id          => 'message_id',
 		destination => 'destination',
@@ -118,8 +135,21 @@ sub _make_message {
 		my $val = $h->{$map{$field}};
 		$args{$field} = $val if (defined $val);
 	}
+	# pull only the client ID out of the in_use_by field
+	my $mq_id = $self->mq_id;
+	if (defined $mq_id) {
+		$args{claimant} =~ s/^$mq_id://;
+	}
 	return POE::Component::MessageQueue::Message->new(%args);
 };
+
+sub _in_use_by {
+	my ($self, $client_id) = @_;
+	if (defined $client_id && defined $self->mq_id) {
+		return $self->mq_id .":". $client_id;
+	}
+	return $client_id;
+}
 
 # Note:  We explicitly set @_ in all the storage methods in this module,
 # because when we do our tail-calls (goto $method), we don't want to pass them
@@ -145,7 +175,7 @@ sub store
 		});
 		$sth->execute(
 			$m->id,         $m->destination, $m->body, 
-			$m->persistent, $m->claimant, 
+			$m->persistent, $self->_in_use_by($m->claimant), 
 			$m->timestamp,  $m->size,
 			$m->deliver_at
 		);
@@ -163,7 +193,7 @@ sub _get
 		my $sth = $self->dbh->prepare("SELECT * FROM messages	$clause");
 		$sth->execute;
 		my $results = $sth->fetchall_arrayref({});
-		@messages = map _make_message($_), @$results;
+		@messages = map $self->_make_message($_), @$results;
 	});
 	@_ = (\@messages);
 	goto $callback;
@@ -236,10 +266,11 @@ sub empty
 sub claim
 {
 	my ($self, $message_ids, $client_id, $callback) = @_;
+	my $in_use_by = $self->_in_use_by($client_id);
 	$self->_wrap_ids($message_ids, claim => sub {
 		my $where = shift;
 		$self->dbh->do(qq{
-			UPDATE messages SET in_use_by = '$client_id' WHERE $where
+			UPDATE messages SET in_use_by = '$in_use_by' WHERE $where
 		});
 	});
 	@_ = ();
@@ -249,9 +280,10 @@ sub claim
 sub disown_destination
 {
 	my ($self, $destination, $client_id, $callback) = @_;
+	my $in_use_by = $self->_in_use_by($client_id);
 	$self->_wrap(disown_destination => sub {
 		$self->dbh->do(qq{
-			UPDATE messages SET in_use_by = NULL WHERE in_use_by = '$client_id'
+			UPDATE messages SET in_use_by = NULL WHERE in_use_by = '$in_use_by'
 			AND destination = '$destination'
 		});
 	});
@@ -262,9 +294,10 @@ sub disown_destination
 sub disown_all
 {
 	my ($self, $client_id, $callback) = @_;
+	my $in_use_by = $self->_in_use_by($client_id);
 	$self->_wrap(disown_all => sub {
 		$self->dbh->do(qq{
-			UPDATE messages SET in_use_by = NULL WHERE in_use_by = '$client_id'
+			UPDATE messages SET in_use_by = NULL WHERE in_use_by = '$in_use_by'
 		});
 	});
 	@_ = ();
@@ -277,6 +310,7 @@ sub storage_shutdown
 
 	$self->log(alert => 'Shutting down DBI storage engine...');
 
+	$self->_clear_claims();
 	$self->dbh->disconnect();
 	@_ = ();
 	goto $callback if $callback;
