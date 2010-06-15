@@ -137,7 +137,7 @@ sub _make_message {
 	}
 	# pull only the client ID out of the in_use_by field
 	my $mq_id = $self->mq_id;
-	if (defined $mq_id) {
+	if (defined $mq_id && defined $args{claimant}) {
 		$args{claimant} =~ s/^$mq_id://;
 	}
 	return POE::Component::MessageQueue::Message->new(%args);
