@@ -26,6 +26,7 @@ our @EXPORT = qw(start_mq stop_fork);
 sub start_mq {
 	my %options = @_;
 	my $storage = delete $options{storage} || 'BigMemory';
+	my $storage_args = delete $options{storage_args} || {};
 	start_fork(sub {
 		use POE;
 		use POE::Component::MessageQueue;
@@ -38,7 +39,7 @@ sub start_mq {
 
 		my %defaults = (
 			port    => 8099,
-			storage => make_engine($storage),
+			storage => make_engine($storage, $storage_args),
 			logger  => POE::Component::MessageQueue::Logger->new(level=>7),
 		);
 
