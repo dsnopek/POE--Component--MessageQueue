@@ -24,7 +24,7 @@ lives_ok {
 	make_db() 
 } 'setup data dir';
 
-my $pid = start_mq('FileSystem');
+my $pid = start_mq(storage => 'FileSystem');
 ok($pid, 'MQ started');
 sleep 2;
 
@@ -34,7 +34,7 @@ lives_ok {
 	$sender->disconnect;
 } 'messages sent';
 
-ok(stop_mq($pid), 'MQ shut down');
+ok(stop_fork($pid), 'MQ shut down');
 
 my %data_dir;
 tie %data_dir, 'IO::Dir', DATA_DIR, DIR_UNLINK;
@@ -49,7 +49,7 @@ for (1..20) {
 }
 is(find_messages(), 80, "20 messages removed");
 
-$pid = start_mq('FileSystem');
+$pid = start_mq(storage => 'FileSystem');
 ok($pid, "MQ restarted");
 sleep 2;
 
@@ -60,6 +60,6 @@ lives_ok {
 	$stomp->disconnect;
 } 'Got 80 messages';
 
-ok(stop_mq($pid), 'MQ shut down');
+ok(stop_fork($pid), 'MQ shut down');
 
 lives_ok { rmtree(DATA_DIR) } 'Data dir removed';

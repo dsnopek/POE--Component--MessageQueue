@@ -27,7 +27,7 @@ lives_ok {
 	make_db() 
 } 'setup data dir';
 
-my $pid = start_mq('Complex');
+my $pid = start_mq(storage => 'Complex');
 ok($pid, 'MQ started');
 sleep 2;
 
@@ -79,7 +79,7 @@ $_->disconnect() for (@clients);
 # reconnect and verify that there are no messages
 is(setup_consumer()->can_read({ timeout => 10 }), 0, 'no messages remain');
 
-ok(stop_mq($pid), 'MQ shut down');
+ok(stop_fork($pid), 'MQ shut down');
 
 lives_ok { rmtree(DATA_DIR) } 'Data dir removed';
 
