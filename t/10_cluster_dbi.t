@@ -89,6 +89,7 @@ lives_ok {
 } 'MQ1: client 1 subscribed and sent message';
 
 ok($message = $client1a->receive_frame(), 'MQ1: client 1 claimed message');
+sleep 2;
 
 # next, client 1 connects and disconnects to MQ2
 ok($client1b = stomp_connect(8100),  'MQ2: client 1 connects');

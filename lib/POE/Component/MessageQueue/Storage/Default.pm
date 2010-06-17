@@ -57,7 +57,7 @@ CREATE TABLE messages
 	message_id  varchar(255) primary key,
 	destination varchar(255) not null,
 	persistent  char(1) default 'Y' not null,
-	in_use_by   int,
+	in_use_by   varchar(255),
 	body        text,
 	timestamp   decimal(15,5),
 	size        int,
@@ -91,7 +91,7 @@ sub _do_schema
 sub _upgrade
 {
 	my $dbh = shift;
-	my @versions = ('0.1.7', '0.1.8', '0.2.3', '0.2.9');
+	my @versions = ('0.1.7', '0.1.8', '0.2.3', '0.2.9', '0.2.10');
 
 	# Funny lexical scoping rules require this to be an anonymous sub or weird
 	# things will happen with $dbh
@@ -115,9 +115,10 @@ sub _upgrade
 			};
 			return (!$@);
 		},
-		'0.1.8' => sub { $meta_version->('0.1.8') },
-		'0.2.3' => sub { $meta_version->('0.2.3') },
-		'0.2.9' => sub { $meta_version->('0.2.9') },
+		'0.1.8'  => sub { $meta_version->('0.1.8') },
+		'0.2.3'  => sub { $meta_version->('0.2.3') },
+		'0.2.9'  => sub { $meta_version->('0.2.9') },
+		'0.2.10' => sub { $meta_version->('0.2.9') },
 	);
 
 	my %repairs = (
@@ -184,6 +185,14 @@ sub _upgrade
 			# update the version
 			$dbh->do("UPDATE meta SET value = '0.2.9' where key = 'version'");
 		},
+		'0.2.10' => sub {
+			# NOTE: Here we *would* change in_use_by from INT to VARCHAR(255) but
+			# not only is that not possible via SQLite3's ALTER statement, but it makes
+			# no difference what so ever in SQLite3.
+				
+			# update the version
+			$dbh->do("UPDATE meta SET value = '0.2.10' where key = 'version'");
+		}
 	);
 
 	my $do_repairs = 0;
@@ -237,7 +246,7 @@ sub _make_db
 	{
 		_do_schema($dbh, MESSAGES_SCHEMA);
 		_do_schema($dbh, META_SCHEMA);
-		$dbh->do(q{INSERT INTO meta (key, value) VALUES ('version', '0.2.3')});
+		$dbh->do(q{INSERT INTO meta (key, value) VALUES ('version', '0.2.10')});
 	}
 	$dbh->disconnect();
 }
