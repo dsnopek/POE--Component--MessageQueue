@@ -53,20 +53,6 @@ sub start_mq {
 
 		POE::Component::MessageQueue->new(%defaults);
 	});
-	$defaults{$_} = $options{$_} foreach (keys %options);
-
-	POE::Component::MessageQueue->new(%defaults);
-
-	$poe_kernel->run();
-	exit 0;
-}
-
-sub stop_mq {
-	my $pid = shift;
-	
-	return (kill('TERM', $pid) == 1)
-		&& (waitpid($pid, 0) == $pid)
-		&& ($? == 0);
 }
 
 1;
