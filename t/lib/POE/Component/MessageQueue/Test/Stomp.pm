@@ -27,9 +27,10 @@ our @EXPORT = qw(
 );
 
 sub stomp_connect {
+	my ($port) = @_;
 	my $stomp = Net::Stomp->new({
 		hostname => 'localhost', 
-		port => 8099
+		port => $port || 8099,
 	});
 
 	$stomp->connect({

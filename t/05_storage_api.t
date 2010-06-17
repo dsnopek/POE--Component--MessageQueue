@@ -1,6 +1,6 @@
 use strict;
 use warnings;
-use Test::More tests => 106;
+use Test::More tests => 126;
 use File::Path;
 use POE;
 use POE::Session;
@@ -18,6 +18,7 @@ $SIG{__WARN__} = sub {
 BEGIN {
 	my $prefix = 'POE::Component::MessageQueue';
 	use_ok("POE::Component::MessageQueue::Test::EngineMaker");
+	use_ok("POE::Component::MessageQueue::Test::ForkRun");
 	require_ok("${prefix}::Message");
 	require_ok("${prefix}::Logger");
 	require_ok($_) foreach map { engine_package($_) } engine_names();
@@ -26,6 +27,12 @@ BEGIN {
 END {
 	rmtree(DATA_DIR);	
 }
+
+my $remote = start_fork(sub {
+	use POE::Component::MessageQueue::Storage::Remote::Server;
+	POE::Component::MessageQueue::Storage::Remote::Server->new(port => 9321);
+});
+ok($remote, "Remote storage engine started.");
 
 my $next_id = 0;
 my $when = time();
@@ -270,7 +277,13 @@ sub store_loop {
 
 sub engine_loop {
 	my $names = shift;
-	my $name = pop(@$names) || return;
+	my $name = pop(@$names);
+	unless ($name)
+	{
+		ok(stop_fork($remote), "remote storage engine stopped.");
+		return;
+	}
+
 	rmtree(DATA_DIR);
 	mkpath(DATA_DIR);
 	make_db();

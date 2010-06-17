@@ -74,6 +74,11 @@ my %engines = (
 			back        => make_engine('Throttled'),
 		)}
 	},
+	Remote     => {
+		args    => sub {(
+			servers => [{host => 'localhost', port => 9321}],
+		)},
+	},
 	BigMemory => {},
 	Memory    => {},
 );
@@ -82,9 +87,13 @@ sub engine_package {'POE::Component::MessageQueue::Storage::'.shift}
 sub engine_names { keys %engines }
 
 sub make_engine {
-	my $name = shift;
+	my ($name, $extra) = @_;
 	my $eargs = $engines{$name}->{args} || sub {};
-	return engine_package($name)->new($eargs->(),
+	my %args = $eargs->();
+	if (defined $extra) {
+		%args = ( %args, %$extra );
+	}
+	return engine_package($name)->new(%args,
 		logger => POE::Component::MessageQueue::Logger->new(level=>LOG_LEVEL),
 	);
 }

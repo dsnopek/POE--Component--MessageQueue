@@ -18,30 +18,41 @@
 package POE::Component::MessageQueue::Test::MQ;
 use strict;
 use warnings;
+
+use POE::Component::MessageQueue::Test::ForkRun;
 use Exporter qw(import);
-our @EXPORT = qw(start_mq stop_mq);
+our @EXPORT = qw(start_mq stop_fork);
 
 sub start_mq {
-	my $pid      = fork;
-	my $storage  = shift || 'Memory';
-	return $pid if $pid;
-	
-	use POE;
-	use POE::Component::MessageQueue;
-	use POE::Component::MessageQueue::Logger;
-	use POE::Component::MessageQueue::Storage::Memory;
-	use POE::Component::MessageQueue::Test::EngineMaker;
-
-	# required for scripts which call start_mq() more than once.
-	$poe_kernel->stop();
-
-	my %defaults = (
-		port    => 8099,
-		storage => make_engine($storage),
-		logger  => POE::Component::MessageQueue::Logger->new(level=>7),
-	);
-
 	my %options = @_;
+	my $storage = delete $options{storage} || 'BigMemory';
+	my $storage_args = delete $options{storage_args} || {};
+	start_fork(sub {
+		use POE;
+		use POE::Component::MessageQueue;
+		use POE::Component::MessageQueue::Logger;
+		use POE::Component::MessageQueue::Storage::Memory;
+		use POE::Component::MessageQueue::Test::EngineMaker;
+
+		# required for scripts which call start_mq() more than once.
+		$poe_kernel->stop();
+
+		if (ref $storage eq 'CODE') {
+			$storage = $storage->(%$storage_args);
+		} else {
+			$storage = make_engine($storage, $storage_args);
+		}
+
+		my %defaults = (
+			port    => 8099,
+			storage => $storage,
+			logger  => POE::Component::MessageQueue::Logger->new(level=>7),
+		);
+
+		$defaults{$_} = $options{$_} foreach (keys %options);
+
+		POE::Component::MessageQueue->new(%defaults);
+	});
 	$defaults{$_} = $options{$_} foreach (keys %options);
 
 	POE::Component::MessageQueue->new(%defaults);
