@@ -96,6 +96,8 @@ L<POE::Component::MessageQueue::Storage::Generic::DBI>).
 
 =item options => SCALAR
 
+=item mq_id => SCALAR
+
 =back
 
 =head1 SEE ALSO

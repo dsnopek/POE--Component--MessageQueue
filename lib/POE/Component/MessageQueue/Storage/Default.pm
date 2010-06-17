@@ -103,6 +103,8 @@ sub _upgrade
 				"SELECT value FROM meta WHERE key = 'version'"
 			);
 		};
+		# TODO: we need to split the version and pad parts of it with zeros for 
+		# an accurate version comparison.
 		return (!$@) && ($version ge $check_version);
 	};
 

@@ -52,7 +52,6 @@ has 'options' => (
 has 'mq_id' => (
 	is       => 'ro',
 	isa      => 'Str',
-	default  => undef,
 );
 
 has 'dbh' => (
@@ -72,7 +71,7 @@ sub _clear_claims {
 	# Clear all this servers claims
 	my $sql = "UPDATE messages SET in_use_by = NULL";
 	my $mq_id = $self->mq_id;
-	if (defined $mq_id) {
+	if (defined $mq_id and $mq_id ne '') {
 		$sql .= " WHERE in_use_by LIKE '$mq_id:%'";
 	}
 
@@ -137,7 +136,7 @@ sub _make_message {
 	}
 	# pull only the client ID out of the in_use_by field
 	my $mq_id = $self->mq_id;
-	if (defined $mq_id && defined $args{claimant}) {
+	if (defined $mq_id and $mq_id ne '' and defined $args{claimant}) {
 		$args{claimant} =~ s/^$mq_id://;
 	}
 	return POE::Component::MessageQueue::Message->new(%args);
@@ -145,7 +144,7 @@ sub _make_message {
 
 sub _in_use_by {
 	my ($self, $client_id) = @_;
-	if (defined $client_id && defined $self->mq_id) {
+	if (defined $client_id and defined $self->mq_id and $self->mq_id ne '') {
 		return $self->mq_id .":". $client_id;
 	}
 	return $client_id;
@@ -406,6 +405,12 @@ it does best: index and look-up information quickly.
 =item password => SCALAR
 
 =item options => SCALAR
+
+=item mq_id => SCALAR
+
+A string which uniquely identifies this MQ.  This is required when running two MQs which 
+use the same database.  If they don't have unique mq_id values, than one MQ could inadvertently
+clear the claims set by the other, causing messages to be delivered more than once.
 
 =back
 
