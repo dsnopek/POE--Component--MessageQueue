@@ -139,9 +139,11 @@ sub _connect
 			}
 		}
 
-		if ($self->cur_server == -1) {
-			# TODO: if this is our first connection, we should probably fail loudly..
-		}
+#		if ($self->cur_server == -1) {
+#			# if this is our first connection on MQ startup, we should fail loudly..
+#			$self->log(error => "Unable to connect to database.");
+#			exit 1;
+#		}
 
 		# after trying them all we sleep for 1 second, so that we don't hot-loop and
 		# the system has a chance to get back up.
