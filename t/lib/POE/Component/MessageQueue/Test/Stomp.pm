@@ -23,13 +23,15 @@ use YAML;
 use Exporter qw(import);
 our @EXPORT = qw(
 	stomp_connect   stomp_send 
-	stomp_subscribe stomp_receive
+	stomp_subscribe stomp_unsubscribe
+	stomp_receive
 );
 
 sub stomp_connect {
+	my ($port) = @_;
 	my $stomp = Net::Stomp->new({
 		hostname => 'localhost', 
-		port => 8099
+		port => $port || 8099,
 	});
 
 	$stomp->connect({
@@ -77,6 +79,15 @@ sub stomp_subscribe {
 		headers => {
 			destination => '/queue/test',
 			ack         => 'client',
+		},
+	);
+}
+
+sub stomp_unsubscribe {
+	receipt_request($_[0],
+		command => 'UNSUBSCRIBE',
+		headers => {
+			destination => '/queue/test',
 		},
 	);
 }

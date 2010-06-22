@@ -937,11 +937,11 @@ L<POE::Component::MessageQueue::Storage::DBI>
 
 =back
 
-The database format has changed.
+The database format has changed!
 
-B<Note:> When using L<POE::Component::MessageQueue::Storage::Default> (meaning mq.pl)
-the database will be automatically updated in place, so you don't need to worry
-about this.
+B<Note:> When using L<POE::Component::MessageQueue::Storage::Default> (meaning mq.pl
+--storage default) the database will be automatically updated in place, so you don't
+need to worry about this.
 
 Included in the distribution, is a schema/ directory with a few SQL scripts for 
 upgrading:
@@ -959,13 +959,18 @@ the above upgrade script.  This one has a SQLite specific version: upgrade-0.1.8
 
 =item *
 
-upgrade-0.2.3.sql -- Apply if you are upgrading from version 0.2.2 or older or after
-applying the above upgrade script.
+upgrade-0.2.3.sql -- Apply if you are upgrading from version 0.2.2 or older (after
+applying the above upgrade scripts).
 
 =item *
 
 upgrade-0.2.9-mysql.sql -- Doesn't apply to SQLite users!  Apply if you are upgrading from version
-0.2.8 or older or after applying the above upgrade script.
+0.2.8 or older (after applying the above upgrade scripts).
+
+=item *
+
+upgrade-0.2.10-mysql.sql -- Doesn't apply to SQLite users!  Apply if you are upgrading from version
+0.2.9 or older (after applying the above upgrade scripts).
 
 =back
 
@@ -997,9 +1002,6 @@ any new code merged into the main branch.
 The goal of this module is not to support every possible feature but rather to
 be small, simple, efficient and robust.  For the most part expect incremental
 changes to address those areas.
-
-There is one remaining big feature coming soon and that is the ability to run
-PoCo::MQ clustered accross multiple servers with some kind of fail-over.
 
 Beyond that we have a TODO list (shown below) called B<"The Long Road To
 1.0">.  This is a list of things we feel we need to have inorder to call the

@@ -5,6 +5,8 @@ use POE::Component::MessageQueue;
 use POE::Component::MessageQueue::Storage::Default;
 use POE::Component::MessageQueue::Storage::Memory;
 use POE::Component::MessageQueue::Storage::BigMemory;
+use POE::Component::MessageQueue::Storage::DBI;
+use POE::Component::MessageQueue::Storage::Throttled;
 use Getopt::Long;
 use Devel::StackTrace;
 use IO::File;
@@ -32,13 +34,19 @@ my $uuids = 1;
 my $stat_interval = 10;
 my $front_store = 'memory';
 my $front_max;
+my $storage = 'default';
 my $crash_cmd = undef;
+my $dbi_dsn = undef;
+my $dbi_username = undef;
+my $dbi_password = undef;
+my $mq_id = '';
 
 GetOptions(
 	"port|p=i"         => \$port,
 	"hostname|h=s"     => \$hostname,
 	"timeout|i=i"      => \$timeout,
 	"granularity=i"    => \$granularity,
+	"storage=s"        => \$storage,
 	"front-store|f=s"  => \$front_store,
 	"front-max=s"      => \$front_max,
 	"throttle|T=i"     => \$throttle_max,
@@ -47,6 +55,10 @@ GetOptions(
 	"log-conf=s"       => \$CONF_LOG,
 	"stats!"           => \$statistics,
 	"uuids!"           => \$uuids,
+	"dbi-dsn=s"        => \$dbi_dsn,
+	"dbi-username=s"   => \$dbi_username,
+	"dbi-password=s"   => \$dbi_password,
+	"mq-id=s"          => \$mq_id,
 	"stats-interval=i" => \$stat_interval,
 	"background|b"     => \$background,
 	"debug-shell"      => \$debug_shell,
@@ -108,6 +120,9 @@ SERVER OPTIONS:
                           (Default: localhost)
 
 STORAGE OPTIONS:
+  --storage <str>         Specify which overall storage engine to use.  This
+                          affects what other options are value.  (can be
+                          default or dbi)
   --front-store -f <str>  Specify which in-memory storage engine to use for
                           the front-store (can be memory or bigmemory).
   --front-max <size>      How much message body the front-store should cache.
@@ -121,13 +136,19 @@ STORAGE OPTIONS:
   --granularity <secs>    How often (in seconds) Complex should check for
                           messages that have passed the timeout.  
   --[no]uuids             Use (or do not use) UUIDs instead of incrementing
-                          integers for message IDs.  Default: uuids 
+                          integers for message IDs.  (Default: uuids)
   --throttle -T <count>   The number of messages that can be stored at once 
                           before throttling (Default: 2)
   --data-dir <path>       The path to the directory to store data 
                           (Default: /var/lib/perl_mq)
   --log-conf <path>       The path to the log configuration file 
-                          (Default: /etc/perl_mq/log.conf
+                          (Default: /etc/perl_mq/log.conf)
+
+  --dbi-dsn               The database DSN when using --storage dbi
+  --dbi-username          The database username when using --storage dbi
+  --dbi-password          The database password when using --storage dbi
+  --mq-id                 A string uniquely identifying this MQ when more
+                          than one MQ use the DBI database for storage
 
 STATISTICS OPTIONS:
   --stats                 If specified the, statistics information will be 
@@ -213,17 +234,50 @@ else
 	print STDERR "LOGGER: Will send all messages to STDERR\n";
 }
 
-if ($front_store eq 'memory') 
-{
-	$front_store = POE::Component::MessageQueue::Storage::Memory->new();
+if ($storage eq 'default') {
+	if ($front_store eq 'memory') 
+	{
+		$front_store = POE::Component::MessageQueue::Storage::Memory->new();
+	}
+	elsif ($front_store eq 'bigmemory')
+	{
+		$front_store = POE::Component::MessageQueue::Storage::BigMemory->new();
+	}
+	else
+	{
+		die "Unknown front-store specified: $front_store";
+	}
+
+	$storage = POE::Component::MessageQueue::Storage::Default->new(
+		data_dir     => $DATA_DIR,
+		timeout      => $timeout,
+		throttle_max => $throttle_max,
+		front        => $front_store,
+		front_max    => $front_max ? parse_size($front_max) : undef,
+		granularity  => $granularity,
+	);
 }
-elsif ($front_store eq 'bigmemory')
-{
-	$front_store = POE::Component::MessageQueue::Storage::BigMemory->new();
-}
-else
-{
-	die "Unknown front-store specified: $front_store";
+else {
+	if ($storage eq 'dbi')
+	{
+		$storage = POE::Component::MessageQueue::Storage::DBI->new(
+			dsn      => $dbi_dsn,
+			username => $dbi_username,
+			password => $dbi_password,
+			mq_id    => $mq_id,
+		);
+	}
+	else
+	{
+		die "Unknown storage specified: $storage";
+	}
+
+	if ($throttle_max > 0) {
+		$storage = POE::Component::MessageQueue::Storage::Throttled->new(
+			back         => $storage,
+			throttle_max => $throttle_max
+		);
+	}
 }
 
 my $idgen;
@@ -244,14 +298,7 @@ my %args = (
 	port     => $port,
 	hostname => $hostname,
 
-	storage => POE::Component::MessageQueue::Storage::Default->new(
-		data_dir     => $DATA_DIR,
-		timeout      => $timeout,
-		throttle_max => $throttle_max,
-		front        => $front_store,
-		front_max    => $front_max ? parse_size($front_max) : undef,
-		granularity  => $granularity,
-	),
+	storage => $storage,
 
 	pump_frequency => $pump_frequency,
 	idgen => $idgen,

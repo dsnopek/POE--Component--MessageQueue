@@ -24,65 +24,154 @@ use DBI;
 use Exception::Class::DBI;
 use Exception::Class::TryCatch;
 
-has 'dsn' => (
-	is       => 'ro',
-	isa      => 'Str',
-	required => 1,	
-);
+sub dsn      { return $_[0]->servers->[0]->{dsn}; }
+sub username { return $_[0]->servers->[0]->{username}; }
+sub password { return $_[0]->servers->[0]->{password}; }
+sub options  { return $_[0]->servers->[0]->{options}; }
 
-has 'username' => (
-	is       => 'ro',
-	isa      => 'Str',
-	required => 1,	
-);
-
-has 'password' => (
-	is       => 'ro',
-	isa      => 'Str',
-	required => 1,	
-);
-
-has 'options' => (
+has 'servers' => (
 	is => 'ro',
-	isa => 'HashRef',
-	default => sub { {} },
+	isa => 'ArrayRef[HashRef]',
 	required => 1,
+	default => sub { return [] },
+);
+
+has 'mq_id' => (
+	is       => 'ro',
+	isa      => 'Str',
 );
 
 has 'dbh' => (
 	is => 'ro',
 	isa => 'Object',
+	writer => '_dbh',
 	lazy => 1,
-	default => sub {
-		my $self = shift;
-		DBI->connect($self->dsn, $self->username, $self->password, $self->options);
-	},
+	builder => '_connect',
+	init_arg => undef,
 );
+
+has 'cur_server' => (
+	is => 'ro',
+	isa => 'Int',
+	writer => '_cur_server',
+	default => sub { return -1 },
+	init_arg => undef,
+);
+
+# NOT async!
+sub _clear_claims {
+	my ($self) = @_;
+	
+	# Clear all this servers claims
+	my $sql = "UPDATE messages SET in_use_by = NULL";
+	my $mq_id = $self->mq_id;
+	if (defined $mq_id and $mq_id ne '') {
+		$sql .= " WHERE in_use_by LIKE '$mq_id:%'";
+	}
+
+	$self->dbh->do($sql);
+}
+
+around BUILDARGS => sub
+{
+	my ($orig, $class) = @_;
+	my %args = @_;
+
+	if (!defined($args{servers})) {
+		$args{servers} = [{
+			dsn      => $args{dsn},
+			username => $args{username},
+			password => $args{password},
+			options  => $args{options} || {},
+		}];
+	}
+
+	return $class->$orig(%args);
+};
 
 sub BUILD 
 {
 	my ($self, $args) = @_;
-	
-	# Force exception handling
-	$self->options->{'HandleError'} = Exception::Class::DBI->handler,
-	$self->options->{'PrintError'} = 0;
-	$self->options->{'RaiseError'} = 0;
 
-	# This actually makes DBH connect, and makes sure there's no claims left
-	# over from the last time we shut down MQ.
-	$self->dbh->do( "UPDATE messages SET in_use_by = NULL" );
+	foreach my $server (@{$self->servers}) {
+		if (!defined $server->{options}) {
+			$server->{options} = {};
+		}
+
+		# Force exception handling
+		$server->{options}->{'HandleError'} = Exception::Class::DBI->handler,
+		$server->{options}->{'PrintError'} = 0;
+		$server->{options}->{'RaiseError'} = 0;
+	}
+
+	# This actually makes DBH connect
+	$self->_clear_claims();
+}
+
+sub _connect
+{
+	my ($self) = @_;
+
+	my $i = $self->cur_server + 1;
+	my $count = scalar @{$self->servers};
+	my @servers = map { [$_, $self->servers->[$_]] } (0 .. $count-1);
+	my $dbh;
+
+	# re-arrange the server list, so that it starts on $i
+	@servers = (@servers[$i .. $count-1], @servers[0 .. $i-1]);
+
+	while (1) {
+		foreach my $spec ( @servers ) {
+			my ($id, $server) = @$spec;
+
+			$self->log(info => "Connecting to DB: $server->{dsn}");
+			try eval {
+				$dbh = DBI->connect($server->{dsn}, $server->{username}, $server->{password}, $server->{options});
+			};
+			if (my $err = catch) {
+				$self->log(error => "Unable to connect to DB ($server->{dsn}): $err");
+				$dbh = undef;
+			}
+
+			if (defined $dbh) {
+				$self->_cur_server($id);
+				return $dbh;
+			}
+		}
+
+#		if ($self->cur_server == -1) {
+#			# if this is our first connection on MQ startup, we should fail loudly..
+#			$self->log(error => "Unable to connect to database.");
+#			exit 1;
+#		}
+
+		# after trying them all we sleep for 1 second, so that we don't hot-loop and
+		# the system has a chance to get back up.
+		$self->log(error => "Unable to connect to any DB servers.  Waiting 1 second and then retrying...");
+		# this is OK because we are in PoCo::Generic
+		sleep 1;
+	}
 }
 
 sub _wrap
 {
 	my ($self, $name, $action) = @_;
-	try eval {
-		$action->();
-	};
-	if (my $err = catch)
-	{
-		$self->log(error => "Error in $name(): $err");
+	my $trying = 1;
+
+	while ($trying) {
+		try eval {
+			$action->();
+			# it was a success, so no need to try any more
+			$trying = 0;
+		};
+		if (my $err = catch)
+		{
+			$self->log(error => "Error in $name(): $err");
+			$self->log(error => "Attempting to reconnect to DB and try again...");
+			$self->_dbh($self->_connect());
+		}
 	}
+
 	return;
 }
 
@@ -99,7 +188,7 @@ sub _wrap_ids
 }
 
 sub _make_message { 
-	my $h = $_[0];
+	my ($self, $h) = @_;
 	my %map = (
 		id          => 'message_id',
 		destination => 'destination',
@@ -116,8 +205,21 @@ sub _make_message {
 		my $val = $h->{$map{$field}};
 		$args{$field} = $val if (defined $val);
 	}
+	# pull only the client ID out of the in_use_by field
+	my $mq_id = $self->mq_id;
+	if (defined $mq_id and $mq_id ne '' and defined $args{claimant}) {
+		$args{claimant} =~ s/^$mq_id://;
+	}
 	return POE::Component::MessageQueue::Message->new(%args);
 };
+
+sub _in_use_by {
+	my ($self, $client_id) = @_;
+	if (defined $client_id and defined $self->mq_id and $self->mq_id ne '') {
+		return $self->mq_id .":". $client_id;
+	}
+	return $client_id;
+}
 
 # Note:  We explicitly set @_ in all the storage methods in this module,
 # because when we do our tail-calls (goto $method), we don't want to pass them
@@ -143,7 +245,7 @@ sub store
 		});
 		$sth->execute(
 			$m->id,         $m->destination, $m->body, 
-			$m->persistent, $m->claimant, 
+			$m->persistent, $self->_in_use_by($m->claimant), 
 			$m->timestamp,  $m->size,
 			$m->deliver_at
 		);
@@ -161,7 +263,7 @@ sub _get
 		my $sth = $self->dbh->prepare("SELECT * FROM messages	$clause");
 		$sth->execute;
 		my $results = $sth->fetchall_arrayref({});
-		@messages = map _make_message($_), @$results;
+		@messages = map $self->_make_message($_), @$results;
 	});
 	@_ = (\@messages);
 	goto $callback;
@@ -234,10 +336,11 @@ sub empty
 sub claim
 {
 	my ($self, $message_ids, $client_id, $callback) = @_;
+	my $in_use_by = $self->_in_use_by($client_id);
 	$self->_wrap_ids($message_ids, claim => sub {
 		my $where = shift;
 		$self->dbh->do(qq{
-			UPDATE messages SET in_use_by = '$client_id' WHERE $where
+			UPDATE messages SET in_use_by = '$in_use_by' WHERE $where
 		});
 	});
 	@_ = ();
@@ -247,9 +350,10 @@ sub claim
 sub disown_destination
 {
 	my ($self, $destination, $client_id, $callback) = @_;
+	my $in_use_by = $self->_in_use_by($client_id);
 	$self->_wrap(disown_destination => sub {
 		$self->dbh->do(qq{
-			UPDATE messages SET in_use_by = NULL WHERE in_use_by = '$client_id'
+			UPDATE messages SET in_use_by = NULL WHERE in_use_by = '$in_use_by'
 			AND destination = '$destination'
 		});
 	});
@@ -260,9 +364,10 @@ sub disown_destination
 sub disown_all
 {
 	my ($self, $client_id, $callback) = @_;
+	my $in_use_by = $self->_in_use_by($client_id);
 	$self->_wrap(disown_all => sub {
 		$self->dbh->do(qq{
-			UPDATE messages SET in_use_by = NULL WHERE in_use_by = '$client_id'
+			UPDATE messages SET in_use_by = NULL WHERE in_use_by = '$in_use_by'
 		});
 	});
 	@_ = ();
@@ -275,6 +380,7 @@ sub storage_shutdown
 
 	$self->log(alert => 'Shutting down DBI storage engine...');
 
+	$self->_clear_claims();
 	$self->dbh->disconnect();
 	@_ = ();
 	goto $callback if $callback;
@@ -308,10 +414,29 @@ POE::Component::MessageQueue::Storage::Generic::DBI -- A storage engine that use
     storage => POE::Component::MessageQueue::Storage::Generic->new({
       package => 'POE::Component::MessageQueue::Storage::DBI',
       options => [{
+        # if there is only one DB server
         dsn      => $DB_DSN,
         username => $DB_USERNAME,
         password => $DB_PASSWORD,
-        options  => $DB_OPTIONS
+        options  => $DB_OPTIONS,
+
+        # OR, if you have multiple database servers and want to failover
+        # when one goes down.
+
+        #servers => [
+        #  {
+        #    dsn => $DB_SERVER1_DSN,
+        #    username => $DB_SERVER1_USERNAME,
+        #    password => $DB_SERVER1_PASSWORD,
+        #    options  => $DB_SERVER1_OPTIONS
+        #  },
+        #  {
+        #    dsn => $DB_SERVER2_DSN,
+        #    username => $DB_SERVER2_USERNAME,
+        #    password => $DB_SERVER2_PASSWORD,
+        #    options  => $DB_SERVER2_OPTIONS
+        #  },
+        #],
       }],
     })
   });
@@ -370,6 +495,17 @@ it does best: index and look-up information quickly.
 =item password => SCALAR
 
 =item options => SCALAR
+
+=item servers => ARRAYREF
+
+An ARRAYREF of HASHREFs containing dsn, username, password and options.  Use this when you 
+have serveral DB servers and want Storage::DBI to failover when one goes down.
+
+=item mq_id => SCALAR
+
+A string which uniquely identifies this MQ.  This is required when running two MQs which 
+use the same database.  If they don't have unique mq_id values, than one MQ could inadvertently
+clear the claims set by the other, causing messages to be delivered more than once.
 
 =back
 

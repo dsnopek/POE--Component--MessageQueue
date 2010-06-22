@@ -133,6 +133,7 @@ sub store
 
 	my $id = $msg->id;
 	$self->log(info => "Added $id.");
+	@_ = ();
 	goto $callback if $callback;
 }
 
@@ -227,6 +228,7 @@ sub remove
 		}
 	}
 
+	@_ = ();
 	goto $callback if $callback;
 }
 
@@ -236,6 +238,7 @@ sub empty
 
 	%{$self->$_} = () foreach qw(messages claimed unclaimed delayed);
 	$self->message_heap(Heap::Fibonacci->new);
+	@_ = ();
 	goto $callback if $callback;
 }
 
@@ -270,6 +273,7 @@ sub claim
 		$message->claim($client_id);
 		$self->log(info => "Message $id claimed by client $client_id");
 	}
+	@_ = ();
 	goto $callback if $callback;
 }
 
@@ -281,6 +285,7 @@ sub disown_all
 	foreach my $dest (keys %{$self->claimed->{$client_id}}) {
 		$self->disown_destination($dest, $client_id)
 	}
+	@_ = ();
 	goto $callback if $callback;
 }
 
@@ -295,6 +300,7 @@ sub disown_destination
 		$self->unclaimed->{$destination}->add($elem);
 		$self->messages->{$message->id}->{unclaimed} = $elem;
 	}
+	@_ = ();
 	goto $callback if $callback;
 }
 
@@ -302,6 +308,7 @@ sub disown_destination
 sub storage_shutdown
 {
 	my ($self, $callback) = @_;
+	@_ = ();
 	goto $callback if $callback;
 }
 
