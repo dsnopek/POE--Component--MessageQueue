@@ -44,11 +44,18 @@ has 'mq_id' => (
 has 'dbh' => (
 	is => 'ro',
 	isa => 'Object',
+	writer => '_dbh',
 	lazy => 1,
-	default => sub {
-		my $self = shift;
-		DBI->connect($self->dsn, $self->username, $self->password, $self->options);
-	},
+	builder => '_connect',
+	init_arg => undef,
+);
+
+has 'cur_server' => (
+	is => 'ro',
+	isa => 'Int',
+	writer => '_cur_server',
+	default => sub { return -1 },
+	init_arg => undef,
 );
 
 # NOT async!
@@ -101,16 +108,68 @@ sub BUILD
 	$self->_clear_claims();
 }
 
+sub _connect
+{
+	my ($self) = @_;
+
+	my $i = $self->cur_server + 1;
+	my $count = scalar @{$self->servers};
+	my @servers = map { [$_, $self->servers->[$_]] } (0 .. $count-1);
+	my $dbh;
+
+	# re-arrange the server list, so that it starts on $i
+	@servers = (@servers[$i .. $count-1], @servers[0 .. $i-1]);
+
+	while (1) {
+		foreach my $spec ( @servers ) {
+			my ($id, $server) = @$spec;
+
+			$self->log(info => "Connecting to DB: $server->{dsn}");
+			try eval {
+				$dbh = DBI->connect($server->{dsn}, $server->{username}, $server->{password}, $server->{options});
+			};
+			if (my $err = catch) {
+				$self->log(error => "Unable to connect to DB ($server->{dsn}): $err");
+				$dbh = undef;
+			}
+
+			if (defined $dbh) {
+				$self->_cur_server($id);
+				return $dbh;
+			}
+		}
+
+		if ($self->cur_server == -1) {
+			# TODO: if this is our first connection, we should probably fail loudly..
+		}
+
+		# after trying them all we sleep for 1 second, so that we don't hot-loop and
+		# the system has a chance to get back up.
+		$self->log(error => "Unable to connect to any DB servers.  Waiting 1 second and then retrying...");
+		# this is OK because we are in PoCo::Generic
+		sleep 1;
+	}
+}
+
 sub _wrap
 {
 	my ($self, $name, $action) = @_;
-	try eval {
-		$action->();
-	};
-	if (my $err = catch)
-	{
-		$self->log(error => "Error in $name(): $err");
+	my $trying = 1;
+
+	while ($trying) {
+		try eval {
+			$action->();
+			# it was a success, so no need to try any more
+			$trying = 0;
+		};
+		if (my $err = catch)
+		{
+			$self->log(error => "Error in $name(): $err");
+			$self->log(error => "Attempting to reconnect to DB and try again...");
+			$self->_dbh($self->_connect());
+		}
 	}
+
 	return;
 }
 
