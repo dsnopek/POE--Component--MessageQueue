@@ -85,6 +85,12 @@ sub _do_schema
 	}
 }
 
+sub _expand_version
+{
+	my ($version) = @_;
+	return join('.', map { sprintf "%02d", $_ } split('\.', $version));
+}
+
 # Hopefully, this will make adding new changes that break db compatability a
 # little easier.  Change the database schema above, then add a check for your
 # version like the examples below.
@@ -105,7 +111,7 @@ sub _upgrade
 		};
 		# TODO: we need to split the version and pad parts of it with zeros for 
 		# an accurate version comparison.
-		return (!$@) && ($version ge $check_version);
+		return (!$@) && (_expand_version($version) ge _expand_version($check_version));
 	};
 
 	# These should return true if the test passes (no upgrade needed)
@@ -120,7 +126,7 @@ sub _upgrade
 		'0.1.8'  => sub { $meta_version->('0.1.8') },
 		'0.2.3'  => sub { $meta_version->('0.2.3') },
 		'0.2.9'  => sub { $meta_version->('0.2.9') },
-		'0.2.10' => sub { $meta_version->('0.2.9') },
+		'0.2.10' => sub { $meta_version->('0.2.10') },
 	);
 
 	my %repairs = (
