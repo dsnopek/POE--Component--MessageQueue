@@ -44,6 +44,8 @@ lib/POE/Component/MessageQueue/Storage/Generic.pm
 lib/POE/Component/MessageQueue/Storage/Generic/Base.pm
 lib/POE/Component/MessageQueue/Storage/Generic/DBI.pm
 lib/POE/Component/MessageQueue/Storage/Memory.pm
+lib/POE/Component/MessageQueue/Storage/Remote.pm
+lib/POE/Component/MessageQueue/Storage/Remote/Server.pm
 lib/POE/Component/MessageQueue/Storage/Throttled.pm
 lib/POE/Component/MessageQueue/Subscription.pm
 lib/POE/Component/MessageQueue/Topic.pm
@@ -61,6 +63,7 @@ schema/sqlite.sql
 schema/upgrade-0.1.7.sql
 schema/upgrade-0.1.8-sqlite.sql
 schema/upgrade-0.1.8.sql
+schema/upgrade-0.2.10-mysql.sql
 schema/upgrade-0.2.3.sql
 schema/upgrade-0.2.9-mysql.sql
 t/01_load.t
@@ -72,6 +75,8 @@ t/06_complex.t
 t/07_send_disconnect_send.t
 t/08_removed_file.t
 t/09_ack_auto.t
+t/10_cluster_dbi.t
 t/lib/POE/Component/MessageQueue/Test/EngineMaker.pm
+t/lib/POE/Component/MessageQueue/Test/ForkRun.pm
 t/lib/POE/Component/MessageQueue/Test/MQ.pm
 t/lib/POE/Component/MessageQueue/Test/Stomp.pm
