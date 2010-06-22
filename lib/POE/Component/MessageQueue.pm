@@ -517,28 +517,33 @@ POE::Component::MessageQueue - A POE message queue that uses STOMP for its commu
 If you are only interested in running with the recommended storage backend and
 some predetermined defaults, you can use the included command line script:
 
-  POE::Component::MessageQueue version 0.2.9
+  POE::Component::MessageQueue version 0.2.10
   Copyright 2007-2010 David Snopek (http://www.hackyourlife.org)
   Copyright 2007, 2008 Paul Driver <frodwith@gmail.com>
   Copyright 2007 Daisuke Maki <daisuke@endeworks.jp>
-  
+
   mq.pl [--port|-p <num>]               [--hostname|-h <host>]
         [--front-store <str>]           [--front-max <size>] 
         [--granularity <seconds>]       [--nouuids]
         [--timeout|-i <seconds>]        [--throttle|-T <count>]
+		[--dbi-dsn <str>]               [--mq-id <str>]
+		[--dbi-username <str>]          [--dbi-password <str>]
         [--pump-freq|-Q <seconds>]
         [--data-dir <path_to_dir>]      [--log-conf <path_to_file>]
         [--stats-interval|-i <seconds>] [--stats]
         [--pidfile|-p <path_to_file>]   [--background|-b]
         [--crash-cmd <path_to_script>]
         [--debug-shell] [--version|-v]  [--help|-h]
-  
+
   SERVER OPTIONS:
     --port     -p <num>     The port number to listen on (Default: 61613)
     --hostname -h <host>    The hostname of the interface to listen on 
                             (Default: localhost)
-  
+
   STORAGE OPTIONS:
+    --storage <str>         Specify which overall storage engine to use.  This
+                            affects what other options are value.  (can be
+                            default or dbi)
     --front-store -f <str>  Specify which in-memory storage engine to use for
                             the front-store (can be memory or bigmemory).
     --front-max <size>      How much message body the front-store should cache.
@@ -552,29 +557,35 @@ some predetermined defaults, you can use the included command line script:
     --granularity <secs>    How often (in seconds) Complex should check for
                             messages that have passed the timeout.  
     --[no]uuids             Use (or do not use) UUIDs instead of incrementing
-                            integers for message IDs.  Default: uuids 
+                            integers for message IDs.  (Default: uuids)
     --throttle -T <count>   The number of messages that can be stored at once 
                             before throttling (Default: 2)
     --data-dir <path>       The path to the directory to store data 
                             (Default: /var/lib/perl_mq)
     --log-conf <path>       The path to the log configuration file 
-                            (Default: /etc/perl_mq/log.conf
-  
+                            (Default: /etc/perl_mq/log.conf)
+
+    --dbi-dsn <str>         The database DSN when using --storage dbi
+    --dbi-username <str>    The database username when using --storage dbi
+    --dbi-password <str>    The database password when using --storage dbi
+    --mq-id <str>           A string uniquely identifying this MQ when more
+                            than one MQ use the DBI database for storage
+
   STATISTICS OPTIONS:
     --stats                 If specified the, statistics information will be 
                             written to $DATA_DIR/stats.yml
     --stats-interval <secs> Specifies the number of seconds to wait before 
                             dumping statistics (Default: 10)
-  
+
   DAEMON OPTIONS:
     --background -b         If specified the script will daemonize and run in the
                             background
     --pidfile    -p <path>  The path to a file to store the PID of the process
-  
+
     --crash-cmd  <path>     The path to a script to call when crashing.
                             A stacktrace will be printed to the script's STDIN.
                             (ex. 'mail root@localhost')
-  
+
   OTHER OPTIONS:
     --debug-shell           Run with POE::Component::DebugShell
     --version    -v         Show the current version.
