@@ -24,29 +24,16 @@ use DBI;
 use Exception::Class::DBI;
 use Exception::Class::TryCatch;
 
-has 'dsn' => (
-	is       => 'ro',
-	isa      => 'Str',
-	required => 1,	
-);
+sub dsn      { return $_[0]->servers->[0]->{dsn}; }
+sub username { return $_[0]->servers->[0]->{username}; }
+sub password { return $_[0]->servers->[0]->{password}; }
+sub options  { return $_[0]->servers->[0]->{options}; }
 
-has 'username' => (
-	is       => 'ro',
-	isa      => 'Str',
-	required => 1,	
-);
-
-has 'password' => (
-	is       => 'ro',
-	isa      => 'Str',
-	required => 1,	
-);
-
-has 'options' => (
+has 'servers' => (
 	is => 'ro',
-	isa => 'HashRef',
-	default => sub { {} },
+	isa => 'ArrayRef[HashRef]',
 	required => 1,
+	default => sub { return [] },
 );
 
 has 'mq_id' => (
@@ -78,14 +65,37 @@ sub _clear_claims {
 	$self->dbh->do($sql);
 }
 
+around BUILDARGS => sub
+{
+	my ($orig, $class) = @_;
+	my %args = @_;
+
+	if (!defined($args{servers})) {
+		$args{servers} = [{
+			dsn      => $args{dsn},
+			username => $args{username},
+			password => $args{password},
+			options  => $args{options} || {},
+		}];
+	}
+
+	return $class->$orig(%args);
+};
+
 sub BUILD 
 {
 	my ($self, $args) = @_;
-	
-	# Force exception handling
-	$self->options->{'HandleError'} = Exception::Class::DBI->handler,
-	$self->options->{'PrintError'} = 0;
-	$self->options->{'RaiseError'} = 0;
+
+	foreach my $server (@{$self->servers}) {
+		if (!defined $server->{options}) {
+			$server->{options} = {};
+		}
+
+		# Force exception handling
+		$server->{options}->{'HandleError'} = Exception::Class::DBI->handler,
+		$server->{options}->{'PrintError'} = 0;
+		$server->{options}->{'RaiseError'} = 0;
+	}
 
 	# This actually makes DBH connect
 	$self->_clear_claims();
@@ -343,10 +353,29 @@ POE::Component::MessageQueue::Storage::Generic::DBI -- A storage engine that use
     storage => POE::Component::MessageQueue::Storage::Generic->new({
       package => 'POE::Component::MessageQueue::Storage::DBI',
       options => [{
+        # if there is only one DB server
         dsn      => $DB_DSN,
         username => $DB_USERNAME,
         password => $DB_PASSWORD,
-        options  => $DB_OPTIONS
+        options  => $DB_OPTIONS,
+
+        # OR, if you have multiple database servers and want to failover
+        # when one goes down.
+
+        #servers => [
+        #  {
+        #    dsn => $DB_SERVER1_DSN,
+        #    username => $DB_SERVER1_USERNAME,
+        #    password => $DB_SERVER1_PASSWORD,
+        #    options  => $DB_SERVER1_OPTIONS
+        #  },
+        #  {
+        #    dsn => $DB_SERVER2_DSN,
+        #    username => $DB_SERVER2_USERNAME,
+        #    password => $DB_SERVER2_PASSWORD,
+        #    options  => $DB_SERVER2_OPTIONS
+        #  },
+        #],
       }],
     })
   });
@@ -405,6 +434,11 @@ it does best: index and look-up information quickly.
 =item password => SCALAR
 
 =item options => SCALAR
+
+=item servers => ARRAYREF
+
+An ARRAYREF of HASHREFs containing dsn, username, password and options.  Use this when you 
+have serveral DB servers and want Storage::DBI to failover when one goes down.
 
 =item mq_id => SCALAR
 
