@@ -1,5 +1,5 @@
 
-== 0.2.10 -- 06/??/2010 ==
+== 0.2.10 -- 07/20/2010 ==
 
  * Added Paul Driver's Storage::Remote (a remote front-store for a clustered MQ)
  * Multiple Storage::DBI engines in seperate MQ's can now share the same DB if they are
