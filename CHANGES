@@ -1,5 +1,15 @@
 
-== 0.2.9 -- 06/??/2010 ==
+== 0.2.10 -- 07/20/2010 ==
+
+ * Added Paul Driver's Storage::Remote (a remote front-store for a clustered MQ)
+ * Multiple Storage::DBI engines in seperate MQ's can now share the same DB if they are
+   given unique mq_id's.
+ * Storage::DBI can now take a list of DB servers and will attempt to failover to another
+   one when the current one goes down.
+ * mq.pl can now be used to run an MQ based on Storage::DBI.
+ * DB schemas changed.
+
+== 0.2.9 -- 06/05/2010 ==
 
  * A fix to bug #49666 which affected the order of messages (Thanks Naveed Massjouni!)
  * Depends on POE::Filter::Stomp 0.04 or later (fixes issues with Windows-style newlines)

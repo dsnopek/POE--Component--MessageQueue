@@ -1,5 +1,5 @@
 #
-# Copyright 2007, 2008, 2009 David Snopek <dsnopek@gmail.com>
+# Copyright 2007-2010 David Snopek <dsnopek@gmail.com>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -171,7 +171,7 @@ Probably.
 
 =head1 AUTHORS
 
-Copyright 2007, 2008, 2009 David Snopek.
+Copyright 2007-2010 David Snopek.
 
 =cut
 

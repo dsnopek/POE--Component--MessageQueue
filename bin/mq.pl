@@ -104,9 +104,12 @@ sub usage
 	my $X = ' ' x (length $0);
     print <<"ENDUSAGE";
 $0 [--port|-p <num>]               [--hostname|-h <host>]
+$X [--storage <str>]
 $X [--front-store <str>]           [--front-max <size>] 
 $X [--granularity <seconds>]       [--nouuids]
 $X [--timeout|-i <seconds>]        [--throttle|-T <count>]
+$X [--dbi-dsn <str>]               [--mq-id <str>]
+$X [--dbi-username <str>]          [--dbi-password <str>]
 $X [--pump-freq|-Q <seconds>]
 $X [--data-dir <path_to_dir>]      [--log-conf <path_to_file>]
 $X [--stats-interval|-i <seconds>] [--stats]
@@ -144,10 +147,10 @@ STORAGE OPTIONS:
   --log-conf <path>       The path to the log configuration file 
                           (Default: /etc/perl_mq/log.conf)
 
-  --dbi-dsn               The database DSN when using --storage dbi
-  --dbi-username          The database username when using --storage dbi
-  --dbi-password          The database password when using --storage dbi
-  --mq-id                 A string uniquely identifying this MQ when more
+  --dbi-dsn <str>         The database DSN when using --storage dbi
+  --dbi-username <str>    The database username when using --storage dbi
+  --dbi-password <str>    The database password when using --storage dbi
+  --mq-id <str>           A string uniquely identifying this MQ when more
                           than one MQ use the DBI database for storage
 
 STATISTICS OPTIONS:
