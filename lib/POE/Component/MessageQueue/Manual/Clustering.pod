@@ -7,9 +7,9 @@ POE::Component::MessageQueue::Manual::Clustering - Instructions for setting up c
 =head1 DESCRIPTION
 
 PoCo::MQ now supports running multiple MQs (possibly on different machines) which share the
-same DBI backstore.  If you these MQs behind a reverse-proxy/load-balancer and write your clients
-to reconnect when a connection is broken, you will have automatic fail-over if one of the MQs
-goes down!
+same DBI back-store.  If you put these MQs behind a reverse-proxy/load-balancer and write your
+clients to reconnect when a connection is broken, you will have automatic fail-over if one of
+the MQs goes down!
 
 =head1 EXAMPLE
 
@@ -134,72 +134,70 @@ Your mileage may vary when running on your systems on your network.  Please test
   use strict;
 
   my $QUEUE_NAME = "/queue/example";
-
   my $HOSTNAME   = "localhost";
   my $PORT       = 61613;
-
   my $USERNAME   = 'producer';
   my $PASSWORD   = 'test';
-  
+
   sub main
   {
     my $stomp;
-  
+ 
     my $connect = sub {
-        while (1) {
-            eval {
-                $stomp = Net::Stomp->new({
-                    hostname => $HOSTNAME,
-                    port     => $PORT,
-                });
-                $stomp->connect({
-                    login    => $USERNAME,
-                    passcode => $PASSWORD,
-                });
-                $stomp->subscribe({
-                    destination => $QUEUE_NAME,
-                    ack         => 'client',
-                });
-            };
-            if (!$@) {
-                # If no Perl exception was thrown, return!  We are connected. 
-                return;
-            }
-  
-            # Otherwise, wait a second and try again.
-            print STDERR "Unable to connect to MQ!  Sleeping 1 second then trying again...\n";
-            sleep 1;
+      while (1) {
+        eval {
+          $stomp = Net::Stomp->new({
+            hostname => $HOSTNAME,
+            port     => $PORT,
+          });
+          $stomp->connect({
+            login    => $USERNAME,
+            passcode => $PASSWORD,
+          });
+          $stomp->subscribe({
+            destination => $QUEUE_NAME,
+            ack         => 'client',
+          });
+        };
+        if (!$@) {
+          # If no Perl exception was thrown, return!  We are connected. 
+          return;
         }
+
+        # Otherwise, wait a second and try again.
+        print STDERR "Unable to connect to MQ!  Sleeping 1 second then trying again...\n";
+        sleep 1;
+      }
     };
     $connect->();
-  
+
     my $receive = sub {
-        my $frame;
-        while (1) {
-            eval {
-                $frame = $stomp->receive_frame;
-            };
-            if (!$@) {
-                # If no Perl exception was thrown, return our $frame!
-                return $frame;
-            }
-  
-            # Otherwise, wait a second, reconnect and then try again.
-            print STDERR "Connection to MQ broken!  Sleeping 1 second then attempting to reconnect...\n";
-            sleep 1;
-            $connect->();
+      my $frame;
+      while (1) {
+        eval {
+          $frame = $stomp->receive_frame;
+        };
+        if (!$@) {
+          # If no Perl exception was thrown, return our $frame!
+          return $frame;
         }
+
+        # Otherwise, wait a second, reconnect and then try again.
+        print STDERR "Connection to MQ broken!  Sleeping 1 second then attempting to reconnect...\n";
+        sleep 1;
+        $connect->();
+      }
     };
-  
+ 
     while (1) {
-        my $frame = $receive->();
+      my $frame = $receive->();
 
-        # TODO: Do something useful with this frame!!
-        print "received:". $frame->body ."\n";
+      # TODO: Do something useful with this frame!!
+      print "received:". $frame->body ."\n";
 
-        $stomp->ack({ frame => $frame });
+      $stomp->ack({ frame => $frame });
     }
-  
+ 
     $stomp->disconnect();
   }
   main;
@@ -209,15 +207,13 @@ Your mileage may vary when running on your systems on your network.  Please test
   use Net::Stomp;
   use Data::Random qw/rand_chars/;
   use strict;
-  
+ 
   my $QUEUE_NAME = "/queue/example";
-
   my $HOSTNAME   = "localhost";
   my $PORT       = 61613;
-
   my $USERNAME   = 'producer';
   my $PASSWORD   = 'test';
-  
+ 
   # If we try to send a message on a connection after the MQ on the other side has died,
   # we received SIGPIPE.  It would be awesome if instead of receiving a signal, we got
   # an exception from $stomp->send(), but this is unfortunately how it is...
@@ -232,75 +228,75 @@ Your mileage may vary when running on your systems on your network.  Please test
     my $stomp;
   
     my $connect = sub {
-        while (1) {
-            eval {
-                $stomp = Net::Stomp->new({
-                    hostname => $HOSTNAME,
-                    port     => $PORT,
-                });
-                $stomp->connect({
-                    login    => $USERNAME,
-                    passcode => $PASSWORD,
-                });
-            };
-            if (!$@) {
-                # If no Perl exception was thrown, return!  We are connected. 
-                return;
-            }
-  
-            # Otherwise, wait a second and try again.
-            print STDERR "Unable to connect to MQ!  Sleeping 1 second then trying again...\n";
-            sleep 1;
+      while (1) {
+        eval {
+          $stomp = Net::Stomp->new({
+            hostname => $HOSTNAME,
+            port     => $PORT,
+          });
+          $stomp->connect({
+            login    => $USERNAME,
+            passcode => $PASSWORD,
+          });
+        };
+        if (!$@) {
+          # If no Perl exception was thrown, return!  We are connected. 
+          return;
         }
+
+        # Otherwise, wait a second and try again.
+        print STDERR "Unable to connect to MQ!  Sleeping 1 second then trying again...\n";
+        sleep 1;
+      }
     };
     $connect->();
-  
+ 
     my $send = sub {
-        my ($message) = @_;
+      my ($message) = @_;
 
-        # This requests a reciept from the server.  This is very important!  Without this, the
-        # server won't let us know if the message was received or not.
-        $message->{receipt} = join('', rand_chars(set => 'alpha', size => 10)),
-  
-        while (1) {
-            $sigpipe = 0;
-            eval {
-                $stomp->send({ %$message });
-            };
-            if (!$@ && !$sigpipe) {
-                # No Perl exceptions and no SIGPIPE, but we can't advance until we get a receipt!
-                # Wait 5 seconds for one, if it doesn't come, then we need to reconnect and try again.
+      # This requests a reciept from the server.  This is very important!  Without this, the
+      # server won't let us know if the message was received or not.
+      $message->{receipt} = join('', rand_chars(set => 'alpha', size => 10)),
 
-                my $receipt;
-                eval {
-                    $receipt = $stomp->receive_frame(5);
-                };
-                if (!$@ && $receipt && $receipt->headers->{'receipt-id'} eq $message->{'receipt'}) {
-                    # No Perl exception, we got a receipt and it matchs the message sent!
-                    # "return" triumphantly!
-                    return;
-                }
-            }
-  
-            # Otherwise, wait a second, reconnect and then try again.
-            print STDERR "Connection to MQ broken!  Sleeping 1 second then attempting to reconnect...\n";
-            sleep 1;
-            $connect->();
+      while (1) {
+        $sigpipe = 0;
+        eval {
+          $stomp->send({ %$message });
         };
+        if (!$@ && !$sigpipe) {
+          # No Perl exceptions and no SIGPIPE, but we can't advance until we get a receipt!
+          # Wait 5 seconds for one, if it doesn't come, then we need to reconnect and try again.
+
+          my $receipt;
+          eval {
+            $receipt = $stomp->receive_frame(5);
+          };
+          if (!$@ && $receipt && $receipt->headers->{'receipt-id'} eq $message->{'receipt'}) {
+            # No Perl exception, we got a receipt and it matchs the message sent!
+            # "return" triumphantly!
+            return;
+          }
+        }
+
+        # Otherwise, wait a second, reconnect and then try again.
+        print STDERR "Connection to MQ broken!  Sleeping 1 second then attempting to reconnect...\n";
+        sleep 1;
+        $connect->();
+      };
     };
-  
+ 
     # Send messages forever...
     while (1) {
-        # TODO: construct a real message!
-        my $data = "test";
+      # TODO: construct a real message!
+      my $data = "test";
 
-        $send->({
-            destination => $QUEUE_NAME,
-            body        => $data,
-            persistent  => 'true',
-        });
+      $send->({
+        destination => $QUEUE_NAME,
+        body        => $data,
+        persistent  => 'true',
+      });
     }
-  
+ 
     $stomp->disconnect();
   }
   main;
