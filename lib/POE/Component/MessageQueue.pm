@@ -18,7 +18,7 @@
 package POE::Component::MessageQueue;
 use Moose;
 
-our $VERSION = '0.2.10';
+our $VERSION = '0.2.11';
 
 use POE 0.38;
 use POE::Component::Server::Stomp;

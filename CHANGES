@@ -1,4 +1,8 @@
 
+== 0.2.11 -- 08/??/2010 ==
+
+ * Unit tests and documentation for the clustering support added in the last release.
+
 == 0.2.10 -- 07/20/2010 ==
 
  * Added Paul Driver's Storage::Remote (a remote front-store for a clustered MQ)
