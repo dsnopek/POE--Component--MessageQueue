@@ -4,128 +4,61 @@ use warnings;
 use lib 't/lib';
 use POE::Component::MessageQueue::Test::Stomp;
 use POE::Component::MessageQueue::Test::MQ;
-use POE::Component::MessageQueue::Storage::DBI;
-use File::Path;
+use POE::Component::MessageQueue::Test::DBI;
 use Test::More;
 use Test::Exception;
 use DBI;
 
-# Make sure that there are no conflicts between in_use_by values when two
-# seperate MQs are using Storage::DBI pointing at the same database.
-
-# This test requires an external (not SQLite) database to work.  The user must setup
-# this database in advance of the test or it will be skipped.
+# Make sure that sending messages to one message queue will be received by clients
+# on the other message queue.
 
 BEGIN {
-	if (!defined $ENV{'POCOMQ_TEST_DSN'}) {
-		plan skip_all => "This test requires an external database (with correct tables already defined).  Set the following environment variables to cause the test to run: POCOMQ_TEST_DSN, POCOMQ_TEST_USERNAME, POCOMQ_TEST_PASSWORD";
-		exit 0;
-	}
+	check_environment_vars_dbi();
 }
 
-my $dsn = $ENV{'POCOMQ_TEST_DSN'};
-my $username = $ENV{'POCOMQ_TEST_USERNAME'};
-my $password = $ENV{'POCOMQ_TEST_PASSWORD'};
+clear_messages_dbi();
 
-# clean database
-DBI->connect($dsn, $username, $password)
-   ->do("DELETE FROM messages");
+plan tests => 11; 
 
-sub storage_factory {
-	my %args1 = @_;
-	my $storage = sub {
-		my %args2 = @_;
-		return POE::Component::MessageQueue::Storage::DBI->new(
-			dsn      => $dsn,
-			username => $username,
-			password => $password,
-			%args1,
-			%args2,
-		);
-	};
-}
-
-plan tests => 19; 
-
-my ($pid1, $pid2);
-
-$pid1 = start_mq(
-	storage => storage_factory(mq_id => 'mq1'),
+my $pid1 = start_mq(
+	storage        => storage_factory_dbi(mq_id => 'mq1'),
+	pump_frequency => 1
 );
-sleep 2;
 ok($pid1, "MQ1 started");
-
-sub start_mq2 {
-	$pid2 = start_mq(
-		storage => storage_factory(mq_id => 'mq2'),
-		port => '8100',
-	);
-	sleep 2;
-	ok($pid2, "MQ2 started");
-}
-start_mq2();
-
-# This test works by checking if one MQ will incorrectly clear the claims set by
-# the other MQ.
-
-my ($client1a, $client1b, $client2);
-my $message;
-
-# So, first we have one client (id 1) connect to MQ1, subscribe and then send a
-# message.  This will get it claimed immediately, but we won't ACK.
-
-ok($client1a = stomp_connect(), 'MQ1: client 1 connected');
-
-lives_ok {
-	stomp_subscribe($client1a);
-	stomp_send($client1a);
-} 'MQ1: client 1 subscribed and sent message';
-
-ok($message = $client1a->receive_frame(), 'MQ1: client 1 claimed message');
-is($message->body, 'arglebargle', 'Message looks correct');
 sleep 2;
 
-# Next, connect to MQ2 (will also have id 1).  First, we try subscribing and un
-# subscribing to the queue (will cause disown_destination() in the Storage API)
-ok($client1b = stomp_connect(8100),  'MQ2: client 1 connects');
-lives_ok {
-	stomp_subscribe($client1b);
-	stomp_unsubscribe($client1b);
-} 'MQ2: client 1 subscribes and unsubscribes';
+my $pid2 = start_mq(
+	storage        => storage_factory_dbi(mq_id => 'mq2'),
+	pump_frequency => 1,
+	port           => '8100'
+);
+ok($pid2, "MQ2 started");
+sleep 2;
 
-# We test that the claim hasn't been cleared by connecting to MQ1 again and 
-# subscribing to the queue.  If the message isn't redelivered, then we are good.
+# Begin test!
+
+my ($client1, $client2, $message);
+
+ok($client1 = stomp_connect(),     'MQ1: client connected');
+ok($client2 = stomp_connect(8100), 'MQ2: client connected');
+
 lives_ok {
-	$client2 = stomp_connect();
 	stomp_subscribe($client2);
-} 'MQ1: client 2 subscribes';
-is($client2->can_read({ timeout => 10 }), 0, 'message isn\'t re-delivered');
-$client2->disconnect();
+} 'MQ2: client subscribed';
 
-# Next, we try disconnecting from MQ2 which will cause disown_all() in the
-# Storage API, to see that this also doesn't clear the claim.
-lives_ok { $client1b->disconnect() } 'MQ2: client 1 disconnects';
-
-# Test again to see if the message is redelivered
 lives_ok {
-	$client2 = stomp_connect();
-	stomp_subscribe($client2);
-} 'MQ1: client 2 subscribes';
-is($client2->can_read({ timeout => 10 }), 0, 'message isn\'t re-delivered');
-$client2->disconnect();
+	stomp_send($client1);
+} 'MQ1: client sent message';
 
-# Finally, we try shutting down and restarting MQ2, which should attempt to 
-# clear all of its old claims.
-ok(stop_fork($pid2), 'MQ2 shut down.');
-start_mq2();
+# check that it crossed the message queues
+my $can_read = $client2->can_read({ timeout => 10 });
+ok($can_read, 'MQ2: message is ready for delivery');
+SKIP: {
+	skip 'test will hang if we try to receive a frame and none is there', 2 unless $can_read;
 
-# And test one last time...
-lives_ok {
-	$client2 = stomp_connect();
-	stomp_subscribe($client2);
-} 'MQ1: client 2 subscribes';
-is($client2->can_read({ timeout => 10 }), 0, 'message isn\'t re-delivered');
-$client2->disconnect();
+	ok($message = $client2->receive_frame(), 'MQ2: client claimed message');
+	is($message->body, 'arglebargle', 'MQ2: message looks correct');
+}
 
 # Stop both MQ's, we're done
 ok(stop_fork($pid1), 'MQ1 shut down.');

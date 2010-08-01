@@ -47,6 +47,7 @@ lib/POE/Component/MessageQueue/Storage/Memory.pm
 lib/POE/Component/MessageQueue/Storage/Remote.pm
 lib/POE/Component/MessageQueue/Storage/Remote/Server.pm
 lib/POE/Component/MessageQueue/Storage/Throttled.pm
+lib/POE/Component/MessageQueue/Manual/Clustering.pod
 lib/POE/Component/MessageQueue/Subscription.pm
 lib/POE/Component/MessageQueue/Topic.pm
 lib/POE/Component/Server/Stomp.pm
