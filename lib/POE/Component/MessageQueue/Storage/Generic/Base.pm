@@ -19,7 +19,7 @@ package POE::Component::MessageQueue::Storage::Generic::Base;
 use Moose::Role;
 
 # Exclude log cause we have our own - we want to call our setted postback.
-with 'POE::Component::MessageQueue::Storage' => { excludes => 'log' };
+with 'POE::Component::MessageQueue::Storage' => { -excludes => 'log' };
 
 sub log
 {

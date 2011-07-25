@@ -33,7 +33,7 @@ requires 'YAML';
 requires 'Data::UUID';
 requires 'Heap' => 0.80;
 requires 'Heap::Fibonacci' => 0.80;
-requires 'Moose';
+requires 'Moose' => 2.0201;
 requires 'MooseX::AttributeHelpers' => 0.08;
 requires 'MooseX::MultiInitArg';
 
