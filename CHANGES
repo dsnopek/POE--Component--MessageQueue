@@ -1,5 +1,5 @@
 
-== 0.2.11 -- 07/26/2010 ==
+== 0.2.11 -- 07/26/2011 ==
 
  * Unit tests and documentation for the clustering support added in the last release.
  * Updated to work with the latest Moose (2.0201)
