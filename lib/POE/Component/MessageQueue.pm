@@ -1041,6 +1041,12 @@ We prefer that contributions come in the form of a published Bazaar branch with 
 changes.  This helps facilitate the back-and-forth in the review process to get
 any new code merged into the main branch.
 
+There is also an official git mirror hosted on GitHub here:
+
+L<https://github.com/dsnopek/POE--Component--MessageQueue>
+
+We will also accept contributions via git and GitHub pull requests!
+
 =head1 FUTURE
 
 The goal of this module is not to support every possible feature but rather to
