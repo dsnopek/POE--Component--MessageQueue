@@ -1,4 +1,9 @@
 
+== 0.2.12 -- 07/28/2011 ==
+
+ * Added missing test which caused last release to fail to install (Thanks to Naveed
+   Massjouni!)
+
 == 0.2.11 -- 07/26/2011 ==
 
  * Unit tests and documentation for the clustering support added in the last release.

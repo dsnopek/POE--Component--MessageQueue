@@ -18,7 +18,7 @@
 package POE::Component::MessageQueue;
 use Moose;
 
-our $VERSION = '0.2.11';
+our $VERSION = '0.2.12';
 
 use POE 0.38;
 use POE::Component::Server::Stomp;
@@ -517,8 +517,8 @@ POE::Component::MessageQueue - A POE message queue that uses STOMP for its commu
 If you are only interested in running with the recommended storage backend and
 some predetermined defaults, you can use the included command line script:
 
-  POE::Component::MessageQueue version 0.2.10
-  Copyright 2007-2010 David Snopek (http://www.hackyourlife.org)
+  POE::Component::MessageQueue version 0.2.12
+  Copyright 2007-2011 David Snopek (http://www.hackyourlife.org)
   Copyright 2007, 2008 Paul Driver <frodwith@gmail.com>
   Copyright 2007 Daisuke Maki <daisuke@endeworks.jp>
 
@@ -1156,7 +1156,7 @@ thousands of large messages daily and we experience very few issues.
 
 =head1 AUTHORS
 
-Copyright 2007-2010 David Snopek (L<http://www.hackyourlife.org>)
+Copyright 2007-2011 David Snopek (L<http://www.hackyourlife.org>)
 
 Copyright 2007, 2008 Paul Driver <frodwith@gmail.com>
 

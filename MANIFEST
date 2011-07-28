@@ -77,6 +77,7 @@ t/07_send_disconnect_send.t
 t/08_removed_file.t
 t/09_ack_auto.t
 t/10_cluster_dbi.t
+t/lib/POE/Component/MessageQueue/Test/DBI.pm
 t/lib/POE/Component/MessageQueue/Test/EngineMaker.pm
 t/lib/POE/Component/MessageQueue/Test/ForkRun.pm
 t/lib/POE/Component/MessageQueue/Test/MQ.pm
