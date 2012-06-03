@@ -22,8 +22,7 @@ use MooseX::MultiInitArg;
 
 # These guys just call a method on both front and back stores and have a
 # simple no-arg completion callback.  No reason to write them all!
-foreach my $method qw(empty disown_destination disown_all)
-{
+foreach my $method (qw(empty disown_destination disown_all)) {
 	__PACKAGE__->meta->add_method($method, sub {
 		my $self = shift;
 		my $last = pop;

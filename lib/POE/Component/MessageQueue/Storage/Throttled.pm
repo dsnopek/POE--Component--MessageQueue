@@ -42,7 +42,7 @@ sub BUILD
 {
 	my $self = shift;
 	$self->children({THROTTLED => $self->front, STORAGE => $self->back});
-	$self->add_names qw(THROTTLED);
+	$self->add_names('THROTTLED');
 }
 
 sub _backstore_ready

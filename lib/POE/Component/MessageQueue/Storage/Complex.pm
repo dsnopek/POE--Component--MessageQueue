@@ -230,7 +230,7 @@ sub BUILD
 		},
 	);
 	$self->children({FRONT => $self->front, BACK => $self->back});
-	$self->add_names qw(COMPLEX);
+	$self->add_names('COMPLEX');
 }
 
 sub store
