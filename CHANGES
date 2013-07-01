@@ -1,7 +1,11 @@
 
-== 0.2.14 -- 06/30/2013 ==
+== 0.3000 -- 07/01/2013 ==
 
- * Migrated to Dist::Zilla
+ * The 'persistent' header now accepts '1' in addition to 'true'.
+ * Fixed the 'Use of uninitialized value in string eq' warnings that got
+   printed for each message that had no 'persistent' header.
+ * Migrated to Dist::Zilla.
+ * Updated to a more Perl toolchain friendly versioning scheme.
 
 == 0.2.13 -- 06/03/2012 ==
 

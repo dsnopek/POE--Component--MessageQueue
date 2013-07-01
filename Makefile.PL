@@ -9,7 +9,7 @@ use ExtUtils::MakeMaker 6.30;
 
 
 my %WriteMakefileArgs = (
-  "ABSTRACT" => "A Perl message queue based on POE that uses STOMP as its communication protocol.",
+  "ABSTRACT" => "A STOMP based message queue server",
   "AUTHOR" => "David Snopek (http://www.hackyourlife.org), Paul Driver <frodwith\@gmail.com>, Daisuke Maki <daisuke\@endeworks.jp>",
   "BUILD_REQUIRES" => {},
   "CONFIGURE_REQUIRES" => {
@@ -52,7 +52,7 @@ my %WriteMakefileArgs = (
     "YAML" => 0
   },
   "TEST_REQUIRES" => {},
-  "VERSION" => "0.2.14",
+  "VERSION" => "0.3000",
   "test" => {
     "TESTS" => "t/*.t"
   }

@@ -20,6 +20,7 @@ package POE::Component::MessageQueue::Queue;
 use POE;
 use POE::Session;
 use Moose;
+use MooseX::AttributeHelpers;
 
 with qw(POE::Component::MessageQueue::Destination);
 

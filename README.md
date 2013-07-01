@@ -1,6 +1,6 @@
 # NAME
 
-POE::Component::MessageQueue - A Perl message queue based on POE that uses STOMP as its communication protocol.
+POE::Component::MessageQueue - A STOMP based message queue server
 
 # USAGE
 
