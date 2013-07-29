@@ -11,6 +11,8 @@ use IO::Dir qw(DIR_UNLINK);
 use Test::Exception;
 use Test::More tests => 10;
 
+plan skip_all => 'Tests hang on Windows :(' if $^O eq 'MSWin32';
+
 # 1) Start MQ with Filesystem
 # 2) send some messages
 # 3) shutdown MQ
