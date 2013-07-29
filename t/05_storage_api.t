@@ -7,6 +7,8 @@ use POE::Session;
 use YAML; # for Dump!
 use lib 't/lib';
 
+plan skip_all => 'Tests hang on Windows :(' if $^O eq 'MSWin32';
+
 # We -will- get recursion warnings the way these tests are written - if you
 # think there may be a bug involving runaway recursion, comment this out.
 $SIG{__WARN__} = sub {

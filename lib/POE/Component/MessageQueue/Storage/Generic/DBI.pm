@@ -58,6 +58,12 @@ has 'cur_server' => (
 	init_arg => undef,
 );
 
+has max_retries => (
+    is      => 'ro',
+    isa     => 'Int',
+    default => 10,
+);
+
 # NOT async!
 sub _clear_claims {
 	my ($self) = @_;
@@ -153,26 +159,31 @@ sub _connect
 	}
 }
 
-sub _wrap
-{
-	my ($self, $name, $action) = @_;
-	my $trying = 1;
+sub _wrap {
+    my ($self, $name, $action) = @_;
+    my $trying = 1;
+    my $max_retries = $self->max_retries;
 
-	while ($trying) {
-		try eval {
-			$action->();
-			# it was a success, so no need to try any more
-			$trying = 0;
-		};
-		if (my $err = catch)
-		{
-			$self->log(error => "Error in $name(): $err");
-			$self->log(error => "Attempting to reconnect to DB and try again...");
-			$self->_dbh($self->_connect());
-		}
-	}
+    while ($trying++) {
+        if ($trying >= $max_retries) {
+            $self->log(error =>
+                "Giving up on $name() after trying $max_retries times");
+            return 0;
+        }
+        try eval {
+            $action->();
+            # it was a success, so no need to try any more
+            $trying = 0;
+        };
+        if (my $err = catch)
+        {
+            $self->log(error => "Error in $name(): $err");
+            $self->log(error => "Going to reconnect to DB to try again...");
+            $self->_dbh($self->_connect());
+        }
+    }
 
-	return;
+    return 1;
 }
 
 sub _make_where
@@ -225,8 +236,7 @@ sub _in_use_by {
 # because when we do our tail-calls (goto $method), we don't want to pass them
 # anything unneccessary, particulary $callbacks.
 
-sub store
-{
+sub store {
 	my ($self, $m, $callback) = @_;
 
 	$self->_wrap(store => sub {
@@ -249,7 +259,8 @@ sub store
 			$m->timestamp,  $m->size,
 			$m->deliver_at
 		);
-	});
+    }) or $self->log(error => sprintf
+        "Could not store message '%s' to queue %s", $m->body, $m->destination);
 
 	@_ = ();
 	goto $callback if $callback;

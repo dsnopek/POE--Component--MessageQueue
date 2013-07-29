@@ -25,15 +25,15 @@ has parent => (
 );
 
 has subscriptions => (
-	metaclass => 'Collection::Hash',
-	is        => 'rw',
-	isa       => 'HashRef[POE::Component::MessageQueue::Subscription]',
-	default   => sub { {} },
-	provides  => {
-		'set'    => 'set_subscription',
-		'get'    => 'get_subscription',
-		'delete' => 'delete_subscription',
-		'values' => 'all_subscriptions',
+	is       => 'rw',
+	isa      => 'HashRef[POE::Component::MessageQueue::Subscription]',
+	default  => sub { {} },
+	traits   => ['Hash'],
+	handles  => {
+		'set_subscription'    => 'set',
+		'get_subscription'    => 'get',
+		'delete_subscription' => 'delete',
+		'all_subscriptions'   => 'values',
 	},
 );
 
