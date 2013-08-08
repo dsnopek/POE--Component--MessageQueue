@@ -1,4 +1,9 @@
 
+== 0.3001 -- 08/08/2013 ==
+
+ * Migrated from MooseX::AttributeHelpers to native Moose traits
+ * Skip tests that hang on Windows machines
+
 == 0.3000 -- 07/01/2013 ==
 
  * The 'persistent' header now accepts '1' in addition to 'true'.
