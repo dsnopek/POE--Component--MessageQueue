@@ -46,7 +46,7 @@ has 'dbh' => (
 	isa => 'Object',
 	writer => '_dbh',
 	lazy => 1,
-	builder => '_connect',
+	builder => '_build_dbh',
 	init_arg => undef,
 );
 
@@ -114,7 +114,7 @@ sub BUILD
 	$self->_clear_claims();
 }
 
-sub _connect
+sub _build_dbh
 {
 	my ($self) = @_;
 
@@ -145,11 +145,11 @@ sub _connect
 			}
 		}
 
-#		if ($self->cur_server == -1) {
-#			# if this is our first connection on MQ startup, we should fail loudly..
-#			$self->log(error => "Unable to connect to database.");
-#			exit 1;
-#		}
+		if ($self->cur_server == -1) {
+			# if this is our first connection on MQ startup, we should fail loudly..
+			$self->log(error => "Unable to connect to database.");
+			die "Unable to connect to database.";
+		}
 
 		# after trying them all we sleep for 1 second, so that we don't hot-loop and
 		# the system has a chance to get back up.
@@ -179,7 +179,7 @@ sub _wrap {
         {
             $self->log(error => "Error in $name(): $err");
             $self->log(error => "Going to reconnect to DB to try again...");
-            $self->_dbh($self->_connect());
+            $self->_dbh($self->_build_dbh());
         }
     }
 

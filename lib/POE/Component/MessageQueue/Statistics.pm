@@ -28,7 +28,7 @@ sub new
 			ID => sprintf(
 				"POE::Component::MessageQueue version %s (PID: $$)",
 				# hide from PAUSE
-				eval join('::', '$POE', 'Component', 'MessageQueue', 'VERSION') 
+				join('::', '$POE', 'Component', 'MessageQueue', 'VERSION') 
 			),
 			total_stored  => 0,
 			total_sent    => 0,

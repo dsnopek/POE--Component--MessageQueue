@@ -17,7 +17,6 @@
 
 package POE::Component::MessageQueue::Storage::DBI;
 use Moose;
-
 extends qw(POE::Component::MessageQueue::Storage::Generic);
 
 has '+package' => ( 
@@ -34,6 +33,13 @@ around new => sub {
 	}
 	$original->($class, @args, options => \@args);
 };
+
+sub BUILD {
+	my ($self) = @_;
+	# Forces early termination if we cannot connect to db.
+	eval 'require ' . $self->package;
+	$self->package->new(@{$self->options});
+}
 
 1;
 
