@@ -1,4 +1,8 @@
 
+== 0.3002 -- 06/07/2015 ==
+
+ * Don't start server if we can't connect to db, when using Storage::DBI
+
 == 0.3001 -- 08/08/2013 ==
 
  * Migrated from MooseX::AttributeHelpers to native Moose traits
