@@ -1,4 +1,26 @@
 
+== 0.3002 -- 06/07/2015 ==
+
+ * Don't start server if we can't connect to db, when using Storage::DBI
+
+== 0.3001 -- 08/08/2013 ==
+
+ * Migrated from MooseX::AttributeHelpers to native Moose traits
+ * Skip tests that hang on Windows machines
+
+== 0.3000 -- 07/01/2013 ==
+
+ * The 'persistent' header now accepts '1' in addition to 'true'.
+ * Fixed the 'Use of uninitialized value in string eq' warnings that got
+   printed for each message that had no 'persistent' header.
+ * Migrated to Dist::Zilla.
+ * Updated to a more Perl toolchain friendly versioning scheme.
+
+== 0.2.13 -- 06/03/2012 ==
+
+ * Retry only max_retry times when a db operation fails.
+ * Fixed deprecated usage of qw() as parentheses.
+
 == 0.2.12 -- 07/28/2011 ==
 
  * Added missing test which caused last release to fail to install (Thanks to Naveed

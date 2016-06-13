@@ -46,7 +46,7 @@ has 'dbh' => (
 	isa => 'Object',
 	writer => '_dbh',
 	lazy => 1,
-	builder => '_connect',
+	builder => '_build_dbh',
 	init_arg => undef,
 );
 
@@ -56,6 +56,12 @@ has 'cur_server' => (
 	writer => '_cur_server',
 	default => sub { return -1 },
 	init_arg => undef,
+);
+
+has max_retries => (
+    is      => 'ro',
+    isa     => 'Int',
+    default => 10,
 );
 
 # NOT async!
@@ -108,7 +114,7 @@ sub BUILD
 	$self->_clear_claims();
 }
 
-sub _connect
+sub _build_dbh
 {
 	my ($self) = @_;
 
@@ -139,11 +145,11 @@ sub _connect
 			}
 		}
 
-#		if ($self->cur_server == -1) {
-#			# if this is our first connection on MQ startup, we should fail loudly..
-#			$self->log(error => "Unable to connect to database.");
-#			exit 1;
-#		}
+		if ($self->cur_server == -1) {
+			# if this is our first connection on MQ startup, we should fail loudly..
+			$self->log(error => "Unable to connect to database.");
+			die "Unable to connect to database.";
+		}
 
 		# after trying them all we sleep for 1 second, so that we don't hot-loop and
 		# the system has a chance to get back up.
@@ -153,26 +159,31 @@ sub _connect
 	}
 }
 
-sub _wrap
-{
-	my ($self, $name, $action) = @_;
-	my $trying = 1;
+sub _wrap {
+    my ($self, $name, $action) = @_;
+    my $trying = 1;
+    my $max_retries = $self->max_retries;
 
-	while ($trying) {
-		try eval {
-			$action->();
-			# it was a success, so no need to try any more
-			$trying = 0;
-		};
-		if (my $err = catch)
-		{
-			$self->log(error => "Error in $name(): $err");
-			$self->log(error => "Attempting to reconnect to DB and try again...");
-			$self->_dbh($self->_connect());
-		}
-	}
+    while ($trying++) {
+        if ($trying >= $max_retries) {
+            $self->log(error =>
+                "Giving up on $name() after trying $max_retries times");
+            return 0;
+        }
+        try eval {
+            $action->();
+            # it was a success, so no need to try any more
+            $trying = 0;
+        };
+        if (my $err = catch)
+        {
+            $self->log(error => "Error in $name(): $err");
+            $self->log(error => "Going to reconnect to DB to try again...");
+            $self->_dbh($self->_build_dbh());
+        }
+    }
 
-	return;
+    return 1;
 }
 
 sub _make_where
@@ -225,8 +236,7 @@ sub _in_use_by {
 # because when we do our tail-calls (goto $method), we don't want to pass them
 # anything unneccessary, particulary $callbacks.
 
-sub store
-{
+sub store {
 	my ($self, $m, $callback) = @_;
 
 	$self->_wrap(store => sub {
@@ -249,7 +259,8 @@ sub store
 			$m->timestamp,  $m->size,
 			$m->deliver_at
 		);
-	});
+    }) or $self->log(error => sprintf
+        "Could not store message '%s' to queue %s", $m->body, $m->destination);
 
 	@_ = ();
 	goto $callback if $callback;

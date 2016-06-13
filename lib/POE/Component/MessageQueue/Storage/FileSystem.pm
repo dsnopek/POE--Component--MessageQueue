@@ -36,8 +36,7 @@ has 'info_storage' => (
 
 # For all these, we get an aref of stuff that needs bodies from our info
 # store.  So, let's just make them all at once.  
-foreach my $method qw(get get_all)
-{
+foreach my $method (qw(get get_all)) {
 	__PACKAGE__->meta->add_method($method, sub {
 		my $self = shift;
 		my $callback = pop;
@@ -52,8 +51,7 @@ foreach my $method qw(get get_all)
 
 # These are similar to the above, but for single messages.  Also, we want to
 # retry if the message info tells us about is not on disk.
-foreach my $method qw(get_oldest claim_and_retrieve) 
-{
+foreach my $method (qw(get_oldest claim_and_retrieve)) {
 	__PACKAGE__->meta->add_method($method, sub {
 		my $self = shift;
 		my $callback = pop;
